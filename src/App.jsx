@@ -2355,7 +2355,9 @@ export default function App() {
     return true;
   };
 
-  const filteredSongs = songs.filter((s) => matchesNonArtistFilters(s) && (artistFilter === 'all' || s.artist === artistFilter));
+  const filteredSongs = songs
+    .filter((s) => matchesNonArtistFilters(s) && (artistFilter === 'all' || s.artist === artistFilter))
+    .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
 
   const totalSeconds = filteredSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
   const artistOptions = [...new Set(songs.filter(matchesNonArtistFilters).map((s) => s.artist).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
@@ -2439,6 +2441,7 @@ export default function App() {
       {showAdd && (
         <AddSongModal
           currentUser={currentUser}
+          existingSongs={songs}
           onClose={() => setShowAdd(false)}
           onAdd={async (song) => {
             await updateSongs((prev) => [...prev, song]);
@@ -2452,6 +2455,7 @@ export default function App() {
         <AddSongModal
           currentUser={currentUser}
           initialSong={editingSong}
+          existingSongs={songs}
           onClose={() => setEditingSong(null)}
           onAdd={async (updatedSong) => {
             const previousStatus = editingSong.status;
@@ -2958,7 +2962,7 @@ function SongRow({ song, members, currentUser, onEdit }) {
 /*  ADD SONG MODAL (manual entry)                                      */
 /* ------------------------------------------------------------------ */
 
-function AddSongModal({ currentUser, onClose, onAdd, initialSong }) {
+function AddSongModal({ currentUser, onClose, onAdd, initialSong, existingSongs }) {
   const isEdit = !!initialSong;
   const [title, setTitle] = useState(initialSong?.title || '');
   const [artist, setArtist] = useState(initialSong?.artist || '');
@@ -3011,6 +3015,19 @@ function AddSongModal({ currentUser, onClose, onAdd, initialSong }) {
     if (!title.trim() || !artist.trim()) { setError('Titre et artiste sont obligatoires.'); return; }
     const seconds = parseDurationInput(duration);
     if (duration && seconds === null) { setError('Format de durée invalide (mm:ss).'); return; }
+
+    const normalizedTitle = title.trim().toLowerCase();
+    const normalizedArtist = artist.trim().toLowerCase();
+    const duplicate = (existingSongs || []).find((s) =>
+      s.id !== initialSong?.id &&
+      s.title.trim().toLowerCase() === normalizedTitle &&
+      s.artist.trim().toLowerCase() === normalizedArtist
+    );
+    if (duplicate) {
+      setError(`« ${title.trim()} » de ${artist.trim()} est déjà dans le répertoire (statut : ${STATUS[duplicate.status].label}).`);
+      return;
+    }
+
     const links = {};
     if (deezerUrl) links.deezer_url = deezerUrl;
     if (coverUrl) links.cover_url = coverUrl;
@@ -3368,6 +3385,7 @@ function ProposalStep({ songs, members, currentUser, updateSongs, pushNotificati
       {showAdd && (
         <AddSongModal
           currentUser={currentUser}
+          existingSongs={songs}
           onClose={() => setShowAdd(false)}
           onAdd={async (song) => {
             await updateSongs((prev) => [...prev, song]);
@@ -3380,6 +3398,7 @@ function ProposalStep({ songs, members, currentUser, updateSongs, pushNotificati
         <AddSongModal
           currentUser={currentUser}
           initialSong={editingSong}
+          existingSongs={songs}
           onClose={() => setEditingSong(null)}
           onAdd={async (updatedSong) => {
             const previousStatus = editingSong.status;
