@@ -2334,27 +2334,6 @@ export default function App() {
     }
   }, []);
 
-  if (loading) {
-    return (
-      <div className="calyxter-app" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <GlobalStyle />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#9A958C' }}>
-          <Loader2 size={18} className="clx-spin" />
-          <span className="clx-mono" style={{ fontSize: 13 }}>Chargement du répertoire…</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!currentUser) {
-    return (
-      <div className="calyxter-app" style={{ minHeight: '100vh' }}>
-        <GlobalStyle />
-        <MemberPicker members={members} onAuthenticated={onAuthenticated} error={membersError} />
-      </div>
-    );
-  }
-
   const matchesNonArtistFilters = (s) => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false;
     if (langFilter !== 'all' && s.language !== langFilter) return false;
@@ -2375,6 +2354,27 @@ export default function App() {
       setArtistFilter('all');
     }
   }, [artistOptions.join('|')]);
+
+  if (loading) {
+    return (
+      <div className="calyxter-app" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <GlobalStyle />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#9A958C' }}>
+          <Loader2 size={18} className="clx-spin" />
+          <span className="clx-mono" style={{ fontSize: 13 }}>Chargement du répertoire…</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="calyxter-app" style={{ minHeight: '100vh' }}>
+        <GlobalStyle />
+        <MemberPicker members={members} onAuthenticated={onAuthenticated} error={membersError} />
+      </div>
+    );
+  }
 
   return (
     <div className="calyxter-app">
