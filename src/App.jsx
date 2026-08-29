@@ -2019,6 +2019,7 @@ function parseDurationInput(str) {
 
 function listenUrl(song, platform) {
   if (song.links && song.links.custom_url) return song.links.custom_url;
+  if (song.links && song.links.deezer_url && platform === 'deezer') return song.links.deezer_url;
   const q = encodeURIComponent(`${song.title} ${song.artist}`);
   if (platform === 'deezer') return `https://www.deezer.com/search/${q}`;
   if (platform === 'apple_music') return `https://music.apple.com/search?term=${q}`;
@@ -2114,6 +2115,16 @@ async function callMemberAuth(action, memberId, password) {
   });
   return res.json();
 }
+
+async function searchDeezer(query) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/search-deezer?q=${encodeURIComponent(query)}`, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'La recherche Deezer a échoué.');
+  return data.results || [];
+}
+
 
 
 
@@ -2956,12 +2967,54 @@ function AddSongModal({ currentUser, onClose, onAdd, initialSong }) {
   const [language, setLanguage] = useState(initialSong?.language || 'FR');
   const [status, setStatus] = useState(initialSong?.status || 'proposed');
   const [customUrl, setCustomUrl] = useState(initialSong?.links?.custom_url || '');
+  const [deezerUrl, setDeezerUrl] = useState(initialSong?.links?.deezer_url || '');
+  const [coverUrl, setCoverUrl] = useState(initialSong?.links?.cover_url || '');
   const [error, setError] = useState('');
+
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.trim().length < 2) { setResults([]); setSearching(false); return; }
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const found = await searchDeezer(query.trim());
+        setResults(found);
+        setSearchError('');
+      } catch (err) {
+        setSearchError(err.message || 'Recherche indisponible.');
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
+
+  const applyResult = (r) => {
+    setTitle(r.title || '');
+    setArtist(r.artist || '');
+    setAlbum(r.album || '');
+    setDuration(r.duration_seconds ? formatSongDuration(r.duration_seconds) : '');
+    setDeezerUrl(r.deezer_url || '');
+    setCoverUrl(r.cover_url || '');
+    setResults([]);
+    setQuery('');
+  };
 
   const submit = () => {
     if (!title.trim() || !artist.trim()) { setError('Titre et artiste sont obligatoires.'); return; }
     const seconds = parseDurationInput(duration);
     if (duration && seconds === null) { setError('Format de durée invalide (mm:ss).'); return; }
+    const links = {};
+    if (deezerUrl) links.deezer_url = deezerUrl;
+    if (coverUrl) links.cover_url = coverUrl;
+    if (customUrl.trim()) links.custom_url = customUrl.trim();
 
     if (isEdit) {
       onAdd({
@@ -2972,7 +3025,7 @@ function AddSongModal({ currentUser, onClose, onAdd, initialSong }) {
         duration_seconds: seconds || 0,
         language,
         status,
-        links: customUrl.trim() ? { ...initialSong.links, custom_url: customUrl.trim() } : { ...initialSong.links, custom_url: undefined },
+        links,
       });
       return;
     }
@@ -2987,13 +3040,60 @@ function AddSongModal({ currentUser, onClose, onAdd, initialSong }) {
       status: 'proposed',
       added_by_user_id: currentUser.id,
       created_at: new Date().toISOString(),
-      links: customUrl.trim() ? { custom_url: customUrl.trim() } : {},
+      links,
     });
   };
 
   return (
     <Modal onClose={onClose} title={isEdit ? 'Modifier le morceau' : 'Ajouter un morceau'} icon={isEdit ? Pencil : Plus}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <Field label="Rechercher sur Deezer (auto-complétion)">
+          <div style={{ position: 'relative' }}>
+            <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6862' }} />
+            <input
+              className="clx-input"
+              style={{ paddingLeft: 32 }}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Titre, artiste…"
+            />
+            {searching && <Loader2 size={14} className="clx-spin" style={{ position: 'absolute', right: 11, top: 11, color: '#6B6862' }} />}
+          </div>
+        </Field>
+
+        {searchError && <div style={{ color: '#C1454B', fontSize: 12 }}>{searchError}</div>}
+
+        {results.length > 0 && (
+          <div className="clx-card clx-scrollbar" style={{ maxHeight: 220, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {results.map((r, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => applyResult(r)}
+                className="clx-btn"
+                style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 6, background: 'transparent', border: 'none', textAlign: 'left', color: '#F5F1E8' }}
+              >
+                {r.cover_url ? (
+                  <img src={r.cover_url} alt="" style={{ width: 36, height: 36, borderRadius: 4, flexShrink: 0, objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: 36, height: 36, borderRadius: 4, flexShrink: 0, background: '#101012', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Music2 size={14} color="#6B6862" />
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
+                  <div style={{ fontSize: 11, color: '#9A958C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.artist}{r.album ? ` · ${r.album}` : ''}</div>
+                </div>
+                <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', flexShrink: 0 }}>{formatSongDuration(r.duration_seconds)}</div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862' }}>
+          Clique un résultat pour préremplir la fiche — ou complète tout manuellement ci-dessous (compositions, démos…).
+        </div>
+
         <Field label="Titre *"><input className="clx-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex. Hocus Pocus" /></Field>
         <Field label="Artiste *"><input className="clx-input" value={artist} onChange={(e) => setArtist(e.target.value)} placeholder="Ex. Focus" /></Field>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -3020,9 +3120,6 @@ function AddSongModal({ currentUser, onClose, onAdd, initialSong }) {
         <Field label="Lien externe (YouTube, SoundCloud, Drive…)">
           <input className="clx-input" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} placeholder="Pour une composition ou une démo" />
         </Field>
-        <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862' }}>
-          Note prototype : la recherche automatique via les API de streaming n'est pas branchée ici — saisie manuelle uniquement.
-        </div>
         {error && <div style={{ color: '#C1454B', fontSize: 12 }}>{error}</div>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
           <button onClick={onClose} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
