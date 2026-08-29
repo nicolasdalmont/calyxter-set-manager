@@ -2917,8 +2917,21 @@ function SongRow({ song, members, currentUser, onEdit }) {
   const author = members.find((m) => m.id === song.added_by_user_id);
   const st = STATUS[song.status];
   const missing = !song.duration_seconds || !song.language || song.language === 'OTHER';
+  const coverUrl = song.links?.cover_url;
   return (
     <div className="clx-card clx-row" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+      {coverUrl ? (
+        <img
+          src={coverUrl}
+          alt=""
+          style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, objectFit: 'cover', border: '1px solid #2A2A2E' }}
+        />
+      ) : (
+        <div style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Music2 size={16} color="#6B6862" />
+        </div>
+      )}
+
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
           <span style={{ fontWeight: 700, fontSize: 15 }}>{song.title}</span>
