@@ -2149,6 +2149,11 @@ async function fetchActivePhase() {
   return rows && rows[0] ? rows[0] : null;
 }
 
+async function fetchPhaseHistory() {
+  const rows = await supabaseTable('phases?closed_at=not.is.null&select=*&order=closed_at.desc');
+  return rows || [];
+}
+
 async function fetchNotifications() {
   const rows = await supabaseTable('notifications?select=*&order=created_at.desc&limit=40');
   return rows || [];
@@ -2279,6 +2284,7 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [concerts, setConcerts] = useState([]);
   const [events, setEvents] = useState([]);
+  const [phaseHistory, setPhaseHistory] = useState([]);
   const [concertToOpen, setConcertToOpen] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [membersError, setMembersError] = useState('');
@@ -2297,13 +2303,14 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [supaMembers, s, p, n, c, ev] = await Promise.all([
+        const [supaMembers, s, p, n, c, ev, ph] = await Promise.all([
           withTimeout(fetchMembersFromSupabase(), 8000, null),
           withTimeout(loadOrSeedSongs(), 8000, DEFAULT_SONGS),
           withTimeout(fetchActivePhase(), 8000, null),
           withTimeout(fetchNotifications(), 8000, []),
           withTimeout(fetchConcerts(), 8000, []),
           withTimeout(fetchEvents(), 8000, []),
+          withTimeout(fetchPhaseHistory(), 8000, []),
         ]);
         if (cancelled) return;
         if (supaMembers) {
@@ -2316,6 +2323,7 @@ export default function App() {
         setNotifications(n);
         setConcerts(c);
         setEvents(ev);
+        setPhaseHistory(ph);
         setCurrentUserId(loadPersonal('current-member-id'));
       } catch (e) {
         console.error('Failed to load app data', e);
@@ -2444,16 +2452,43 @@ export default function App() {
       if (next) {
         await upsertRows('phases', [next]);
       } else if (prevPhase) {
+        const closedAt = new Date().toISOString();
         await supabaseTable(`phases?id=eq.${prevPhase.id}`, {
           method: 'PATCH',
           headers: { Prefer: 'return=minimal' },
-          body: JSON.stringify({ current_step: 'closed', closed_at: new Date().toISOString() }),
+          body: JSON.stringify({ current_step: 'closed', closed_at: closedAt }),
         });
+        // La phase clôturée normalement (résultat validé) rejoint
+        // l'historique consultable dans l'onglet Phase de choix.
+        setPhaseHistory((prev) => [{ ...prevPhase, current_step: 'closed', closed_at: closedAt }, ...prev]);
       }
     } catch (e) {
       console.error('Erreur en enregistrant la phase', e);
     }
   }, []);
+
+  // Annulation d'une phase en cours, à tout moment, par n'importe quel
+  // membre : contrairement à une clôture normale (updatePhase(null)), la
+  // ligne est purement et simplement supprimée — elle ne rejoint donc
+  // jamais l'historique. Les morceaux vetotés durant cette phase précise
+  // réintègrent le statut "Proposé" ; les propositions elles-mêmes ne sont
+  // pas touchées ; les votes disparaissent avec la phase (ils n'étaient
+  // enregistrés que dans son JSON embarqué).
+  const cancelPhase = useCallback(async (currentPhase) => {
+    if (!currentPhase) return;
+    const vetoedSongIds = [...new Set((currentPhase.vetoes || []).map((v) => v.song_id))];
+    setPhase(null);
+    if (vetoedSongIds.length > 0) {
+      await updateSongs((prev) => prev.map((s) => (
+        vetoedSongIds.includes(s.id) && s.status === 'rejected' ? { ...s, status: 'proposed' } : s
+      )));
+    }
+    try {
+      await supabaseTable(`phases?id=eq.${currentPhase.id}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    } catch (e) {
+      console.error('Erreur en annulant la phase', e);
+    }
+  }, [updateSongs]);
 
   const matchesNonArtistFilters = (s) => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false;
@@ -2533,10 +2568,12 @@ export default function App() {
         {tab === 'phase' && (
           <PhaseWorkflow
             phase={phase}
+            phaseHistory={phaseHistory}
             songs={songs}
             members={members}
             currentUser={currentUser}
             updatePhase={updatePhase}
+            cancelPhase={cancelPhase}
             updateSongs={updateSongs}
             deleteSong={deleteSong}
             pushNotification={pushNotification}
@@ -3439,9 +3476,23 @@ function NotificationLog({ notifications }) {
 /*  PHASE WORKFLOW TAB                                                  */
 /* ------------------------------------------------------------------ */
 
-function PhaseWorkflow({ phase, songs, members, currentUser, updatePhase, updateSongs, deleteSong, pushNotification }) {
+function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updatePhase, cancelPhase, updateSongs, deleteSong, pushNotification }) {
+  const [showHistory, setShowHistory] = useState(false);
+
+  if (showHistory) {
+    return <PhaseHistoryView phaseHistory={phaseHistory} members={members} onBack={() => setShowHistory(false)} />;
+  }
+
   if (!phase) {
-    return <NoPhase members={members} currentUser={currentUser} updatePhase={updatePhase} pushNotification={pushNotification} />;
+    return (
+      <NoPhase
+        members={members}
+        currentUser={currentUser}
+        updatePhase={updatePhase}
+        pushNotification={pushNotification}
+        onShowHistory={() => setShowHistory(true)}
+      />
+    );
   }
 
   const initiator = members.find((m) => m.id === phase.initiated_by_user_id);
@@ -3455,9 +3506,31 @@ function PhaseWorkflow({ phase, songs, members, currentUser, updatePhase, update
     await pushNotification(`➡️ La phase passe à l'étape « ${STEP_LABEL[next]} ».`, 'step');
   };
 
+  const handleCancel = async () => {
+    const vetoedCount = new Set((phase.vetoes || []).map((v) => v.song_id)).size;
+    const warning = [
+      'Annuler cette phase de choix maintenant ?',
+      '',
+      '- Les propositions sont conservées.',
+      vetoedCount > 0
+        ? `- Les ${vetoedCount} morceau${vetoedCount > 1 ? 'x' : ''} rejeté${vetoedCount > 1 ? 's' : ''} par veto durant cette phase réintègre${vetoedCount > 1 ? 'nt' : ''} le statut Proposé.`
+        : '- Aucun veto n\'a encore été posé.',
+      '- Les votes en cours sont définitivement perdus.',
+      '- Cette phase annulée ne figurera pas dans l\'historique.',
+    ].join('\n');
+    if (!window.confirm(warning)) return;
+    await cancelPhase(phase);
+    await pushNotification(`❌ ${currentUser.name} a annulé la phase de choix en cours.`, 'info');
+  };
+
   return (
     <div>
-      <div className="clx-display" style={{ fontSize: 24, marginBottom: 2 }}>Phase de choix en cours</div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 2 }}>
+        <div className="clx-display" style={{ fontSize: 24 }}>Phase de choix en cours</div>
+        <button onClick={() => setShowHistory(true)} className="clx-btn clx-btn-ghost" style={{ padding: '6px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+          Historique des phases
+        </button>
+      </div>
       <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginBottom: 18 }}>
         Lancée par {initiator ? initiator.name : '—'} · {new Date(phase.created_at).toLocaleDateString('fr-FR')}
       </div>
@@ -3486,9 +3559,17 @@ function PhaseWorkflow({ phase, songs, members, currentUser, updatePhase, update
         )}
       </div>
 
-      {phase.current_step !== 'result' && (
-        <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
-          {isInitiator ? (
+      <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <button
+          onClick={handleCancel}
+          className="clx-btn"
+          style={{ padding: '9px 14px', borderRadius: 6, fontSize: 12, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          <Ban size={14} /> Annuler la phase en cours
+        </button>
+
+        {phase.current_step !== 'result' && (
+          isInitiator ? (
             <button onClick={advance} className="clx-btn clx-btn-primary" style={{ padding: '10px 18px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
               Passer à l'étape suivante <ChevronRight size={15} />
             </button>
@@ -3496,14 +3577,14 @@ function PhaseWorkflow({ phase, songs, members, currentUser, updatePhase, update
             <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862' }}>
               Seul·e {initiator ? initiator.name : "l'initiateur·rice"} peut faire avancer cette phase.
             </div>
-          )}
-        </div>
-      )}
+          )
+        )}
+      </div>
     </div>
   );
 }
 
-function NoPhase({ members, currentUser, updatePhase, pushNotification }) {
+function NoPhase({ members, currentUser, updatePhase, pushNotification, onShowHistory }) {
   const launch = async () => {
     const newPhase = {
       id: uid('phs'),
@@ -3530,6 +3611,52 @@ function NoPhase({ members, currentUser, updatePhase, pushNotification }) {
       <button onClick={launch} className="clx-btn clx-btn-primary" style={{ padding: '10px 20px', borderRadius: 6, fontSize: 13 }}>
         Lancer une phase de choix
       </button>
+      <div style={{ marginTop: 14 }}>
+        <button onClick={onShowHistory} className="clx-btn clx-btn-ghost" style={{ padding: '7px 12px', borderRadius: 6, fontSize: 12 }}>
+          Voir l'historique des phases
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PhaseHistoryView({ phaseHistory, members, onBack }) {
+  return (
+    <div>
+      <button
+        onClick={onBack}
+        className="clx-btn clx-btn-ghost"
+        style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 16 }}
+      >
+        <ArrowLeft size={14} /> Retour
+      </button>
+
+      <div className="clx-display" style={{ fontSize: 24, marginBottom: 18 }}>Historique des phases</div>
+
+      {phaseHistory.length === 0 ? (
+        <EmptyState text="Aucune phase clôturée pour l'instant." />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {phaseHistory.map((p) => {
+            const initiator = members.find((m) => m.id === p.initiated_by_user_id);
+            const durationMs = p.closed_at && p.created_at ? new Date(p.closed_at) - new Date(p.created_at) : null;
+            const durationDays = durationMs !== null ? Math.round(durationMs / (1000 * 60 * 60 * 24)) : null;
+            return (
+              <div key={p.id} className="clx-card" style={{ padding: '14px 16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>Phase lancée par {initiator ? initiator.name : 'membre inconnu'}</div>
+                  <span className="clx-badge" style={{ background: '#6FA28722', color: '#6FA287', border: '1px solid #6FA28755' }}>CLÔTURÉE</span>
+                </div>
+                <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginTop: 6, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                  <span>Début : {new Date(p.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                  <span>Fin : {p.closed_at ? new Date(p.closed_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</span>
+                  {durationDays !== null && <span>({durationDays === 0 ? 'même jour' : `${durationDays} jour${durationDays > 1 ? 's' : ''}`})</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
