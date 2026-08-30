@@ -4594,15 +4594,43 @@ function mergeEventsAndConcerts(events, concerts) {
   return [...fromEvents, ...fromConcerts].sort((a, b) => {
     const da = a.event_date || '';
     const db = b.event_date || '';
-    if (da !== db) return da < db ? 1 : -1; // décroissant par date
-    return (b.start_time || '').localeCompare(a.start_time || '');
+    if (da !== db) return da < db ? -1 : 1; // croissant par date
+    return (a.start_time || '').localeCompare(b.start_time || '');
   });
 }
 
+const RENDEZVOUS_KIND_INFO = { ...EVENT_KIND, concert: CONCERT_EVENT_KIND };
+const RENDEZVOUS_KIND_ORDER = ['repetition', 'atelier', 'residence', 'autre', 'concert'];
+
 function RendezVousTab({ events, concerts, members, currentUser, saveEvent, deleteEvent, pushNotification, onViewConcert }) {
   const [editingEvent, setEditingEvent] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
+  const [kindFilter, setKindFilter] = useState(new Set(RENDEZVOUS_KIND_ORDER)); // tous actifs par défaut
 
-  const merged = mergeEventsAndConcerts(events, concerts);
+  const allMerged = mergeEventsAndConcerts(events, concerts);
+  const merged = allMerged.filter((item) => kindFilter.has(item.kind));
+
+  const toggleKind = (kind) => {
+    setKindFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind); else next.add(kind);
+      return next;
+    });
+  };
+  const allKindsActive = kindFilter.size === RENDEZVOUS_KIND_ORDER.length;
+  const toggleAllKinds = () => setKindFilter(allKindsActive ? new Set() : new Set(RENDEZVOUS_KIND_ORDER));
+
+  // Focus automatique sur le prochain événement à venir : la liste défile
+  // jusqu'à lui dès l'ouverture de l'onglet, pour éviter d'avoir à
+  // parcourir manuellement les rendez-vous passés (désormais en tête,
+  // la liste étant triée par date croissante).
+  const todayStr = toISODate(new Date());
+  const nextIndex = merged.findIndex((item) => (item.end_date || item.event_date) >= todayStr);
+  const nextItemRef = useRef(null);
+  useEffect(() => {
+    if (nextItemRef.current) {
+      nextItemRef.current.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }
+  }, [editingEvent, kindFilter.size]);
 
   if (editingEvent !== undefined) {
     return (
@@ -4632,7 +4660,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
 
   return (
     <div>
-      <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
+      <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 14 }}>
           <span style={{ fontWeight: 700 }}>{merged.length}</span> rendez-vous
         </div>
@@ -4641,35 +4669,44 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
         </button>
       </div>
 
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+        <Chip active={allKindsActive} onClick={toggleAllKinds}>Tous</Chip>
+        {RENDEZVOUS_KIND_ORDER.map((k) => (
+          <Chip key={k} active={kindFilter.has(k)} onClick={() => toggleKind(k)}>{RENDEZVOUS_KIND_INFO[k].label}</Chip>
+        ))}
+      </div>
+
       {merged.length === 0 ? (
-        <EmptyState text="Aucun rendez-vous programmé pour le moment." />
+        <EmptyState text={allMerged.length === 0 ? 'Aucun rendez-vous programmé pour le moment.' : 'Aucun rendez-vous ne correspond à ce filtre.'} />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {merged.map((item) => (
-            <RendezVousCard
-              key={item.occurrenceKey}
-              item={item}
-              members={members}
-              onOpen={() => {
-                if (item.source === 'concert') {
-                  onViewConcert(item.id);
-                } else {
-                  setEditingEvent(item.raw);
-                }
-              }}
-              onQuickDelete={item.source === 'concert' ? undefined : async () => {
-                if (item.isRecurring) {
-                  if (!window.confirm(`Supprimer uniquement l'occurrence du ${formatConcertDate(item.occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })} pour « ${item.subject} » ? Les autres dates de la série ne seront pas affectées.`)) return;
-                  const updated = { ...item.raw, excluded_dates: [...new Set([...(item.raw.excluded_dates || []), item.occurrenceDate])] };
-                  await saveEvent(updated);
-                  await pushNotification(`🗑️ ${currentUser.name} a supprimé une occurrence du rendez-vous récurrent « ${item.subject} » (${formatConcertDate(item.occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })}).`, 'info');
-                } else {
-                  if (!window.confirm(`Supprimer définitivement le rendez-vous « ${item.subject} » ? Cette action est irréversible.`)) return;
-                  await deleteEvent(item.raw.id);
-                  await pushNotification(`🗑️ ${currentUser.name} a supprimé le rendez-vous « ${item.subject} ».`, 'info');
-                }
-              }}
-            />
+        <div className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
+          {merged.map((item, index) => (
+            <div key={item.occurrenceKey} ref={index === nextIndex ? nextItemRef : null}>
+              <RendezVousCard
+                item={item}
+                members={members}
+                isNext={index === nextIndex}
+                onOpen={() => {
+                  if (item.source === 'concert') {
+                    onViewConcert(item.id);
+                  } else {
+                    setEditingEvent(item.raw);
+                  }
+                }}
+                onQuickDelete={item.source === 'concert' ? undefined : async () => {
+                  if (item.isRecurring) {
+                    if (!window.confirm(`Supprimer uniquement l'occurrence du ${formatConcertDate(item.occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })} pour « ${item.subject} » ? Les autres dates de la série ne seront pas affectées.`)) return;
+                    const updated = { ...item.raw, excluded_dates: [...new Set([...(item.raw.excluded_dates || []), item.occurrenceDate])] };
+                    await saveEvent(updated);
+                    await pushNotification(`🗑️ ${currentUser.name} a supprimé une occurrence du rendez-vous récurrent « ${item.subject} » (${formatConcertDate(item.occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })}).`, 'info');
+                  } else {
+                    if (!window.confirm(`Supprimer définitivement le rendez-vous « ${item.subject} » ? Cette action est irréversible.`)) return;
+                    await deleteEvent(item.raw.id);
+                    await pushNotification(`🗑️ ${currentUser.name} a supprimé le rendez-vous « ${item.subject} ».`, 'info');
+                  }
+                }}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -4677,7 +4714,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
   );
 }
 
-function RendezVousCard({ item, members, onOpen, onQuickDelete }) {
+function RendezVousCard({ item, members, onOpen, onQuickDelete, isNext }) {
   const kindInfo = item.source === 'concert' ? CONCERT_EVENT_KIND : (EVENT_KIND[item.kind] || EVENT_KIND.autre);
   const past = isPastConcert({ event_date: item.end_date || item.event_date });
   const isMultiDay = item.end_date && item.end_date !== item.event_date;
@@ -4709,6 +4746,8 @@ function RendezVousCard({ item, members, onOpen, onQuickDelete }) {
       style={{
         padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
         opacity: past ? 0.6 : 1,
+        borderColor: isNext ? '#F2A93B' : undefined,
+        boxShadow: isNext ? '0 0 0 1px #F2A93B55' : undefined,
       }}
     >
       <button
@@ -4738,6 +4777,9 @@ function RendezVousCard({ item, members, onOpen, onQuickDelete }) {
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
+            {isNext && (
+              <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
+            )}
             {item.isRecurring && (
               <span className="clx-mono" style={{ fontSize: 10, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 3 }}>
                 <Repeat size={10} /> récurrent
