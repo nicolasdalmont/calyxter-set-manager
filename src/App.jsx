@@ -4800,17 +4800,36 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // La date de fin suit automatiquement la date de début tant que
-  // l'utilisateur ne l'a pas modifiée à la main (utile pour une résidence
-  // ou tout rendez-vous sur plusieurs jours). En édition, on respecte la
-  // date de fin déjà enregistrée sans la réécraser.
-  const endDateTouched = useRef(isEdit);
-  useEffect(() => {
-    if (!endDateTouched.current) setEndDate(eventDate);
-  }, [eventDate]);
-  const handleEndDateChange = (v) => {
-    endDateTouched.current = true;
+  // Règles de saisie assistée :
+  // - la date de fin recopie la date de début à chaque saisie de celle-ci ;
+  // - l'horaire de fin recopie l'horaire de début à chaque saisie de
+  //   celui-ci, SAUF : (a) sur un rendez-vous multi-jours, où début/fin
+  //   représentent des horaires quotidiens indépendants, ou (b) si la
+  //   nouvelle heure de début reste antérieure à l'heure de fin déjà
+  //   saisie (la plage reste valide, on ne touche donc pas à la fin) ;
+  // - à l'activation de la récurrence (et à chaque changement de date de
+  //   début tant qu'elle est active), la date "Jusqu'au" est recalculée à
+  //   date de début + 1 an.
+  // Dans les trois cas, le champ concerné reste modifiable manuellement par
+  // la suite ; il n'est réécrasé que lorsque son champ déclencheur change.
+  const isMultiDay = !!(eventDate && endDate && endDate !== eventDate);
+
+  const handleEventDateChange = (v) => {
+    setEventDate(v);
     setEndDate(v);
+    if (isRecurring) setRecurrenceUntil(v ? addRecurrenceUnit(v, 'year', 1) : '');
+  };
+
+  const handleStartTimeChange = (v) => {
+    setStartTime(v);
+    if (isMultiDay) return; // règle multi-jours : pas de recopie automatique
+    if (endTime && v < endTime) return; // la plage reste valide, on laisse la fin telle quelle
+    setEndTime(v);
+  };
+
+  const handleRecurringToggle = (checked) => {
+    setIsRecurring(checked);
+    if (checked) setRecurrenceUntil(eventDate ? addRecurrenceUnit(eventDate, 'year', 1) : '');
   };
 
   const toggleParticipant = (memberId) => {
@@ -4898,10 +4917,10 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           <Field label="Date de début *" style={{ flex: '1 1 140px' }}>
-            <input type="date" className="clx-input" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+            <input type="date" className="clx-input" value={eventDate} onChange={(e) => handleEventDateChange(e.target.value)} />
           </Field>
           <Field label="Date de fin" style={{ flex: '1 1 140px' }}>
-            <input type="date" className="clx-input" value={endDate} min={eventDate || undefined} onChange={(e) => handleEndDateChange(e.target.value)} />
+            <input type="date" className="clx-input" value={endDate} min={eventDate || undefined} onChange={(e) => setEndDate(e.target.value)} />
           </Field>
         </div>
 
@@ -4918,7 +4937,7 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
         {!allDay && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
             <Field label="Début" style={{ flex: '1 1 110px' }}>
-              <input type="time" className="clx-input" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+              <input type="time" className="clx-input" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} />
             </Field>
             <Field label="Fin" style={{ flex: '1 1 110px' }}>
               <input type="time" className="clx-input" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
@@ -4930,7 +4949,7 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
           <input
             type="checkbox"
             checked={isRecurring}
-            onChange={(e) => setIsRecurring(e.target.checked)}
+            onChange={(e) => handleRecurringToggle(e.target.checked)}
             style={{ width: 15, height: 15, accentColor: '#F2A93B', cursor: 'pointer' }}
           />
           <Repeat size={13} /> Rendez-vous récurrent
