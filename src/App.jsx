@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Search, Plus, X, Check, ExternalLink, Trophy, Users, RotateCcw, Pencil, ChevronUp, ChevronDown, GripVertical,
+  Search, Plus, X, Check, ExternalLink, Trophy, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Settings, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft
@@ -2368,22 +2368,6 @@ export default function App() {
     }
   }, []);
 
-  const resetAll = useCallback(async () => {
-    if (!window.confirm('Réinitialiser le répertoire et les phases ? (les membres, sur Supabase, ne sont pas concernés)')) return;
-    try {
-      await supabaseTable('songs?id=neq.00000000-0000-0000-0000-000000000000', { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
-      await supabaseTable('phases?id=neq.00000000-0000-0000-0000-000000000000', { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
-      await supabaseTable('notifications?id=neq.00000000-0000-0000-0000-000000000000', { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
-      const seeded = DEFAULT_SONGS.map((s) => ({ ...s, id: uid() }));
-      await upsertRows('songs', seeded);
-      setSongs(seeded);
-      setPhase(null);
-      setNotifications([]);
-    } catch (e) {
-      console.error('Erreur pendant la réinitialisation', e);
-    }
-  }, []);
-
   const matchesNonArtistFilters = (s) => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false;
     if (langFilter !== 'all' && s.language !== langFilter) return false;
@@ -2436,7 +2420,6 @@ export default function App() {
         currentUser={currentUser}
         onSignOut={signOut}
         onOpenSettings={() => setShowSettings(true)}
-        onReset={resetAll}
         tab={tab}
         setTab={setTab}
         phaseActive={!!phase}
@@ -2845,7 +2828,7 @@ function MemberPicker({ members, onAuthenticated, error }) {
 /*  TOP BAR                                                             */
 /* ------------------------------------------------------------------ */
 
-function TopBar({ currentUser, onSignOut, onOpenSettings, onReset, tab, setTab, phaseActive }) {
+function TopBar({ currentUser, onSignOut, onOpenSettings, tab, setTab, phaseActive }) {
   return (
     <header style={{ borderBottom: '1px solid #2A2A2E', position: 'sticky', top: 0, zIndex: 10, background: '#0B0B0Cee', backdropFilter: 'blur(6px)' }}>
       <div style={{ maxWidth: 880, margin: '0 auto', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -2861,9 +2844,6 @@ function TopBar({ currentUser, onSignOut, onOpenSettings, onReset, tab, setTab, 
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={onReset} title="Réinitialiser les données de démo" className="clx-btn clx-btn-ghost" style={{ padding: 8, borderRadius: 6, display: 'flex' }}>
-            <RotateCcw size={15} />
-          </button>
           <button onClick={onOpenSettings} title="Réglages" className="clx-btn clx-btn-ghost" style={{ padding: 8, borderRadius: 6, display: 'flex' }}>
             <Settings size={15} />
           </button>
@@ -4088,6 +4068,8 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 
   const dragIndex = useRef(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
+  const listRef = useRef(null);
+  const scrollTimer = useRef(null);
 
   const selectedSongs = selectedIds.map((id) => songs.find((s) => s.id === id)).filter(Boolean);
   const totalSeconds = selectedSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
@@ -4126,7 +4108,26 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   const moveUp = (index) => { if (index > 0) moveSong(index, index - 1); };
   const moveDown = (index) => { if (index < selectedIds.length - 1) moveSong(index, index + 1); };
 
+  const stopAutoScroll = () => {
+    if (scrollTimer.current) { clearInterval(scrollTimer.current); scrollTimer.current = null; }
+  };
+
+  const handleContainerDragOver = (e) => {
+    e.preventDefault();
+    const el = listRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const threshold = 56;
+    stopAutoScroll();
+    if (e.clientY < rect.top + threshold) {
+      scrollTimer.current = setInterval(() => { el.scrollTop -= 16; }, 30);
+    } else if (e.clientY > rect.bottom - threshold) {
+      scrollTimer.current = setInterval(() => { el.scrollTop += 16; }, 30);
+    }
+  };
+
   const handleDrop = (index) => {
+    stopAutoScroll();
     const from = dragIndex.current;
     setDragOverIndex(null);
     dragIndex.current = null;
@@ -4205,7 +4206,12 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
       {selectedSongs.length === 0 ? (
         <EmptyState text="Aucun morceau sélectionné pour ce concert — ajoute-en depuis la liste ci-dessous." />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 24 }}>
+        <div
+          ref={listRef}
+          onDragOver={handleContainerDragOver}
+          className="clx-scrollbar"
+          style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 24, maxHeight: '55vh', overflowY: 'auto', paddingRight: 4 }}
+        >
           {selectedIds.map((songId, index) => {
             const song = selectedSongs.find((s) => s.id === songId);
             if (!song) return null;
@@ -4217,7 +4223,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
                 onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
                 onDragLeave={() => setDragOverIndex((cur) => (cur === index ? null : cur))}
                 onDrop={() => handleDrop(index)}
-                onDragEnd={() => { dragIndex.current = null; setDragOverIndex(null); }}
+                onDragEnd={() => { stopAutoScroll(); dragIndex.current = null; setDragOverIndex(null); }}
                 className="clx-card"
                 style={{
                   padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
