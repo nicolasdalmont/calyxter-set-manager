@@ -2306,6 +2306,15 @@ export default function App() {
     }
   }, []);
 
+  const deleteSong = useCallback(async (songId) => {
+    setSongs((prev) => prev.filter((s) => s.id !== songId));
+    try {
+      await supabaseTable(`songs?id=eq.${songId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    } catch (e) {
+      console.error('Erreur en supprimant le morceau', e);
+    }
+  }, []);
+
   const updatePhase = useCallback(async (updater) => {
     let prevPhase;
     let next;
@@ -2429,6 +2438,7 @@ export default function App() {
             currentUser={currentUser}
             updatePhase={updatePhase}
             updateSongs={updateSongs}
+            deleteSong={deleteSong}
             pushNotification={pushNotification}
           />
         )}
@@ -2466,6 +2476,12 @@ export default function App() {
             } else {
               await pushNotification(`✏️ « ${updatedSong.title} » a été mis à jour par ${currentUser.name}.`, 'info');
             }
+            setEditingSong(null);
+          }}
+          onDelete={async (songId) => {
+            const title = editingSong.title;
+            await deleteSong(songId);
+            await pushNotification(`🗑️ « ${title} » a été supprimé du répertoire par ${currentUser.name}.`, 'info');
             setEditingSong(null);
           }}
         />
@@ -2613,6 +2629,12 @@ function GlobalStyle() {
 
       .clx-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
       .clx-scrollbar::-webkit-scrollbar-thumb { background: #2A2A2E; border-radius: 3px; }
+
+      @media (max-width: 560px) {
+        .clx-song-info { flex: 1 1 100%; order: 1; }
+        .clx-song-cover { order: 0; }
+        .clx-song-meta { order: 2; flex: 1 1 100%; justify-content: flex-end; margin-top: 4px; }
+      }
 
       @media (prefers-reduced-motion: reduce) {
         .clx-btn, .clx-spin { transition: none; animation: none; }
@@ -2923,20 +2945,21 @@ function SongRow({ song, members, currentUser, onEdit }) {
   const missing = !song.duration_seconds || !song.language || song.language === 'OTHER';
   const coverUrl = song.links?.cover_url;
   return (
-    <div className="clx-card clx-row" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+    <div className="clx-card clx-row" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
       {coverUrl ? (
         <img
           src={coverUrl}
           alt=""
+          className="clx-song-cover"
           style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, objectFit: 'cover', border: '1px solid #2A2A2E' }}
         />
       ) : (
-        <div style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="clx-song-cover" style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Music2 size={16} color="#6B6862" />
         </div>
       )}
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="clx-song-info" style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
           <span style={{ fontWeight: 700, fontSize: 15 }}>{song.title}</span>
           <span className="clx-badge" style={{ background: `${st.color}22`, color: st.color, border: `1px solid ${st.color}55` }}>{st.badge}</span>
@@ -2946,31 +2969,33 @@ function SongRow({ song, members, currentUser, onEdit }) {
         {author && <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 4 }}>Proposé par {author.name} ({author.instrument})</div>}
       </div>
 
-      <div className="clx-mono" style={{ fontSize: 13, color: song.duration_seconds ? '#9A958C' : '#C1454B', width: 46, textAlign: 'right' }}>
-        {formatSongDuration(song.duration_seconds)}
-      </div>
+      <div className="clx-song-meta" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="clx-mono" style={{ fontSize: 13, color: song.duration_seconds ? '#9A958C' : '#C1454B', width: 46, textAlign: 'right' }}>
+          {formatSongDuration(song.duration_seconds)}
+        </div>
 
-      {onEdit && (
-        <button
-          onClick={() => onEdit(song)}
+        {onEdit && (
+          <button
+            onClick={() => onEdit(song)}
+            className="clx-btn clx-btn-ghost"
+            style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', color: missing ? '#F2A93B' : '#F5F1E8' }}
+            title={missing ? 'Compléter les données manquantes' : 'Modifier le morceau'}
+          >
+            <Pencil size={13} />
+          </button>
+        )}
+
+        <a
+          href={listenUrl(song, currentUser.preferred_platform)}
+          target="_blank"
+          rel="noopener noreferrer"
           className="clx-btn clx-btn-ghost"
-          style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', color: missing ? '#F2A93B' : '#F5F1E8' }}
-          title={missing ? 'Compléter les données manquantes' : 'Modifier le morceau'}
+          style={{ padding: '7px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#F5F1E8', textDecoration: 'none' }}
+          title={song.links?.custom_url ? 'Ouvrir le lien' : `Chercher sur ${PLATFORMS[currentUser.preferred_platform] || 'Spotify'}`}
         >
-          <Pencil size={13} />
-        </button>
-      )}
-
-      <a
-        href={listenUrl(song, currentUser.preferred_platform)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="clx-btn clx-btn-ghost"
-        style={{ padding: '7px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#F5F1E8', textDecoration: 'none' }}
-        title={song.links?.custom_url ? 'Ouvrir le lien' : `Chercher sur ${PLATFORMS[currentUser.preferred_platform] || 'Spotify'}`}
-      >
-        <Radio size={13} /> <ExternalLink size={11} />
-      </a>
+          <Radio size={13} /> <ExternalLink size={11} />
+        </a>
+      </div>
     </div>
   );
 }
@@ -2979,7 +3004,7 @@ function SongRow({ song, members, currentUser, onEdit }) {
 /*  ADD SONG MODAL (manual entry)                                      */
 /* ------------------------------------------------------------------ */
 
-function AddSongModal({ currentUser, onClose, onAdd, initialSong, existingSongs }) {
+function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, existingSongs }) {
   const isEdit = !!initialSong;
   const [title, setTitle] = useState(initialSong?.title || '');
   const [artist, setArtist] = useState(initialSong?.artist || '');
@@ -3155,9 +3180,25 @@ function AddSongModal({ currentUser, onClose, onAdd, initialSong, existingSongs 
           <input className="clx-input" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} placeholder="Pour une composition ou une démo" />
         </Field>
         {error && <div style={{ color: '#C1454B', fontSize: 12 }}>{error}</div>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
-          <button onClick={onClose} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
-          <button onClick={submit} className="clx-btn clx-btn-primary" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>{isEdit ? 'Enregistrer les modifications' : 'Ajouter au répertoire'}</button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 6 }}>
+          {isEdit ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`Supprimer définitivement « ${initialSong.title} » du répertoire ? Cette action est irréversible.`)) {
+                  onDelete(initialSong.id);
+                }
+              }}
+              className="clx-btn"
+              style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55' }}
+            >
+              Supprimer
+            </button>
+          ) : <span />}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
+            <button onClick={submit} className="clx-btn clx-btn-primary" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>{isEdit ? 'Enregistrer les modifications' : 'Ajouter au répertoire'}</button>
+          </div>
         </div>
       </div>
     </Modal>
@@ -3247,7 +3288,7 @@ function NotificationLog({ notifications }) {
 /*  PHASE WORKFLOW TAB                                                  */
 /* ------------------------------------------------------------------ */
 
-function PhaseWorkflow({ phase, songs, members, currentUser, updatePhase, updateSongs, pushNotification }) {
+function PhaseWorkflow({ phase, songs, members, currentUser, updatePhase, updateSongs, deleteSong, pushNotification }) {
   if (!phase) {
     return <NoPhase members={members} currentUser={currentUser} updatePhase={updatePhase} pushNotification={pushNotification} />;
   }
@@ -3281,7 +3322,7 @@ function PhaseWorkflow({ phase, songs, members, currentUser, updatePhase, update
 
       <div style={{ marginTop: 20 }}>
         {phase.current_step === 'proposal' && (
-          <ProposalStep songs={songs} members={members} currentUser={currentUser} updateSongs={updateSongs} pushNotification={pushNotification} />
+          <ProposalStep songs={songs} members={members} currentUser={currentUser} updateSongs={updateSongs} deleteSong={deleteSong} pushNotification={pushNotification} />
         )}
         {phase.current_step === 'veto' && (
           <VetoStep songs={songs} members={members} currentUser={currentUser} phase={phase} updateSongs={updateSongs} updatePhase={updatePhase} pushNotification={pushNotification} />
@@ -3381,7 +3422,7 @@ function Stepper({ current, stats }) {
 
 /* --- Step 1 : Proposition -------------------------------------------------- */
 
-function ProposalStep({ songs, members, currentUser, updateSongs, pushNotification }) {
+function ProposalStep({ songs, members, currentUser, updateSongs, deleteSong, pushNotification }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingSong, setEditingSong] = useState(null);
   const proposed = songs.filter((s) => s.status === 'proposed');
@@ -3426,6 +3467,12 @@ function ProposalStep({ songs, members, currentUser, updateSongs, pushNotificati
             } else {
               await pushNotification(`✏️ « ${updatedSong.title} » a été mis à jour par ${currentUser.name}.`, 'info');
             }
+            setEditingSong(null);
+          }}
+          onDelete={async (songId) => {
+            const title = editingSong.title;
+            await deleteSong(songId);
+            await pushNotification(`🗑️ « ${title} » a été supprimé du répertoire par ${currentUser.name}.`, 'info');
             setEditingSong(null);
           }}
         />
