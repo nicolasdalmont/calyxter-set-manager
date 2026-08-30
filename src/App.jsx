@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Search, Plus, X, Check, ExternalLink, Trophy, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
+  Search, Plus, X, Check, ExternalLink, ListPlus, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Settings, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft
@@ -2879,9 +2879,9 @@ function TopBar({ currentUser, onSignOut, onOpenSettings, tab, setTab, phaseActi
 
         <nav style={{ display: 'flex', gap: 4 }}>
           <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} />
-          <TabButton icon={Trophy} label="Phase de choix" active={tab === 'phase'} onClick={() => setTab('phase')} pulse={phaseActive} />
+          <TabButton icon={ListPlus} label="Phase de choix" active={tab === 'phase'} onClick={() => setTab('phase')} pulse={phaseActive} />
           <TabButton icon={Calendar} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
-          <TabButton icon={MessageCircle} label="WhatsApp" active={tab === 'notifications'} onClick={() => setTab('notifications')} />
+          <TabButton icon={MessageCircle} label="Historique" active={tab === 'notifications'} onClick={() => setTab('notifications')} />
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -3323,15 +3323,15 @@ function SettingsModal({ currentUser, onClose, onSave }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  NOTIFICATION LOG (simulated WhatsApp channel)                      */
+/*  NOTIFICATION LOG (historique des événements du groupe)             */
 /* ------------------------------------------------------------------ */
 
 function NotificationLog({ notifications }) {
   return (
     <div>
-      <div className="clx-display" style={{ fontSize: 22, marginBottom: 4 }}>Canal WhatsApp du groupe</div>
+      <div className="clx-display" style={{ fontSize: 22, marginBottom: 4 }}>Historique du groupe</div>
       <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginBottom: 18 }}>
-        Simulation — dans la version de production, ces messages partiraient réellement via l'API WhatsApp Business / Twilio.
+        Journal des événements : ajouts, votes, changements de statut, concerts…
       </div>
       {notifications.length === 0 ? (
         <EmptyState text="Aucune notification pour l'instant." />
@@ -3438,7 +3438,7 @@ function NoPhase({ members, currentUser, updatePhase, pushNotification }) {
   return (
     <div className="clx-card" style={{ padding: '40px 24px', textAlign: 'center' }}>
       <div className="clx-tape" />
-      <Trophy size={26} color="#F2A93B" style={{ marginBottom: 10 }} />
+      <ListPlus size={26} color="#F2A93B" style={{ marginBottom: 10 }} />
       <div className="clx-display" style={{ fontSize: 24, marginBottom: 6 }}>Aucune phase en cours</div>
       <div style={{ fontSize: 13, color: '#9A958C', maxWidth: 380, margin: '0 auto 20px' }}>
         Proposition → Veto → Vote → Résultat. N'importe quel membre du groupe peut lancer une phase de choix.
