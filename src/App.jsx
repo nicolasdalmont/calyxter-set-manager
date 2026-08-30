@@ -4501,6 +4501,8 @@ function mergeEventsAndConcerts(events, concerts) {
     kind: e.kind || 'autre',
     subject: e.subject,
     event_date: e.event_date,
+    end_date: e.end_date || e.event_date,
+    all_day: !!e.all_day,
     start_time: e.start_time,
     end_time: e.end_time,
     venue: e.venue,
@@ -4513,6 +4515,8 @@ function mergeEventsAndConcerts(events, concerts) {
     kind: 'concert',
     subject: c.name,
     event_date: c.event_date,
+    end_date: c.event_date, // un concert reste ponctuel, sur un seul jour
+    all_day: false,
     start_time: c.event_time,
     end_time: null,
     venue: c.venue,
@@ -4595,10 +4599,14 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
 
 function RendezVousCard({ item, members, onOpen }) {
   const kindInfo = item.source === 'concert' ? CONCERT_EVENT_KIND : (EVENT_KIND[item.kind] || EVENT_KIND.autre);
-  const past = isPastConcert({ event_date: item.event_date });
+  const past = isPastConcert({ event_date: item.end_date || item.event_date });
+  const isMultiDay = item.end_date && item.end_date !== item.event_date;
+  const dateLabel = isMultiDay
+    ? `Du ${formatConcertDate(item.event_date, { day: 'numeric', month: 'short' })} au ${formatConcertDate(item.end_date, { day: 'numeric', month: 'short', year: 'numeric' })}`
+    : formatConcertDate(item.event_date);
   const start = formatConcertTime(item.start_time);
   const end = formatConcertTime(item.end_time);
-  const timeLabel = start ? (end ? `${start} – ${end}` : start) : null;
+  const timeLabel = item.all_day ? 'Toute la journée' : (start ? (end ? `${start} – ${end}` : start) : null);
 
   const participantNames = item.participant_ids === null
     ? 'Tout le groupe'
@@ -4643,7 +4651,7 @@ function RendezVousCard({ item, members, onOpen }) {
         <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>{item.subject}</div>
         <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Calendar size={11} /> {formatConcertDate(item.event_date)}
+            <Calendar size={11} /> {dateLabel}
           </span>
           {timeLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {timeLabel}</span>}
           {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
@@ -4663,12 +4671,27 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
   const [kind, setKind] = useState(event?.kind || 'repetition');
   const [subject, setSubject] = useState(event?.subject || '');
   const [eventDate, setEventDate] = useState(event?.event_date || '');
+  const [endDate, setEndDate] = useState(event?.end_date || event?.event_date || '');
+  const [allDay, setAllDay] = useState(!!event?.all_day);
   const [startTime, setStartTime] = useState(formatConcertTime(event?.start_time) || '');
   const [endTime, setEndTime] = useState(formatConcertTime(event?.end_time) || '');
   const [venue, setVenue] = useState(event?.venue || '');
   const [participantIds, setParticipantIds] = useState(event?.participant_ids || []);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // La date de fin suit automatiquement la date de début tant que
+  // l'utilisateur ne l'a pas modifiée à la main (utile pour une résidence
+  // ou tout rendez-vous sur plusieurs jours). En édition, on respecte la
+  // date de fin déjà enregistrée sans la réécraser.
+  const endDateTouched = useRef(isEdit);
+  useEffect(() => {
+    if (!endDateTouched.current) setEndDate(eventDate);
+  }, [eventDate]);
+  const handleEndDateChange = (v) => {
+    endDateTouched.current = true;
+    setEndDate(v);
+  };
 
   const toggleParticipant = (memberId) => {
     setParticipantIds((prev) => (prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]));
@@ -4680,7 +4703,6 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
   const submit = async () => {
     if (!subject.trim()) { setError("L'objet du rendez-vous est obligatoire."); return; }
     if (!eventDate) { setError('La date est obligatoire.'); return; }
-    if (!startTime) { setError('Le début est obligatoire.'); return; }
     setError('');
     setSaving(true);
     const built = {
@@ -4688,8 +4710,10 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
       kind,
       subject: subject.trim(),
       event_date: eventDate,
-      start_time: startTime,
-      end_time: endTime || null,
+      end_date: endDate || eventDate,
+      all_day: allDay,
+      start_time: allDay ? null : (startTime || null),
+      end_time: allDay ? null : (endTime || null),
       venue: venue.trim() || null,
       participant_ids: participantIds,
       created_by_user_id: event?.created_by_user_id || currentUser.id,
@@ -4740,16 +4764,34 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
         </div>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-          <Field label="Date *" style={{ flex: '1 1 140px' }}>
+          <Field label="Date de début *" style={{ flex: '1 1 140px' }}>
             <input type="date" className="clx-input" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
           </Field>
-          <Field label="Début *" style={{ flex: '1 1 110px' }}>
-            <input type="time" className="clx-input" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-          </Field>
-          <Field label="Fin" style={{ flex: '1 1 110px' }}>
-            <input type="time" className="clx-input" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          <Field label="Date de fin" style={{ flex: '1 1 140px' }}>
+            <input type="date" className="clx-input" value={endDate} min={eventDate || undefined} onChange={(e) => handleEndDateChange(e.target.value)} />
           </Field>
         </div>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#F5F1E8', marginBottom: 10, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={allDay}
+            onChange={(e) => setAllDay(e.target.checked)}
+            style={{ width: 15, height: 15, accentColor: '#F2A93B', cursor: 'pointer' }}
+          />
+          Toute la journée
+        </label>
+
+        {!allDay && (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            <Field label="Début" style={{ flex: '1 1 110px' }}>
+              <input type="time" className="clx-input" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            </Field>
+            <Field label="Fin" style={{ flex: '1 1 110px' }}>
+              <input type="time" className="clx-input" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </Field>
+          </div>
+        )}
 
         <Field label="Lieu">
           <input className="clx-input" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Ex. Local de répétition" />
