@@ -4624,20 +4624,10 @@ const RENDEZVOUS_KIND_ORDER = ['repetition', 'atelier', 'residence', 'autre', 'c
 
 function RendezVousTab({ events, concerts, members, currentUser, saveEvent, deleteEvent, pushNotification, onViewConcert }) {
   const [editingEvent, setEditingEvent] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
-  const [kindFilter, setKindFilter] = useState(new Set(RENDEZVOUS_KIND_ORDER)); // tous actifs par défaut
+  const [kindFilter, setKindFilter] = useState('all'); // 'all' ou une valeur de RENDEZVOUS_KIND_ORDER — choix unique, comme le Répertoire
 
   const allMerged = mergeEventsAndConcerts(events, concerts);
-  const merged = allMerged.filter((item) => kindFilter.has(item.kind));
-
-  const toggleKind = (kind) => {
-    setKindFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(kind)) next.delete(kind); else next.add(kind);
-      return next;
-    });
-  };
-  const allKindsActive = kindFilter.size === RENDEZVOUS_KIND_ORDER.length;
-  const toggleAllKinds = () => setKindFilter(allKindsActive ? new Set() : new Set(RENDEZVOUS_KIND_ORDER));
+  const merged = kindFilter === 'all' ? allMerged : allMerged.filter((item) => item.kind === kindFilter);
 
   // Focus automatique sur le prochain événement à venir : la liste défile
   // jusqu'à lui dès l'ouverture de l'onglet, pour éviter d'avoir à
@@ -4650,7 +4640,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
     if (nextItemRef.current) {
       nextItemRef.current.scrollIntoView({ block: 'center', behavior: 'auto' });
     }
-  }, [editingEvent, kindFilter.size]);
+  }, [editingEvent, kindFilter]);
 
   if (editingEvent !== undefined) {
     return (
@@ -4690,9 +4680,9 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-        <Chip active={allKindsActive} onClick={toggleAllKinds}>Tous</Chip>
+        <Chip active={kindFilter === 'all'} onClick={() => setKindFilter('all')}>Tous</Chip>
         {RENDEZVOUS_KIND_ORDER.map((k) => (
-          <Chip key={k} active={kindFilter.has(k)} onClick={() => toggleKind(k)}>{RENDEZVOUS_KIND_INFO[k].label}</Chip>
+          <Chip key={k} active={kindFilter === k} onClick={() => setKindFilter(k)}>{RENDEZVOUS_KIND_INFO[k].label}</Chip>
         ))}
       </div>
 
