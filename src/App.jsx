@@ -3473,7 +3473,7 @@ function PhaseWorkflow({ phase, songs, members, currentUser, updatePhase, update
 
       <div style={{ marginTop: 20 }}>
         {phase.current_step === 'proposal' && (
-          <ProposalStep songs={songs} members={members} currentUser={currentUser} updateSongs={updateSongs} deleteSong={deleteSong} pushNotification={pushNotification} />
+          <ProposalStep songs={songs} members={members} currentUser={currentUser} phase={phase} updateSongs={updateSongs} deleteSong={deleteSong} pushNotification={pushNotification} />
         )}
         {phase.current_step === 'veto' && (
           <VetoStep songs={songs} members={members} currentUser={currentUser} phase={phase} updateSongs={updateSongs} updatePhase={updatePhase} pushNotification={pushNotification} />
@@ -3573,18 +3573,50 @@ function Stepper({ current, stats }) {
 
 /* --- Step 1 : Proposition -------------------------------------------------- */
 
-function ProposalStep({ songs, members, currentUser, updateSongs, deleteSong, pushNotification }) {
+function ProposalStep({ songs, members, currentUser, phase, updateSongs, deleteSong, pushNotification }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingSong, setEditingSong] = useState(null);
+  const [copied, setCopied] = useState(false);
   const proposed = songs.filter((s) => s.status === 'proposed');
+  // Propositions faites depuis le lancement de cette phase précisément (même
+  // filtre que l'indicateur affiché sous l'étape "Proposition" du Stepper).
+  const proposedSincePhase = songs.filter((s) => s.status === 'proposed' && s.created_at && new Date(s.created_at) >= new Date(phase.created_at));
+
+  const handleCopy = async () => {
+    const lines = proposedSincePhase.length > 0
+      ? proposedSincePhase.map((s, i) => {
+          const proposer = members.find((m) => m.id === s.added_by_user_id);
+          return `${i + 1}. ${s.title} — ${s.artist} (proposé par ${proposer ? proposer.name : 'membre inconnu'})`;
+        }).join('\n')
+      : '(aucune proposition depuis le lancement de cette phase)';
+    const text = ['Propositions de cette phase de choix', '', lines].join('\n');
+    try {
+      await copyTextToClipboard(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Erreur lors de la copie dans le presse-papier', e);
+      window.alert("La copie dans le presse-papier a échoué. Ton navigateur bloque peut-être l'accès au presse-papier.");
+    }
+  };
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, color: '#9A958C' }}>{proposed.length} morceau{proposed.length > 1 ? 'x' : ''} proposé{proposed.length > 1 ? 's' : ''}</div>
-        <button onClick={() => setShowAdd(true)} className="clx-btn clx-btn-primary" style={{ padding: '8px 14px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-          <Plus size={14} /> Proposer un morceau
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={handleCopy}
+            className="clx-btn clx-btn-ghost"
+            style={{ padding: '8px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: copied ? '#6FA287' : undefined }}
+            title="Copier la liste des propositions de cette phase dans le presse-papier"
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copié !' : 'Copier les propositions'}
+          </button>
+          <button onClick={() => setShowAdd(true)} className="clx-btn clx-btn-primary" style={{ padding: '8px 14px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <Plus size={14} /> Proposer un morceau
+          </button>
+        </div>
       </div>
       {proposed.length === 0 ? <EmptyState text="Aucune proposition pour l'instant." /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -3637,6 +3669,7 @@ function ProposalStep({ songs, members, currentUser, updateSongs, deleteSong, pu
 function VetoStep({ songs, members, currentUser, phase, updateSongs, updatePhase, pushNotification }) {
   const proposed = songs.filter((s) => s.status === 'proposed');
   const myVetoes = phase.vetoes.filter((v) => v.user_id === currentUser.id).map((v) => v.song_id);
+  const [copied, setCopied] = useState(false);
 
   const castVeto = async (song) => {
     if (myVetoes.includes(song.id)) return;
@@ -3645,10 +3678,41 @@ function VetoStep({ songs, members, currentUser, phase, updateSongs, updatePhase
     await pushNotification(`🚫 Veto posé par ${currentUser.name} sur « ${song.title} ». Le morceau passe au statut Sorti.`, 'veto');
   };
 
+  const rejectedSongIds = [...new Set(phase.vetoes.map((v) => v.song_id))];
+
+  const handleCopy = async () => {
+    const lines = rejectedSongIds.length > 0
+      ? rejectedSongIds.map((songId, i) => {
+          const song = songs.find((s) => s.id === songId);
+          const vetoers = phase.vetoes.filter((v) => v.song_id === songId).map((v) => members.find((m) => m.id === v.user_id)?.name).filter(Boolean).join(', ');
+          return `${i + 1}. ${song ? `${song.title} — ${song.artist}` : 'Morceau supprimé depuis'} (veto de ${vetoers || 'membre inconnu'})`;
+        }).join('\n')
+      : '(aucun veto posé durant cette phase)';
+    const text = ['Morceaux rejetés par veto', '', lines].join('\n');
+    try {
+      await copyTextToClipboard(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Erreur lors de la copie dans le presse-papier', e);
+      window.alert("La copie dans le presse-papier a échoué. Ton navigateur bloque peut-être l'accès au presse-papier.");
+    }
+  };
+
   return (
     <div>
-      <div style={{ fontSize: 13, color: '#9A958C', marginBottom: 12 }}>
-        Un veto d'un seul membre suffit à faire passer un morceau au statut Sorti, immédiatement et sans appel.
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: '#9A958C', flex: '1 1 260px' }}>
+          Un veto d'un seul membre suffit à faire passer un morceau au statut Sorti, immédiatement et sans appel.
+        </div>
+        <button
+          onClick={handleCopy}
+          className="clx-btn clx-btn-ghost"
+          style={{ padding: '8px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: copied ? '#6FA287' : undefined, flexShrink: 0 }}
+          title="Copier la liste des morceaux rejetés par veto dans le presse-papier"
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copié !' : 'Copier les rejets'}
+        </button>
       </div>
       {proposed.length === 0 ? <EmptyState text="Plus aucun morceau proposé — tout est passé en Sorti ou a été traité." /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -3917,12 +3981,30 @@ function ResultStep({ songs, members, currentUser, phase, updatePhase, updateSon
   const quota = resolution.top3 ? applyFrQuota(resolution.top3, scored) : { finalTop3: null };
 
   const myTieVote = (phase.tie_break_votes || []).find((v) => v.user_id === currentUser.id);
+  const [copied, setCopied] = useState(false);
 
   const castTieVote = async (songId) => {
     await updatePhase((p) => ({
       ...p,
       tie_break_votes: [...(p.tie_break_votes || []).filter((v) => v.user_id !== currentUser.id), { user_id: currentUser.id, song_id: songId }],
     }));
+  };
+
+  const handleCopy = async () => {
+    if (!quota.finalTop3) return;
+    const lines = quota.finalTop3.map((s, i) => `${i + 1}. ${s.title} — ${s.artist} (${s.points} pts)`).join('\n');
+    const quotaNote = quota.quotaApplied
+      ? `\n\nQuota francophone appliqué : « ${quota.bumped?.title} » cède sa place à « ${quota.promoted?.title} ».`
+      : '';
+    const text = ['Résultat du vote', '', lines].join('\n') + quotaNote;
+    try {
+      await copyTextToClipboard(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Erreur lors de la copie dans le presse-papier', e);
+      window.alert("La copie dans le presse-papier a échoué. Ton navigateur bloque peut-être l'accès au presse-papier.");
+    }
   };
 
   const finalize = async () => {
@@ -3981,8 +4063,18 @@ function ResultStep({ songs, members, currentUser, phase, updatePhase, updateSon
 
       {scored.length > 0 && resolution.tieResolved && quota.finalTop3 && (
         <>
-          <div className="clx-display" style={{ fontSize: 20, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Crown size={18} color="#F2A93B" /> Top 3 provisoire
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <div className="clx-display" style={{ fontSize: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Crown size={18} color="#F2A93B" /> Top 3 provisoire
+            </div>
+            <button
+              onClick={handleCopy}
+              className="clx-btn clx-btn-ghost"
+              style={{ padding: '8px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: copied ? '#6FA287' : undefined }}
+              title="Copier le résultat du vote dans le presse-papier"
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copié !' : 'Copier le résultat'}
+            </button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
             {quota.finalTop3.map((s, i) => (
