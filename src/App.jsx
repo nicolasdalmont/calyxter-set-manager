@@ -4132,9 +4132,20 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
   const sortedConcerts = [...concerts].sort((a, b) => {
     const da = a.event_date || '';
     const db = b.event_date || '';
-    if (da !== db) return da < db ? 1 : -1; // descendant par date
-    return (b.event_time || '').localeCompare(a.event_time || '');
+    if (da !== db) return da < db ? -1 : 1; // croissant par date
+    return (a.event_time || '').localeCompare(b.event_time || '');
   });
+
+  // Focus automatique sur le prochain concert à venir, comme dans l'onglet
+  // Rendez-vous : la liste défile jusqu'à lui dès l'ouverture de l'onglet.
+  const todayStr = toISODate(new Date());
+  const nextIndex = sortedConcerts.findIndex((c) => (c.event_date || '') >= todayStr);
+  const nextConcertRef = useRef(null);
+  useEffect(() => {
+    if (nextConcertRef.current) {
+      nextConcertRef.current.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }
+  }, [editingConcert]);
 
   if (editingConcert !== undefined) {
     return (
@@ -4177,9 +4188,11 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
       {sortedConcerts.length === 0 ? (
         <EmptyState text="Aucun concert programmé pour le moment." />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {sortedConcerts.map((concert) => (
-            <ConcertCard key={concert.id} concert={concert} songs={songs} onOpen={() => setEditingConcert(concert)} />
+        <div className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
+          {sortedConcerts.map((concert, index) => (
+            <div key={concert.id} ref={index === nextIndex ? nextConcertRef : null}>
+              <ConcertCard concert={concert} songs={songs} isNext={index === nextIndex} onOpen={() => setEditingConcert(concert)} />
+            </div>
           ))}
         </div>
       )}
@@ -4187,7 +4200,7 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
   );
 }
 
-function ConcertCard({ concert, songs, onOpen }) {
+function ConcertCard({ concert, songs, onOpen, isNext }) {
   const setSongs = (concert.song_ids || []).map((id) => songs.find((s) => s.id === id)).filter(Boolean);
   const totalSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
   const past = isPastConcert(concert);
@@ -4200,6 +4213,8 @@ function ConcertCard({ concert, songs, onOpen }) {
       style={{
         padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
         width: '100%', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer', opacity: past ? 0.6 : 1,
+        borderColor: isNext ? '#F2A93B' : undefined,
+        boxShadow: isNext ? '0 0 0 1px #F2A93B55' : undefined,
       }}
     >
       <div
@@ -4219,7 +4234,12 @@ function ConcertCard({ concert, songs, onOpen }) {
       </div>
 
       <div style={{ flex: 1, minWidth: 180 }}>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>{concert.name}</div>
+        <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {concert.name}
+          {isNext && (
+            <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
+          )}
+        </div>
         <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <Calendar size={11} /> {formatConcertDate(concert.event_date)}
