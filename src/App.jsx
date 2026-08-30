@@ -2074,7 +2074,20 @@ async function supabaseTable(path, options = {}) {
     const errText = await res.text();
     throw new Error(`Erreur Supabase (${res.status}) : ${errText}`);
   }
-  return res.status === 204 ? null : res.json();
+  // Ne pas se fier uniquement au code 204 : un POST avec
+  // "Prefer: return=minimal" répond en 201 avec un corps vide, et appeler
+  // res.json() sur une chaîne vide lève une SyntaxError (sur Safari :
+  // "The string did not match the expected pattern."). On lit donc le texte
+  // brut d'abord, et on ne tente le parsing JSON que s'il y a effectivement
+  // un contenu.
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    console.error('Réponse Supabase inattendue (non-JSON)', text);
+    return null;
+  }
 }
 
 async function fetchMembersFromSupabase() {
