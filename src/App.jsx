@@ -3,7 +3,7 @@ import {
   Search, Plus, X, Check, ExternalLink, ListPlus, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Settings, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
-  Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat
+  Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -4063,6 +4063,38 @@ function isPastConcert(concert) {
   return d < today;
 }
 
+// Texte formaté pour partage (WhatsApp, SMS, e-mail…) : ligne d'en-tête
+// (nom - date heure - lieu), le set complet un morceau par ligne, puis la
+// durée théorique totale.
+function buildConcertShareText(concert, setSongs, totalSeconds) {
+  const dateLabel = formatConcertDate(concert.event_date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const time = formatConcertTime(concert.event_time);
+  const header = `${concert.name} - ${dateLabel}${time ? ' ' + time : ''} - ${concert.venue || 'Lieu à confirmer'}`;
+  const setLines = setSongs.length > 0
+    ? setSongs.map((s, i) => `${i + 1}. ${s.title} — ${s.artist} (${formatSongDuration(s.duration_seconds)})`).join('\n')
+    : '(set vide)';
+  const durationLine = `Durée totale du set : ${formatTotalDuration(totalSeconds)}`;
+  return [header, '', setLines, '', durationLine].join('\n');
+}
+
+// Copie dans le presse-papier avec repli si l'API Clipboard n'est pas
+// disponible (contexte non sécurisé, ancien navigateur…).
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+}
+
 function toISODate(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -4271,6 +4303,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const dragIndex = useRef(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
@@ -4279,6 +4312,22 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 
   const selectedSongs = selectedIds.map((id) => songs.find((s) => s.id === id)).filter(Boolean);
   const totalSeconds = selectedSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+
+  const handleCopy = async () => {
+    const text = buildConcertShareText(
+      { name: name.trim() || 'Concert', event_date: eventDate, event_time: eventTime || null, venue: venue.trim() },
+      selectedSongs,
+      totalSeconds
+    );
+    try {
+      await copyTextToClipboard(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Erreur lors de la copie dans le presse-papier', e);
+      window.alert("La copie dans le presse-papier a échoué. Ton navigateur bloque peut-être l'accès au presse-papier.");
+    }
+  };
 
   const eligibleStatuses = showRejected ? SETLIST_STATUSES : ['ready', 'to_prepare'];
   const candidateSongs = songs
@@ -4371,13 +4420,26 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 
   return (
     <div>
-      <button
-        onClick={onCancel}
-        className="clx-btn clx-btn-ghost"
-        style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 16 }}
-      >
-        <ArrowLeft size={14} /> Retour aux concerts
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <button
+          onClick={onCancel}
+          className="clx-btn clx-btn-ghost"
+          style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+        >
+          <ArrowLeft size={14} /> Retour aux concerts
+        </button>
+
+        {isEdit && (
+          <button
+            onClick={handleCopy}
+            className="clx-btn clx-btn-ghost"
+            style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: copied ? '#6FA287' : undefined }}
+            title="Copier le nom, la date, le lieu, le set complet et sa durée dans le presse-papier"
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copié !' : 'Copier le concert'}
+          </button>
+        )}
+      </div>
 
       <div className="clx-display" style={{ fontSize: 24, marginBottom: 18 }}>
         {isEdit ? `Modifier « ${concert.name} »` : 'Nouveau concert'}
