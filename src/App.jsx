@@ -3,7 +3,7 @@ import {
   Search, Plus, X, Check, ExternalLink, ListPlus, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Settings, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
-  Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2
+  Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -52,6 +52,14 @@ const EVENT_KIND = {
   autre:      { label: 'Autre',              badge: 'AUTRE',     color: '#6B6862' },
 };
 const CONCERT_EVENT_KIND = { label: 'Concert', badge: 'CONCERT', color: '#C1454B' };
+
+const RECURRENCE_UNIT_LABEL = {
+  day: { singular: 'jour', plural: 'jours' },
+  week: { singular: 'semaine', plural: 'semaines' },
+  month: { singular: 'mois', plural: 'mois' },
+  year: { singular: 'an', plural: 'ans' },
+};
+const MAX_RECURRENCE_OCCURRENCES = 200; // filet de sécurité anti-boucle / série démesurée
 
 const DEFAULT_MEMBERS = [
   { id: 'usr_sandra',    name: 'Sandra',    instrument: 'Chant',                       preferred_platform: 'spotify' },
@@ -4055,6 +4063,57 @@ function isPastConcert(concert) {
   return d < today;
 }
 
+function toISODate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Ajoute `interval` unités (jour/semaine/mois/an) à une date 'YYYY-MM-DD'
+// et renvoie la nouvelle date au même format.
+function addRecurrenceUnit(dateStr, unit, interval) {
+  const d = parseISODate(dateStr);
+  if (!d) return null;
+  const next = new Date(d);
+  if (unit === 'day') next.setDate(next.getDate() + interval);
+  else if (unit === 'week') next.setDate(next.getDate() + interval * 7);
+  else if (unit === 'month') next.setMonth(next.getMonth() + interval);
+  else if (unit === 'year') next.setFullYear(next.getFullYear() + interval);
+  return toISODate(next);
+}
+
+// Calcule toutes les occurrences d'un rendez-vous (récurrent ou non) entre
+// sa date de début et sa date limite (recurrence_until), en excluant les
+// occurrences individuellement supprimées (excluded_dates). Un rendez-vous
+// non récurrent renvoie une unique occurrence, sur son event_date/end_date.
+function generateOccurrences(event) {
+  const excluded = new Set(event.excluded_dates || []);
+
+  if (!event.recurrence_unit || !event.recurrence_interval || !event.recurrence_until) {
+    if (excluded.has(event.event_date)) return [];
+    return [{ occurrenceDate: event.event_date, event_date: event.event_date, end_date: event.end_date || event.event_date }];
+  }
+
+  const interval = Math.max(1, parseInt(event.recurrence_interval, 10) || 1);
+  const start = parseISODate(event.event_date);
+  const end = parseISODate(event.end_date || event.event_date);
+  const dayOffset = start && end ? Math.round((end - start) / 86400000) : 0;
+
+  const occurrences = [];
+  let cursor = event.event_date;
+  let guard = 0;
+  while (cursor && cursor <= event.recurrence_until && guard < MAX_RECURRENCE_OCCURRENCES) {
+    if (!excluded.has(cursor)) {
+      const occEnd = dayOffset > 0 ? addRecurrenceUnit(cursor, 'day', dayOffset) : cursor;
+      occurrences.push({ occurrenceDate: cursor, event_date: cursor, end_date: occEnd });
+    }
+    cursor = addRecurrenceUnit(cursor, event.recurrence_unit, interval);
+    guard++;
+  }
+  return occurrences;
+}
+
 const SETLIST_STATUSES = ['ready', 'to_prepare', 'rejected'];
 
 function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, deleteConcert, pushNotification, initialConcertId, onInitialConcertConsumed }) {
@@ -4495,23 +4554,32 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 /* ------------------------------------------------------------------ */
 
 function mergeEventsAndConcerts(events, concerts) {
-  const fromEvents = events.map((e) => ({
-    id: e.id,
-    source: 'event',
-    kind: e.kind || 'autre',
-    subject: e.subject,
-    event_date: e.event_date,
-    end_date: e.end_date || e.event_date,
-    all_day: !!e.all_day,
-    start_time: e.start_time,
-    end_time: e.end_time,
-    venue: e.venue,
-    participant_ids: e.participant_ids || [],
-    raw: e,
-  }));
+  const fromEvents = events.flatMap((e) => {
+    const isRecurring = !!(e.recurrence_unit && e.recurrence_interval && e.recurrence_until);
+    return generateOccurrences(e).map((occ) => ({
+      id: e.id,
+      occurrenceKey: `${e.id}::${occ.occurrenceDate}`,
+      occurrenceDate: occ.occurrenceDate,
+      source: 'event',
+      isRecurring,
+      kind: e.kind || 'autre',
+      subject: e.subject,
+      event_date: occ.event_date,
+      end_date: occ.end_date,
+      all_day: !!e.all_day,
+      start_time: e.start_time,
+      end_time: e.end_time,
+      venue: e.venue,
+      participant_ids: e.participant_ids || [],
+      raw: e,
+    }));
+  });
   const fromConcerts = concerts.map((c) => ({
     id: c.id,
+    occurrenceKey: `concert::${c.id}`,
+    occurrenceDate: c.event_date,
     source: 'concert',
+    isRecurring: false,
     kind: 'concert',
     subject: c.name,
     event_date: c.event_date,
@@ -4579,7 +4647,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {merged.map((item) => (
             <RendezVousCard
-              key={`${item.source}-${item.id}`}
+              key={item.occurrenceKey}
               item={item}
               members={members}
               onOpen={() => {
@@ -4587,6 +4655,18 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
                   onViewConcert(item.id);
                 } else {
                   setEditingEvent(item.raw);
+                }
+              }}
+              onQuickDelete={item.source === 'concert' ? undefined : async () => {
+                if (item.isRecurring) {
+                  if (!window.confirm(`Supprimer uniquement l'occurrence du ${formatConcertDate(item.occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })} pour « ${item.subject} » ? Les autres dates de la série ne seront pas affectées.`)) return;
+                  const updated = { ...item.raw, excluded_dates: [...new Set([...(item.raw.excluded_dates || []), item.occurrenceDate])] };
+                  await saveEvent(updated);
+                  await pushNotification(`🗑️ ${currentUser.name} a supprimé une occurrence du rendez-vous récurrent « ${item.subject} » (${formatConcertDate(item.occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })}).`, 'info');
+                } else {
+                  if (!window.confirm(`Supprimer définitivement le rendez-vous « ${item.subject} » ? Cette action est irréversible.`)) return;
+                  await deleteEvent(item.raw.id);
+                  await pushNotification(`🗑️ ${currentUser.name} a supprimé le rendez-vous « ${item.subject} ».`, 'info');
                 }
               }}
             />
@@ -4597,7 +4677,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
   );
 }
 
-function RendezVousCard({ item, members, onOpen }) {
+function RendezVousCard({ item, members, onOpen, onQuickDelete }) {
   const kindInfo = item.source === 'concert' ? CONCERT_EVENT_KIND : (EVENT_KIND[item.kind] || EVENT_KIND.autre);
   const past = isPastConcert({ event_date: item.end_date || item.event_date });
   const isMultiDay = item.end_date && item.end_date !== item.event_date;
@@ -4608,6 +4688,15 @@ function RendezVousCard({ item, members, onOpen }) {
   const end = formatConcertTime(item.end_time);
   const timeLabel = item.all_day ? 'Toute la journée' : (start ? (end ? `${start} – ${end}` : start) : null);
 
+  const recurrenceLabel = item.isRecurring
+    ? (() => {
+        const unit = RECURRENCE_UNIT_LABEL[item.raw.recurrence_unit];
+        const interval = item.raw.recurrence_interval;
+        const unitLabel = interval > 1 ? unit.plural : unit.singular;
+        return `Tous les ${interval} ${unitLabel} jusqu'au ${formatConcertDate(item.raw.recurrence_until, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+      })()
+    : null;
+
   const participantNames = item.participant_ids === null
     ? 'Tout le groupe'
     : (item.participant_ids.length === 0
@@ -4615,54 +4704,81 @@ function RendezVousCard({ item, members, onOpen }) {
       : item.participant_ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', '));
 
   return (
-    <button
-      onClick={onOpen}
+    <div
       className="clx-card clx-row"
       style={{
         padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-        width: '100%', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer', opacity: past ? 0.6 : 1,
+        opacity: past ? 0.6 : 1,
       }}
     >
-      <div
-        className="clx-mono"
+      <button
+        onClick={onOpen}
+        className="clx-btn"
         style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          width: 54, height: 54, borderRadius: 6, flexShrink: 0,
-          background: past ? '#101012' : `${kindInfo.color}22`, border: `1px solid ${past ? '#2A2A2E' : `${kindInfo.color}55`}`,
+          flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          background: 'transparent', border: 'none', padding: 0, textAlign: 'left', color: '#F5F1E8', cursor: 'pointer',
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : kindInfo.color }}>
-          {formatConcertDate(item.event_date, { day: 'numeric' })}
+        <div
+          className="clx-mono"
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            width: 54, height: 54, borderRadius: 6, flexShrink: 0,
+            background: past ? '#101012' : `${kindInfo.color}22`, border: `1px solid ${past ? '#2A2A2E' : `${kindInfo.color}55`}`,
+          }}
+        >
+          <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : kindInfo.color }}>
+            {formatConcertDate(item.event_date, { day: 'numeric' })}
+          </div>
+          <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+            {formatConcertDate(item.event_date, { month: 'short' })}
+          </div>
         </div>
-        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
-          {formatConcertDate(item.event_date, { month: 'short' })}
-        </div>
-      </div>
 
-      <div style={{ flex: 1, minWidth: 180 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
-          {item.source === 'concert' && (
-            <span className="clx-mono" style={{ fontSize: 10, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 3 }}>
-              <Mic2 size={10} /> non modifiable ici
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
+            {item.isRecurring && (
+              <span className="clx-mono" style={{ fontSize: 10, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Repeat size={10} /> récurrent
+              </span>
+            )}
+            {item.source === 'concert' && (
+              <span className="clx-mono" style={{ fontSize: 10, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Mic2 size={10} /> non modifiable ici
+              </span>
+            )}
+          </div>
+          <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>{item.subject}</div>
+          <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Calendar size={11} /> {dateLabel}
             </span>
+            {timeLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {timeLabel}</span>}
+            {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
+          </div>
+          <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+            <Users size={11} /> {participantNames}
+          </div>
+          {recurrenceLabel && (
+            <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 3 }}>{recurrenceLabel}</div>
           )}
         </div>
-        <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>{item.subject}</div>
-        <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Calendar size={11} /> {dateLabel}
-          </span>
-          {timeLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {timeLabel}</span>}
-          {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
-        </div>
-        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
-          <Users size={11} /> {participantNames}
-        </div>
-      </div>
 
-      <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
-    </button>
+        <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+      </button>
+
+      {onQuickDelete && (
+        <button
+          onClick={onQuickDelete}
+          className="clx-btn clx-btn-ghost"
+          style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', flexShrink: 0, color: '#C1454B' }}
+          title={item.isRecurring ? 'Supprimer cette occurrence' : 'Supprimer ce rendez-vous'}
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -4677,6 +4793,10 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
   const [endTime, setEndTime] = useState(formatConcertTime(event?.end_time) || '');
   const [venue, setVenue] = useState(event?.venue || '');
   const [participantIds, setParticipantIds] = useState(event?.participant_ids || []);
+  const [isRecurring, setIsRecurring] = useState(!!(event?.recurrence_unit && event?.recurrence_interval && event?.recurrence_until));
+  const [recurrenceInterval, setRecurrenceInterval] = useState(event?.recurrence_interval || 1);
+  const [recurrenceUnit, setRecurrenceUnit] = useState(event?.recurrence_unit || 'week');
+  const [recurrenceUntil, setRecurrenceUntil] = useState(event?.recurrence_until || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -4703,6 +4823,11 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
   const submit = async () => {
     if (!subject.trim()) { setError("L'objet du rendez-vous est obligatoire."); return; }
     if (!eventDate) { setError('La date est obligatoire.'); return; }
+    if (isRecurring) {
+      if (!recurrenceInterval || recurrenceInterval < 1) { setError('La fréquence de récurrence doit être supérieure ou égale à 1.'); return; }
+      if (!recurrenceUntil) { setError('La date limite de récurrence est obligatoire.'); return; }
+      if (recurrenceUntil < eventDate) { setError('La date limite doit être postérieure à la date de début.'); return; }
+    }
     setError('');
     setSaving(true);
     const built = {
@@ -4716,6 +4841,10 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
       end_time: allDay ? null : (endTime || null),
       venue: venue.trim() || null,
       participant_ids: participantIds,
+      recurrence_unit: isRecurring ? recurrenceUnit : null,
+      recurrence_interval: isRecurring ? Math.max(1, parseInt(recurrenceInterval, 10) || 1) : null,
+      recurrence_until: isRecurring ? recurrenceUntil : null,
+      excluded_dates: event?.excluded_dates || [],
       created_by_user_id: event?.created_by_user_id || currentUser.id,
       created_at: event?.created_at || new Date().toISOString(),
     };
@@ -4727,7 +4856,11 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
   };
 
   const handleDelete = () => {
-    if (window.confirm(`Supprimer définitivement le rendez-vous « ${event.subject} » ? Cette action est irréversible.`)) {
+    const isRecurringSeries = !!(event.recurrence_unit && event.recurrence_interval && event.recurrence_until);
+    const message = isRecurringSeries
+      ? `Supprimer définitivement TOUTE la série « ${event.subject} » (toutes ses occurrences) ? Pour ne retirer qu'une seule date, utilise plutôt le bouton de suppression sur cette occurrence dans la liste. Cette action est irréversible.`
+      : `Supprimer définitivement le rendez-vous « ${event.subject} » ? Cette action est irréversible.`;
+    if (window.confirm(message)) {
       onDelete(event.id, event.subject);
     }
   };
@@ -4793,6 +4926,46 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
           </div>
         )}
 
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#F5F1E8', marginBottom: isRecurring ? 10 : 0, cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={isRecurring}
+            onChange={(e) => setIsRecurring(e.target.checked)}
+            style={{ width: 15, height: 15, accentColor: '#F2A93B', cursor: 'pointer' }}
+          />
+          <Repeat size={13} /> Rendez-vous récurrent
+        </label>
+
+        {isRecurring && (
+          <div style={{ background: '#101012', border: '1px solid #2A2A2E', borderRadius: 6, padding: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              <span style={{ fontSize: 13, color: '#9A958C' }}>Tous les</span>
+              <input
+                type="number"
+                min={1}
+                className="clx-input"
+                style={{ width: 64 }}
+                value={recurrenceInterval}
+                onChange={(e) => setRecurrenceInterval(e.target.value)}
+              />
+              <select className="clx-input" style={{ width: 130 }} value={recurrenceUnit} onChange={(e) => setRecurrenceUnit(e.target.value)}>
+                <option value="day">{recurrenceInterval > 1 ? RECURRENCE_UNIT_LABEL.day.plural : RECURRENCE_UNIT_LABEL.day.singular}</option>
+                <option value="week">{recurrenceInterval > 1 ? RECURRENCE_UNIT_LABEL.week.plural : RECURRENCE_UNIT_LABEL.week.singular}</option>
+                <option value="month">{recurrenceInterval > 1 ? RECURRENCE_UNIT_LABEL.month.plural : RECURRENCE_UNIT_LABEL.month.singular}</option>
+                <option value="year">{recurrenceInterval > 1 ? RECURRENCE_UNIT_LABEL.year.plural : RECURRENCE_UNIT_LABEL.year.singular}</option>
+              </select>
+            </div>
+            <Field label="Jusqu'au *">
+              <input type="date" className="clx-input" value={recurrenceUntil} min={eventDate || undefined} onChange={(e) => setRecurrenceUntil(e.target.value)} />
+            </Field>
+            {isEdit && (
+              <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 8 }}>
+                Toute modification de ce rendez-vous s'applique à l'ensemble des occurrences de la série (sauf celles supprimées individuellement).
+              </div>
+            )}
+          </div>
+        )}
+
         <Field label="Lieu">
           <input className="clx-input" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Ex. Local de répétition" />
         </Field>
@@ -4824,7 +4997,7 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
             className="clx-btn"
             style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <Trash2 size={14} /> Supprimer le rendez-vous
+            <Trash2 size={14} /> {isRecurring ? 'Supprimer toute la série' : 'Supprimer le rendez-vous'}
           </button>
         ) : <span />}
         <div style={{ display: 'flex', gap: 8 }}>
