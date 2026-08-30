@@ -2696,6 +2696,26 @@ function GlobalStyle() {
       .clx-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
       .clx-scrollbar::-webkit-scrollbar-thumb { background: #2A2A2E; border-radius: 3px; }
 
+      /* Barre d'onglets : jamais coupée, quel que soit l'appareil.
+         En dessous de 640px, la nav prend toute la largeur et passe en
+         icônes seules (label masqué, conservé pour lecteurs d'écran via
+         aria-label et en info-bulle via title) : les 4 onglets tiennent
+         alors sur un seul écran de smartphone. Dans tous les cas, la nav
+         reste défilable horizontalement en filet de sécurité (grande
+         police, zoom d'accessibilité…). */
+      .clx-topnav {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .clx-topnav::-webkit-scrollbar { display: none; }
+
+      @media (max-width: 640px) {
+        .clx-topnav { width: 100%; justify-content: center; }
+        .clx-tab-label { display: none; }
+        .clx-tab-btn { padding: 9px 10px; }
+      }
+
       @media (max-width: 560px) {
         .clx-song-info { flex: 1 1 100%; order: 1; }
         .clx-song-cover { order: 0; }
@@ -2877,7 +2897,7 @@ function TopBar({ currentUser, onSignOut, onOpenSettings, tab, setTab, phaseActi
           <span style={{ color: '#F2A93B' }}>●</span> CALYXTER
         </div>
 
-        <nav style={{ display: 'flex', gap: 4 }}>
+        <nav className="clx-topnav" style={{ display: 'flex', gap: 4 }}>
           <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} />
           <TabButton icon={ListPlus} label="Phase de choix" active={tab === 'phase'} onClick={() => setTab('phase')} pulse={phaseActive} />
           <TabButton icon={Calendar} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
@@ -2904,18 +2924,20 @@ function TabButton({ icon: Icon, label, active, onClick, pulse }) {
   return (
     <button
       onClick={onClick}
-      className="clx-btn"
+      title={label}
+      aria-label={label}
+      className="clx-btn clx-tab-btn"
       style={{
         display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 6,
         background: active ? '#1B1B1F' : 'transparent',
         color: active ? '#F2A93B' : '#9A958C',
         border: active ? '1px solid #2A2A2E' : '1px solid transparent',
-        fontSize: 13, position: 'relative',
+        fontSize: 13, position: 'relative', flexShrink: 0, whiteSpace: 'nowrap',
       }}
     >
-      <Icon size={14} />
-      {label}
-      {pulse && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#C1454B', marginLeft: 2 }} />}
+      <Icon size={14} style={{ flexShrink: 0 }} />
+      <span className="clx-tab-label">{label}</span>
+      {pulse && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#C1454B', marginLeft: 2, flexShrink: 0 }} />}
     </button>
   );
 }
