@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Search, Plus, X, Check, ExternalLink, Trophy, Users, RotateCcw, Pencil, ChevronUp, ChevronDown, GripVertical,
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Settings, Music2,
-  MessageCircle, Flag, AlertTriangle, Crown, Loader2
+  MessageCircle, Flag, AlertTriangle, Crown, Loader2,
+  Calendar, MapPin, Clock, Trash2, ArrowLeft
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -2107,6 +2108,11 @@ async function fetchNotifications() {
   return rows || [];
 }
 
+async function fetchConcerts() {
+  const rows = await supabaseTable('concerts?select=*&order=event_date.desc,event_time.desc.nullslast');
+  return rows || [];
+}
+
 async function callMemberAuth(action, memberId, password) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/member-auth`, {
     method: 'POST',
@@ -2220,6 +2226,7 @@ export default function App() {
   const [songs, setSongs] = useState([]);
   const [phase, setPhase] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [concerts, setConcerts] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [membersError, setMembersError] = useState('');
 
@@ -2237,11 +2244,12 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [supaMembers, s, p, n] = await Promise.all([
+        const [supaMembers, s, p, n, c] = await Promise.all([
           withTimeout(fetchMembersFromSupabase(), 8000, null),
           withTimeout(loadOrSeedSongs(), 8000, DEFAULT_SONGS),
           withTimeout(fetchActivePhase(), 8000, null),
           withTimeout(fetchNotifications(), 8000, []),
+          withTimeout(fetchConcerts(), 8000, []),
         ]);
         if (cancelled) return;
         if (supaMembers) {
@@ -2252,6 +2260,7 @@ export default function App() {
         setSongs(s);
         setPhase(p);
         setNotifications(n);
+        setConcerts(c);
         setCurrentUserId(loadPersonal('current-member-id'));
       } catch (e) {
         console.error('Failed to load app data', e);
@@ -2312,6 +2321,27 @@ export default function App() {
       await supabaseTable(`songs?id=eq.${songId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
     } catch (e) {
       console.error('Erreur en supprimant le morceau', e);
+    }
+  }, []);
+
+  const saveConcert = useCallback(async (concert) => {
+    setConcerts((prev) => {
+      const exists = prev.some((c) => c.id === concert.id);
+      return exists ? prev.map((c) => (c.id === concert.id ? concert : c)) : [...prev, concert];
+    });
+    try {
+      await upsertRows('concerts', [concert]);
+    } catch (e) {
+      console.error('Erreur en enregistrant le concert', e);
+    }
+  }, []);
+
+  const deleteConcert = useCallback(async (concertId) => {
+    setConcerts((prev) => prev.filter((c) => c.id !== concertId));
+    try {
+      await supabaseTable(`concerts?id=eq.${concertId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    } catch (e) {
+      console.error('Erreur en supprimant le concert', e);
     }
   }, []);
 
@@ -2439,6 +2469,18 @@ export default function App() {
             updatePhase={updatePhase}
             updateSongs={updateSongs}
             deleteSong={deleteSong}
+            pushNotification={pushNotification}
+          />
+        )}
+
+        {tab === 'concerts' && (
+          <ConcertsTab
+            concerts={concerts}
+            songs={songs}
+            members={members}
+            currentUser={currentUser}
+            saveConcert={saveConcert}
+            deleteConcert={deleteConcert}
             pushNotification={pushNotification}
           />
         )}
@@ -2814,6 +2856,7 @@ function TopBar({ currentUser, onSignOut, onOpenSettings, onReset, tab, setTab, 
         <nav style={{ display: 'flex', gap: 4 }}>
           <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} />
           <TabButton icon={Trophy} label="Phase de choix" active={tab === 'phase'} onClick={() => setTab('phase')} pulse={phaseActive} />
+          <TabButton icon={Calendar} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
           <TabButton icon={MessageCircle} label="WhatsApp" active={tab === 'notifications'} onClick={() => setTab('notifications')} />
         </nav>
 
@@ -3879,6 +3922,437 @@ function ResultStep({ songs, members, currentUser, phase, updatePhase, updateSon
           ))}
         </div>
       </details>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  CONCERTS TAB — création et gestion des sets de concert             */
+/* ------------------------------------------------------------------ */
+
+// event_date est stocké en 'YYYY-MM-DD' : on le parse à la main pour éviter
+// tout décalage de fuseau horaire lié à un parsing UTC de new Date(string).
+function parseISODate(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map((n) => parseInt(n, 10));
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+function formatConcertDate(dateStr, opts) {
+  const d = parseISODate(dateStr);
+  if (!d) return '—';
+  return d.toLocaleDateString('fr-FR', opts || { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function formatConcertTime(timeStr) {
+  if (!timeStr) return null;
+  return timeStr.slice(0, 5); // 'HH:MM:SS' -> 'HH:MM'
+}
+
+function isPastConcert(concert) {
+  const d = parseISODate(concert.event_date);
+  if (!d) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d < today;
+}
+
+const SETLIST_STATUSES = ['ready', 'to_prepare', 'rejected'];
+
+function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, deleteConcert, pushNotification }) {
+  const [editingConcert, setEditingConcert] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
+
+  const sortedConcerts = [...concerts].sort((a, b) => {
+    const da = a.event_date || '';
+    const db = b.event_date || '';
+    if (da !== db) return da < db ? 1 : -1; // descendant par date
+    return (b.event_time || '').localeCompare(a.event_time || '');
+  });
+
+  if (editingConcert !== undefined) {
+    return (
+      <ConcertEditor
+        concert={editingConcert}
+        songs={songs}
+        members={members}
+        currentUser={currentUser}
+        onCancel={() => setEditingConcert(undefined)}
+        onSave={async (concert, isNew) => {
+          await saveConcert(concert);
+          await pushNotification(
+            isNew
+              ? `🎤 ${currentUser.name} a créé le concert « ${concert.name} » (${formatConcertDate(concert.event_date, { day: 'numeric', month: 'long', year: 'numeric' })}).`
+              : `🛠️ ${currentUser.name} a mis à jour le set du concert « ${concert.name} ».`,
+            'info'
+          );
+          setEditingConcert(undefined);
+        }}
+        onDelete={async (concertId, name) => {
+          await deleteConcert(concertId);
+          await pushNotification(`🗑️ ${currentUser.name} a supprimé le concert « ${name} ».`, 'info');
+          setEditingConcert(undefined);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: 14 }}>
+          <span style={{ fontWeight: 700 }}>{concerts.length}</span> concert{concerts.length > 1 ? 's' : ''} programmé{concerts.length > 1 ? 's' : ''}
+        </div>
+        <button onClick={() => setEditingConcert(null)} className="clx-btn clx-btn-primary" style={{ borderRadius: 6, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <Plus size={15} /> Nouveau concert
+        </button>
+      </div>
+
+      {sortedConcerts.length === 0 ? (
+        <EmptyState text="Aucun concert programmé pour le moment." />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {sortedConcerts.map((concert) => (
+            <ConcertCard key={concert.id} concert={concert} songs={songs} onOpen={() => setEditingConcert(concert)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConcertCard({ concert, songs, onOpen }) {
+  const setSongs = (concert.song_ids || []).map((id) => songs.find((s) => s.id === id)).filter(Boolean);
+  const totalSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+  const past = isPastConcert(concert);
+  const time = formatConcertTime(concert.event_time);
+
+  return (
+    <button
+      onClick={onOpen}
+      className="clx-card clx-row"
+      style={{
+        padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+        width: '100%', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer', opacity: past ? 0.6 : 1,
+      }}
+    >
+      <div
+        className="clx-mono"
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          width: 54, height: 54, borderRadius: 6, flexShrink: 0,
+          background: past ? '#101012' : '#F2A93B22', border: `1px solid ${past ? '#2A2A2E' : '#F2A93B55'}`,
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : '#F2A93B' }}>
+          {formatConcertDate(concert.event_date, { day: 'numeric' })}
+        </div>
+        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+          {formatConcertDate(concert.event_date, { month: 'short' })}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>{concert.name}</div>
+        <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Calendar size={11} /> {formatConcertDate(concert.event_date)}
+          </span>
+          {time && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {time}</span>}
+          {concert.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {concert.venue}</span>}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ textAlign: 'right' }}>
+          <div className="clx-mono" style={{ fontSize: 13 }}>{setSongs.length} morceau{setSongs.length > 1 ? 'x' : ''}</div>
+          <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C' }}>{formatTotalDuration(totalSeconds)}</div>
+        </div>
+        <Pencil size={14} color="#6B6862" />
+      </div>
+    </button>
+  );
+}
+
+function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave, onDelete }) {
+  const isEdit = !!concert;
+  const [name, setName] = useState(concert?.name || '');
+  const [eventDate, setEventDate] = useState(concert?.event_date || '');
+  const [eventTime, setEventTime] = useState(formatConcertTime(concert?.event_time) || '');
+  const [venue, setVenue] = useState(concert?.venue || '');
+  const [selectedIds, setSelectedIds] = useState((concert?.song_ids || []).filter((id) => songs.some((s) => s.id === id)));
+  const [showRejected, setShowRejected] = useState(false);
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const dragIndex = useRef(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  const selectedSongs = selectedIds.map((id) => songs.find((s) => s.id === id)).filter(Boolean);
+  const totalSeconds = selectedSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+
+  const eligibleStatuses = showRejected ? SETLIST_STATUSES : ['ready', 'to_prepare'];
+  const candidateSongs = songs
+    .filter((s) => !selectedIds.includes(s.id) && eligibleStatuses.includes(s.status))
+    .filter((s) => {
+      if (!search.trim()) return true;
+      const q = search.trim().toLowerCase();
+      return s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q);
+    })
+    .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+
+  const addSong = (songId) => {
+    setSelectedIds((prev) => (prev.includes(songId) ? prev : [...prev, songId]));
+  };
+
+  const removeSong = (songId) => {
+    setSelectedIds((prev) => prev.filter((id) => id !== songId));
+  };
+
+  const moveSong = (fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return;
+    setSelectedIds((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      let insertAt = toIndex;
+      if (fromIndex < toIndex) insertAt -= 1;
+      insertAt = Math.max(0, Math.min(insertAt, next.length));
+      next.splice(insertAt, 0, moved);
+      return next;
+    });
+  };
+
+  const moveUp = (index) => { if (index > 0) moveSong(index, index - 1); };
+  const moveDown = (index) => { if (index < selectedIds.length - 1) moveSong(index, index + 1); };
+
+  const handleDrop = (index) => {
+    const from = dragIndex.current;
+    setDragOverIndex(null);
+    dragIndex.current = null;
+    if (from === null || from === undefined) return;
+    moveSong(from, index);
+  };
+
+  const submit = async () => {
+    if (!name.trim()) { setError('Le nom du concert est obligatoire.'); return; }
+    if (!eventDate) { setError('La date du concert est obligatoire.'); return; }
+    setError('');
+    setSaving(true);
+    const built = {
+      id: concert?.id || uid(),
+      name: name.trim(),
+      event_date: eventDate,
+      event_time: eventTime || null,
+      venue: venue.trim() || null,
+      song_ids: selectedIds,
+      created_by_user_id: concert?.created_by_user_id || currentUser.id,
+      created_at: concert?.created_at || new Date().toISOString(),
+    };
+    try {
+      await onSave(built, !isEdit);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (window.confirm(`Supprimer définitivement le concert « ${concert.name} » ? Cette action est irréversible.`)) {
+      onDelete(concert.id, concert.name);
+    }
+  };
+
+  return (
+    <div>
+      <button
+        onClick={onCancel}
+        className="clx-btn clx-btn-ghost"
+        style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 16 }}
+      >
+        <ArrowLeft size={14} /> Retour aux concerts
+      </button>
+
+      <div className="clx-display" style={{ fontSize: 24, marginBottom: 18 }}>
+        {isEdit ? `Modifier « ${concert.name} »` : 'Nouveau concert'}
+      </div>
+
+      <div className="clx-card" style={{ padding: 18, marginBottom: 20 }}>
+        <div className="clx-tape" />
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          <Field label="Nom du concert *" style={{ flex: '2 1 220px' }}>
+            <input className="clx-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Festival des Docks" />
+          </Field>
+          <Field label="Date *" style={{ flex: '1 1 140px' }}>
+            <input type="date" className="clx-input" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+          </Field>
+          <Field label="Heure" style={{ flex: '1 1 110px' }}>
+            <input type="time" className="clx-input" value={eventTime} onChange={(e) => setEventTime(e.target.value)} />
+          </Field>
+        </div>
+        <Field label="Lieu">
+          <input className="clx-input" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Ex. Salle Vasse, Nantes" />
+        </Field>
+        {error && <div style={{ color: '#C1454B', fontSize: 12, marginTop: 10 }}>{error}</div>}
+      </div>
+
+      <div className="clx-counter" style={{ padding: '14px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: 14 }}>
+          <span style={{ fontWeight: 700 }}>{selectedSongs.length}</span> morceau{selectedSongs.length > 1 ? 'x' : ''} dans le set
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>Durée du set : {formatTotalDuration(totalSeconds)}</div>
+      </div>
+
+      {selectedSongs.length === 0 ? (
+        <EmptyState text="Aucun morceau sélectionné pour ce concert — ajoute-en depuis la liste ci-dessous." />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 24 }}>
+          {selectedIds.map((songId, index) => {
+            const song = selectedSongs.find((s) => s.id === songId);
+            if (!song) return null;
+            return (
+              <div
+                key={songId}
+                draggable
+                onDragStart={() => { dragIndex.current = index; }}
+                onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
+                onDragLeave={() => setDragOverIndex((cur) => (cur === index ? null : cur))}
+                onDrop={() => handleDrop(index)}
+                onDragEnd={() => { dragIndex.current = null; setDragOverIndex(null); }}
+                className="clx-card"
+                style={{
+                  padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
+                  borderColor: dragOverIndex === index ? '#F2A93B' : undefined,
+                  cursor: 'grab',
+                }}
+              >
+                <GripVertical size={15} color="#6B6862" style={{ flexShrink: 0 }} />
+                <div className="clx-mono" style={{
+                  width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 12, fontWeight: 700, flexShrink: 0, background: '#16161A', color: '#F2A93B', border: '1px solid #2A2A2E',
+                }}>
+                  {index + 1}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.title}</div>
+                  <div style={{ fontSize: 12, color: '#9A958C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.artist}</div>
+                </div>
+                <span
+                  className="clx-badge"
+                  style={{ background: `${STATUS[song.status].color}22`, color: STATUS[song.status].color, border: `1px solid ${STATUS[song.status].color}55`, flexShrink: 0 }}
+                >
+                  {STATUS[song.status].badge}
+                </span>
+                <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', width: 40, textAlign: 'right', flexShrink: 0 }}>
+                  {formatSongDuration(song.duration_seconds)}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+                  <button
+                    onClick={() => moveUp(index)}
+                    disabled={index === 0}
+                    className="clx-btn clx-btn-ghost"
+                    style={{ padding: 3, borderRadius: 4, display: 'flex', opacity: index === 0 ? 0.3 : 1, cursor: index === 0 ? 'default' : 'pointer' }}
+                    title="Monter"
+                  >
+                    <ChevronUp size={12} />
+                  </button>
+                  <button
+                    onClick={() => moveDown(index)}
+                    disabled={index === selectedIds.length - 1}
+                    className="clx-btn clx-btn-ghost"
+                    style={{ padding: 3, borderRadius: 4, display: 'flex', opacity: index === selectedIds.length - 1 ? 0.3 : 1, cursor: index === selectedIds.length - 1 ? 'default' : 'pointer' }}
+                    title="Descendre"
+                  >
+                    <ChevronDown size={12} />
+                  </button>
+                </div>
+                <button
+                  onClick={() => removeSong(songId)}
+                  className="clx-btn clx-btn-ghost"
+                  style={{ padding: '6px 7px', borderRadius: 4, display: 'flex', flexShrink: 0, color: '#C1454B' }}
+                  title="Retirer du set"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="clx-display" style={{ fontSize: 18, marginBottom: 10 }}>Ajouter des morceaux</div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', flex: '1 1 220px' }}>
+          <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6862' }} />
+          <input
+            className="clx-input"
+            style={{ paddingLeft: 32 }}
+            placeholder="Rechercher un titre ou un artiste…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        <Chip active={!showRejected} onClick={() => setShowRejected(false)}>Prêt + En préparation</Chip>
+        <Chip active={showRejected} onClick={() => setShowRejected(true)}>+ Inclure les morceaux sortis</Chip>
+      </div>
+
+      {candidateSongs.length === 0 ? (
+        <EmptyState text="Aucun morceau disponible avec ces critères." />
+      ) : (
+        <div className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '40vh', overflowY: 'auto', paddingRight: 4, marginBottom: 24 }}>
+          {candidateSongs.map((song) => (
+            <div key={song.id} className="clx-card" style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.title}</div>
+                <div style={{ fontSize: 12, color: '#9A958C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.artist}</div>
+              </div>
+              <span
+                className="clx-badge"
+                style={{ background: `${STATUS[song.status].color}22`, color: STATUS[song.status].color, border: `1px solid ${STATUS[song.status].color}55`, flexShrink: 0 }}
+              >
+                {STATUS[song.status].badge}
+              </span>
+              <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', width: 40, textAlign: 'right', flexShrink: 0 }}>
+                {formatSongDuration(song.duration_seconds)}
+              </div>
+              <button
+                onClick={() => addSong(song.id)}
+                className="clx-btn clx-btn-ghost"
+                style={{ padding: '6px 8px', borderRadius: 6, display: 'flex', flexShrink: 0 }}
+                title="Ajouter au set"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        {isEdit ? (
+          <button
+            onClick={handleDelete}
+            className="clx-btn"
+            style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Trash2 size={14} /> Supprimer le concert
+          </button>
+        ) : <span />}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
+          <button
+            onClick={submit}
+            disabled={saving}
+            className="clx-btn clx-btn-primary"
+            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? 'Enregistrement…' : (isEdit ? 'Enregistrer les modifications' : 'Créer le concert')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
