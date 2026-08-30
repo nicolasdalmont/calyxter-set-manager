@@ -2083,10 +2083,27 @@ async function fetchMembersFromSupabase() {
 
 async function upsertRows(table, rows) {
   if (!rows || rows.length === 0) return null;
+  // PostgREST (POST en lot) exige que tous les objets du tableau aient exactement
+  // les mêmes clés ("All object keys must match" / PGRST102). Un objet construit
+  // côté client (ex. un nouveau morceau) peut ne pas porter toutes les colonnes
+  // présentes sur les lignes déjà chargées depuis Supabase (ex. updated_at) :
+  // on complète donc chaque objet avec l'union des clés du lot. Les colonnes
+  // horodatées (suffixe _at, ex. updated_at) sont NOT NULL en base : on leur
+  // donne l'heure courante plutôt que null pour ne pas violer la contrainte.
+  const nowIso = new Date().toISOString();
+  const allKeys = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  const normalized = rows.map((r) => {
+    const filled = {};
+    for (const k of allKeys) {
+      if (k in r) filled[k] = r[k];
+      else filled[k] = k.endsWith('_at') ? nowIso : null;
+    }
+    return filled;
+  });
   return supabaseTable(`${table}?on_conflict=id`, {
     method: 'POST',
     headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(rows),
+    body: JSON.stringify(normalized),
   });
 }
 
@@ -2303,13 +2320,24 @@ export default function App() {
   }, []);
 
   const updateSongs = useCallback(async (updater) => {
+    let prevSongs;
     let next;
     setSongs((prev) => {
+      prevSongs = prev;
       next = typeof updater === 'function' ? updater(prev) : updater;
       return next;
     });
     try {
-      await upsertRows('songs', next);
+      // On n'envoie à Supabase que les lignes réellement ajoutées ou modifiées.
+      // Envoyer tout le tableau ferait cohabiter, dans un même upsert groupé,
+      // des objets aux clés différentes (ex. un morceau tout juste créé côté
+      // client, sans `updated_at`, à côté de morceaux venus de la base avec
+      // toutes leurs colonnes) — ce que PostgREST refuse (PGRST102).
+      const prevById = new Map(prevSongs.map((s) => [s.id, s]));
+      const changed = next.filter((s) => prevById.get(s.id) !== s);
+      if (changed.length > 0) {
+        await upsertRows('songs', changed);
+      }
     } catch (e) {
       console.error('Erreur en enregistrant les morceaux', e);
     }
