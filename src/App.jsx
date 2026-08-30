@@ -2633,7 +2633,7 @@ function GlobalStyle() {
       @media (max-width: 560px) {
         .clx-song-info { flex: 1 1 100%; order: 1; }
         .clx-song-cover { order: 0; }
-        .clx-song-meta { order: 2; flex: 1 1 100%; justify-content: flex-end; margin-top: 4px; }
+        .clx-song-meta { order: 2; flex: 1 1 100%; justify-content: space-between; margin-top: 4px; }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -2960,41 +2960,44 @@ function SongRow({ song, members, currentUser, onEdit }) {
       )}
 
       <div className="clx-song-info" style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
-          <span style={{ fontWeight: 700, fontSize: 15 }}>{song.title}</span>
-          <span className="clx-badge" style={{ background: `${st.color}22`, color: st.color, border: `1px solid ${st.color}55` }}>{st.badge}</span>
-          {song.language && <span className="clx-badge" style={{ background: `${LANGUAGE_TAG[song.language].color}22`, color: LANGUAGE_TAG[song.language].color, border: `1px solid ${LANGUAGE_TAG[song.language].color}55` }}>{LANGUAGE_TAG[song.language].short}</span>}
-        </div>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>{song.title}</div>
         <div style={{ fontSize: 13, color: '#9A958C' }}>{song.artist}{song.album ? ` · ${song.album}` : ''}</div>
         {author && <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 4 }}>Proposé par {author.name} ({author.instrument})</div>}
       </div>
 
-      <div className="clx-song-meta" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div className="clx-mono" style={{ fontSize: 13, color: song.duration_seconds ? '#9A958C' : '#C1454B', width: 46, textAlign: 'right' }}>
-          {formatSongDuration(song.duration_seconds)}
+      <div className="clx-song-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span className="clx-badge" style={{ background: `${st.color}22`, color: st.color, border: `1px solid ${st.color}55` }}>{st.badge}</span>
+          {song.language && <span className="clx-badge" style={{ background: `${LANGUAGE_TAG[song.language].color}22`, color: LANGUAGE_TAG[song.language].color, border: `1px solid ${LANGUAGE_TAG[song.language].color}55` }}>{LANGUAGE_TAG[song.language].short}</span>}
         </div>
 
-        {onEdit && (
-          <button
-            onClick={() => onEdit(song)}
-            className="clx-btn clx-btn-ghost"
-            style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', color: missing ? '#F2A93B' : '#F5F1E8' }}
-            title={missing ? 'Compléter les données manquantes' : 'Modifier le morceau'}
-          >
-            <Pencil size={13} />
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="clx-mono" style={{ fontSize: 13, color: song.duration_seconds ? '#9A958C' : '#C1454B', width: 46, textAlign: 'right' }}>
+            {formatSongDuration(song.duration_seconds)}
+          </div>
 
-        <a
-          href={listenUrl(song, currentUser.preferred_platform)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="clx-btn clx-btn-ghost"
-          style={{ padding: '7px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#F5F1E8', textDecoration: 'none' }}
-          title={song.links?.custom_url ? 'Ouvrir le lien' : `Chercher sur ${PLATFORMS[currentUser.preferred_platform] || 'Spotify'}`}
-        >
-          <Radio size={13} /> <ExternalLink size={11} />
-        </a>
+          {onEdit && (
+            <button
+              onClick={() => onEdit(song)}
+              className="clx-btn clx-btn-ghost"
+              style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', color: missing ? '#F2A93B' : '#F5F1E8' }}
+              title={missing ? 'Compléter les données manquantes' : 'Modifier le morceau'}
+            >
+              <Pencil size={13} />
+            </button>
+          )}
+
+          <a
+            href={listenUrl(song, currentUser.preferred_platform)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="clx-btn clx-btn-ghost"
+            style={{ padding: '7px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#F5F1E8', textDecoration: 'none' }}
+            title={song.links?.custom_url ? 'Ouvrir le lien' : `Chercher sur ${PLATFORMS[currentUser.preferred_platform] || 'Spotify'}`}
+          >
+            <Radio size={13} /> <ExternalLink size={11} />
+          </a>
+        </div>
       </div>
     </div>
   );
