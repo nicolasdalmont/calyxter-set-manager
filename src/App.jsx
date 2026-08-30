@@ -3,7 +3,7 @@ import {
   Search, Plus, X, Check, ExternalLink, ListPlus, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Settings, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
-  Calendar, MapPin, Clock, Trash2, ArrowLeft
+  Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -44,6 +44,14 @@ const STEP_LABEL = {
   vote: 'Vote',
   result: 'Résultat',
 };
+
+const EVENT_KIND = {
+  repetition: { label: 'Répétition',         badge: 'RÉPÉT',     color: '#7C8BA8' },
+  atelier:    { label: 'Atelier de travail', badge: 'ATELIER',   color: '#6FA287' },
+  residence:  { label: 'Résidence',          badge: 'RÉSIDENCE', color: '#E8B04B' },
+  autre:      { label: 'Autre',              badge: 'AUTRE',     color: '#6B6862' },
+};
+const CONCERT_EVENT_KIND = { label: 'Concert', badge: 'CONCERT', color: '#C1454B' };
 
 const DEFAULT_MEMBERS = [
   { id: 'usr_sandra',    name: 'Sandra',    instrument: 'Chant',                       preferred_platform: 'spotify' },
@@ -2143,6 +2151,11 @@ async function fetchConcerts() {
   return rows || [];
 }
 
+async function fetchEvents() {
+  const rows = await supabaseTable('events?select=*&order=event_date.desc,start_time.desc.nullslast');
+  return rows || [];
+}
+
 async function callMemberAuth(action, memberId, password) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/member-auth`, {
     method: 'POST',
@@ -2257,6 +2270,8 @@ export default function App() {
   const [phase, setPhase] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [concerts, setConcerts] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [concertToOpen, setConcertToOpen] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [membersError, setMembersError] = useState('');
 
@@ -2274,12 +2289,13 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [supaMembers, s, p, n, c] = await Promise.all([
+        const [supaMembers, s, p, n, c, ev] = await Promise.all([
           withTimeout(fetchMembersFromSupabase(), 8000, null),
           withTimeout(loadOrSeedSongs(), 8000, DEFAULT_SONGS),
           withTimeout(fetchActivePhase(), 8000, null),
           withTimeout(fetchNotifications(), 8000, []),
           withTimeout(fetchConcerts(), 8000, []),
+          withTimeout(fetchEvents(), 8000, []),
         ]);
         if (cancelled) return;
         if (supaMembers) {
@@ -2291,6 +2307,7 @@ export default function App() {
         setPhase(p);
         setNotifications(n);
         setConcerts(c);
+        setEvents(ev);
         setCurrentUserId(loadPersonal('current-member-id'));
       } catch (e) {
         console.error('Failed to load app data', e);
@@ -2383,6 +2400,27 @@ export default function App() {
       await supabaseTable(`concerts?id=eq.${concertId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
     } catch (e) {
       console.error('Erreur en supprimant le concert', e);
+    }
+  }, []);
+
+  const saveEvent = useCallback(async (event) => {
+    setEvents((prev) => {
+      const exists = prev.some((e) => e.id === event.id);
+      return exists ? prev.map((e) => (e.id === event.id ? event : e)) : [...prev, event];
+    });
+    try {
+      await upsertRows('events', [event]);
+    } catch (e) {
+      console.error('Erreur en enregistrant le rendez-vous', e);
+    }
+  }, []);
+
+  const deleteEvent = useCallback(async (eventId) => {
+    setEvents((prev) => prev.filter((e) => e.id !== eventId));
+    try {
+      await supabaseTable(`events?id=eq.${eventId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    } catch (e) {
+      console.error('Erreur en supprimant le rendez-vous', e);
     }
   }, []);
 
@@ -2506,6 +2544,21 @@ export default function App() {
             saveConcert={saveConcert}
             deleteConcert={deleteConcert}
             pushNotification={pushNotification}
+            initialConcertId={concertToOpen}
+            onInitialConcertConsumed={() => setConcertToOpen(null)}
+          />
+        )}
+
+        {tab === 'rendezvous' && (
+          <RendezVousTab
+            events={events}
+            concerts={concerts}
+            members={members}
+            currentUser={currentUser}
+            saveEvent={saveEvent}
+            deleteEvent={deleteEvent}
+            pushNotification={pushNotification}
+            onViewConcert={(concertId) => { setConcertToOpen(concertId); setTab('concerts'); }}
           />
         )}
 
@@ -2900,7 +2953,8 @@ function TopBar({ currentUser, onSignOut, onOpenSettings, tab, setTab, phaseActi
         <nav className="clx-topnav" style={{ display: 'flex', gap: 4 }}>
           <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} />
           <TabButton icon={ListPlus} label="Phase de choix" active={tab === 'phase'} onClick={() => setTab('phase')} pulse={phaseActive} />
-          <TabButton icon={Calendar} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
+          <TabButton icon={Calendar} label="Rendez-vous" active={tab === 'rendezvous'} onClick={() => setTab('rendezvous')} />
+          <TabButton icon={Mic2} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
           <TabButton icon={MessageCircle} label="Historique" active={tab === 'notifications'} onClick={() => setTab('notifications')} />
         </nav>
 
@@ -4003,8 +4057,18 @@ function isPastConcert(concert) {
 
 const SETLIST_STATUSES = ['ready', 'to_prepare', 'rejected'];
 
-function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, deleteConcert, pushNotification }) {
+function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, deleteConcert, pushNotification, initialConcertId, onInitialConcertConsumed }) {
   const [editingConcert, setEditingConcert] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
+
+  // Arrivée depuis l'onglet Rendez-vous sur un concert précis : on l'ouvre
+  // directement en édition, puis on "consomme" la demande côté App pour ne
+  // pas la rejouer si l'utilisateur navigue ensuite librement dans l'onglet.
+  useEffect(() => {
+    if (!initialConcertId) return;
+    const found = concerts.find((c) => c.id === initialConcertId);
+    if (found) setEditingConcert(found);
+    if (onInitialConcertConsumed) onInitialConcertConsumed();
+  }, [initialConcertId, concerts, onInitialConcertConsumed]);
 
   const sortedConcerts = [...concerts].sort((a, b) => {
     const da = a.event_date || '';
@@ -4419,6 +4483,317 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
             style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: saving ? 0.6 : 1 }}
           >
             {saving ? 'Enregistrement…' : (isEdit ? 'Enregistrer les modifications' : 'Créer le concert')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  RENDEZ-VOUS TAB — agenda unifié (événements + concerts en lecture) */
+/* ------------------------------------------------------------------ */
+
+function mergeEventsAndConcerts(events, concerts) {
+  const fromEvents = events.map((e) => ({
+    id: e.id,
+    source: 'event',
+    kind: e.kind || 'autre',
+    subject: e.subject,
+    event_date: e.event_date,
+    start_time: e.start_time,
+    end_time: e.end_time,
+    venue: e.venue,
+    participant_ids: e.participant_ids || [],
+    raw: e,
+  }));
+  const fromConcerts = concerts.map((c) => ({
+    id: c.id,
+    source: 'concert',
+    kind: 'concert',
+    subject: c.name,
+    event_date: c.event_date,
+    start_time: c.event_time,
+    end_time: null,
+    venue: c.venue,
+    participant_ids: null, // un concert engage tout le groupe
+    raw: c,
+  }));
+  return [...fromEvents, ...fromConcerts].sort((a, b) => {
+    const da = a.event_date || '';
+    const db = b.event_date || '';
+    if (da !== db) return da < db ? 1 : -1; // décroissant par date
+    return (b.start_time || '').localeCompare(a.start_time || '');
+  });
+}
+
+function RendezVousTab({ events, concerts, members, currentUser, saveEvent, deleteEvent, pushNotification, onViewConcert }) {
+  const [editingEvent, setEditingEvent] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
+
+  const merged = mergeEventsAndConcerts(events, concerts);
+
+  if (editingEvent !== undefined) {
+    return (
+      <RendezVousEditor
+        event={editingEvent}
+        members={members}
+        currentUser={currentUser}
+        onCancel={() => setEditingEvent(undefined)}
+        onSave={async (event, isNew) => {
+          await saveEvent(event);
+          await pushNotification(
+            isNew
+              ? `🗓️ ${currentUser.name} a ajouté un rendez-vous : « ${event.subject} » (${formatConcertDate(event.event_date, { day: 'numeric', month: 'long', year: 'numeric' })}).`
+              : `🛠️ ${currentUser.name} a modifié le rendez-vous « ${event.subject} ».`,
+            'info'
+          );
+          setEditingEvent(undefined);
+        }}
+        onDelete={async (eventId, subject) => {
+          await deleteEvent(eventId);
+          await pushNotification(`🗑️ ${currentUser.name} a supprimé le rendez-vous « ${subject} ».`, 'info');
+          setEditingEvent(undefined);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: 14 }}>
+          <span style={{ fontWeight: 700 }}>{merged.length}</span> rendez-vous
+        </div>
+        <button onClick={() => setEditingEvent(null)} className="clx-btn clx-btn-primary" style={{ borderRadius: 6, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+          <Plus size={15} /> Nouveau rendez-vous
+        </button>
+      </div>
+
+      {merged.length === 0 ? (
+        <EmptyState text="Aucun rendez-vous programmé pour le moment." />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {merged.map((item) => (
+            <RendezVousCard
+              key={`${item.source}-${item.id}`}
+              item={item}
+              members={members}
+              onOpen={() => {
+                if (item.source === 'concert') {
+                  onViewConcert(item.id);
+                } else {
+                  setEditingEvent(item.raw);
+                }
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RendezVousCard({ item, members, onOpen }) {
+  const kindInfo = item.source === 'concert' ? CONCERT_EVENT_KIND : (EVENT_KIND[item.kind] || EVENT_KIND.autre);
+  const past = isPastConcert({ event_date: item.event_date });
+  const start = formatConcertTime(item.start_time);
+  const end = formatConcertTime(item.end_time);
+  const timeLabel = start ? (end ? `${start} – ${end}` : start) : null;
+
+  const participantNames = item.participant_ids === null
+    ? 'Tout le groupe'
+    : (item.participant_ids.length === 0
+      ? 'Aucun participant renseigné'
+      : item.participant_ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', '));
+
+  return (
+    <button
+      onClick={onOpen}
+      className="clx-card clx-row"
+      style={{
+        padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+        width: '100%', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer', opacity: past ? 0.6 : 1,
+      }}
+    >
+      <div
+        className="clx-mono"
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          width: 54, height: 54, borderRadius: 6, flexShrink: 0,
+          background: past ? '#101012' : `${kindInfo.color}22`, border: `1px solid ${past ? '#2A2A2E' : `${kindInfo.color}55`}`,
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : kindInfo.color }}>
+          {formatConcertDate(item.event_date, { day: 'numeric' })}
+        </div>
+        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+          {formatConcertDate(item.event_date, { month: 'short' })}
+        </div>
+      </div>
+
+      <div style={{ flex: 1, minWidth: 180 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
+          {item.source === 'concert' && (
+            <span className="clx-mono" style={{ fontSize: 10, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Mic2 size={10} /> non modifiable ici
+            </span>
+          )}
+        </div>
+        <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>{item.subject}</div>
+        <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Calendar size={11} /> {formatConcertDate(item.event_date)}
+          </span>
+          {timeLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {timeLabel}</span>}
+          {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
+        </div>
+        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+          <Users size={11} /> {participantNames}
+        </div>
+      </div>
+
+      <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+    </button>
+  );
+}
+
+function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDelete }) {
+  const isEdit = !!event;
+  const [kind, setKind] = useState(event?.kind || 'repetition');
+  const [subject, setSubject] = useState(event?.subject || '');
+  const [eventDate, setEventDate] = useState(event?.event_date || '');
+  const [startTime, setStartTime] = useState(formatConcertTime(event?.start_time) || '');
+  const [endTime, setEndTime] = useState(formatConcertTime(event?.end_time) || '');
+  const [venue, setVenue] = useState(event?.venue || '');
+  const [participantIds, setParticipantIds] = useState(event?.participant_ids || []);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const toggleParticipant = (memberId) => {
+    setParticipantIds((prev) => (prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]));
+  };
+
+  const allSelected = members.length > 0 && members.every((m) => participantIds.includes(m.id));
+  const toggleAll = () => setParticipantIds(allSelected ? [] : members.map((m) => m.id));
+
+  const submit = async () => {
+    if (!subject.trim()) { setError("L'objet du rendez-vous est obligatoire."); return; }
+    if (!eventDate) { setError('La date est obligatoire.'); return; }
+    if (!startTime) { setError('Le début est obligatoire.'); return; }
+    setError('');
+    setSaving(true);
+    const built = {
+      id: event?.id || uid(),
+      kind,
+      subject: subject.trim(),
+      event_date: eventDate,
+      start_time: startTime,
+      end_time: endTime || null,
+      venue: venue.trim() || null,
+      participant_ids: participantIds,
+      created_by_user_id: event?.created_by_user_id || currentUser.id,
+      created_at: event?.created_at || new Date().toISOString(),
+    };
+    try {
+      await onSave(built, !isEdit);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (window.confirm(`Supprimer définitivement le rendez-vous « ${event.subject} » ? Cette action est irréversible.`)) {
+      onDelete(event.id, event.subject);
+    }
+  };
+
+  return (
+    <div>
+      <button
+        onClick={onCancel}
+        className="clx-btn clx-btn-ghost"
+        style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 16 }}
+      >
+        <ArrowLeft size={14} /> Retour aux rendez-vous
+      </button>
+
+      <div className="clx-display" style={{ fontSize: 24, marginBottom: 18 }}>
+        {isEdit ? `Modifier « ${event.subject} »` : 'Nouveau rendez-vous'}
+      </div>
+
+      <div className="clx-card" style={{ padding: 18, marginBottom: 20 }}>
+        <div className="clx-tape" />
+
+        <div style={{ marginBottom: 10 }}>
+          <Field label="Type de rendez-vous">
+            <select className="clx-input" value={kind} onChange={(e) => setKind(e.target.value)}>
+              {Object.entries(EVENT_KIND).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <div style={{ marginBottom: 10 }}>
+          <Field label="Objet *">
+            <input className="clx-input" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Ex. Répétition avant le festival" />
+          </Field>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          <Field label="Date *" style={{ flex: '1 1 140px' }}>
+            <input type="date" className="clx-input" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
+          </Field>
+          <Field label="Début *" style={{ flex: '1 1 110px' }}>
+            <input type="time" className="clx-input" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          </Field>
+          <Field label="Fin" style={{ flex: '1 1 110px' }}>
+            <input type="time" className="clx-input" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          </Field>
+        </div>
+
+        <Field label="Lieu">
+          <input className="clx-input" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Ex. Local de répétition" />
+        </Field>
+
+        {error && <div style={{ color: '#C1454B', fontSize: 12, marginTop: 10 }}>{error}</div>}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div className="clx-display" style={{ fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Users size={16} color="#F2A93B" /> Participants
+        </div>
+        <button onClick={toggleAll} className="clx-btn clx-btn-ghost" style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11 }}>
+          {allSelected ? 'Tout désélectionner' : 'Tout le monde'}
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
+        {members.map((m) => (
+          <Chip key={m.id} active={participantIds.includes(m.id)} onClick={() => toggleParticipant(m.id)}>
+            {m.name}
+          </Chip>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+        {isEdit ? (
+          <button
+            onClick={handleDelete}
+            className="clx-btn"
+            style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Trash2 size={14} /> Supprimer le rendez-vous
+          </button>
+        ) : <span />}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
+          <button
+            onClick={submit}
+            disabled={saving}
+            className="clx-btn clx-btn-primary"
+            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? 'Enregistrement…' : (isEdit ? 'Enregistrer les modifications' : 'Créer le rendez-vous')}
           </button>
         </div>
       </div>
