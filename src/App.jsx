@@ -3501,8 +3501,8 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
             </button>
           ) : <span />}
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={onClose} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
-            <button onClick={submit} className="clx-btn clx-btn-primary" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>{isEdit ? 'Enregistrer les modifications' : 'Ajouter au répertoire'}</button>
+            <button onClick={onClose} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center' }}>Annuler</button>
+            <button onClick={submit} className="clx-btn clx-btn-primary" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center' }}>{isEdit ? 'Enregistrer les modifications' : 'Ajouter au répertoire'}</button>
           </div>
         </div>
       </div>
@@ -4911,12 +4911,12 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
           </button>
         ) : <span />}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
+          <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center' }}>Annuler</button>
           <button
             onClick={submit}
             disabled={saving}
             className="clx-btn clx-btn-primary"
-            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: saving ? 0.6 : 1 }}
+            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center' }}
           >
             {saving ? 'Enregistrement…' : (isEdit ? 'Enregistrer les modifications' : 'Créer le concert')}
           </button>
@@ -5429,12 +5429,12 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
           </button>
         ) : <span />}
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
+          <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center' }}>Annuler</button>
           <button
             onClick={submit}
             disabled={saving}
             className="clx-btn clx-btn-primary"
-            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: saving ? 0.6 : 1 }}
+            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: saving ? 0.6 : 1, display: 'flex', alignItems: 'center' }}
           >
             {saving ? 'Enregistrement…' : (isEdit ? 'Enregistrer les modifications' : 'Créer le rendez-vous')}
           </button>
