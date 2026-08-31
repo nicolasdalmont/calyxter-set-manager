@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Search, Plus, X, Check, ExternalLink, ListPlus, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
-  ChevronRight, Radio, ListMusic, Ban, Sparkles, Settings, Music2,
+  ChevronRight, Radio, ListMusic, Ban, Sparkles, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb
 } from 'lucide-react';
@@ -29,12 +29,6 @@ const LANGUAGE_TAG = {
   EN: { short: 'EN', color: '#7C8BA8' },
   INSTRUMENTAL: { short: 'INSTR', color: '#6FA287' },
   OTHER: { short: '?', color: '#6B6862' },
-};
-
-const PLATFORMS = {
-  spotify: 'Spotify',
-  deezer: 'Deezer',
-  apple_music: 'Apple Music',
 };
 
 const STEP_ORDER = ['proposal', 'veto', 'vote', 'result'];
@@ -69,12 +63,12 @@ const IDEA_STATUS = {
 const IDEA_STATUS_ORDER = ['created', 'processed', 'done'];
 
 const DEFAULT_MEMBERS = [
-  { id: 'usr_sandra',    name: 'Sandra',    instrument: 'Chant',                       preferred_platform: 'spotify' },
-  { id: 'usr_gaelle',    name: 'Gaëlle',    instrument: 'Chant',                       preferred_platform: 'spotify' },
-  { id: 'usr_david',     name: 'David',     instrument: 'Clavier / Guitare rythmique', preferred_platform: 'spotify' },
-  { id: 'usr_alexandre', name: 'Alexandre', instrument: 'Guitare solo',                preferred_platform: 'spotify' },
-  { id: 'usr_nicolas',   name: 'Nicolas',   instrument: 'Basse',                       preferred_platform: 'spotify' },
-  { id: 'usr_do',        name: 'Do',        instrument: 'Batterie',                    preferred_platform: 'spotify' },
+  { id: 'usr_sandra',    name: 'Sandra',    instrument: 'Chant' },
+  { id: 'usr_gaelle',    name: 'Gaëlle',    instrument: 'Chant' },
+  { id: 'usr_david',     name: 'David',     instrument: 'Clavier / Guitare rythmique' },
+  { id: 'usr_alexandre', name: 'Alexandre', instrument: 'Guitare solo' },
+  { id: 'usr_nicolas',   name: 'Nicolas',   instrument: 'Basse' },
+  { id: 'usr_do',        name: 'Do',        instrument: 'Batterie' },
 ];
 
 const DEFAULT_SONGS = [
@@ -2041,13 +2035,11 @@ function parseDurationInput(str) {
   return m * 60 + s;
 }
 
-function listenUrl(song, platform) {
+function listenUrl(song) {
   if (song.links && song.links.custom_url) return song.links.custom_url;
-  if (song.links && song.links.deezer_url && platform === 'deezer') return song.links.deezer_url;
+  if (song.links && song.links.deezer_url) return song.links.deezer_url;
   const q = encodeURIComponent(`${song.title} ${song.artist}`);
-  if (platform === 'deezer') return `https://www.deezer.com/search/${q}`;
-  if (platform === 'apple_music') return `https://music.apple.com/search?term=${q}`;
-  return `https://open.spotify.com/search/${q}`;
+  return `https://www.deezer.com/search/${q}`;
 }
 
 // Stockage personnel léger (qui es-tu sur cet appareil) — localStorage classique,
@@ -2114,7 +2106,7 @@ async function supabaseTable(path, options = {}) {
 }
 
 async function fetchMembersFromSupabase() {
-  return supabaseTable('members?select=id,name,instrument,preferred_platform,created_at&order=name.asc');
+  return supabaseTable('members?select=id,name,instrument,created_at&order=name.asc');
 }
 
 async function upsertRows(table, rows) {
@@ -2309,7 +2301,6 @@ export default function App() {
   const [artistFilter, setArtistFilter] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
   const [editingSong, setEditingSong] = useState(null);
-  const [showSettings, setShowSettings] = useState(false);
   const [showNotifLog, setShowNotifLog] = useState(false);
 
   useEffect(() => {
@@ -2596,7 +2587,6 @@ export default function App() {
       <TopBar
         currentUser={currentUser}
         onSignOut={signOut}
-        onOpenSettings={() => setShowSettings(true)}
         tab={tab}
         setTab={setTab}
         phaseActive={!!phase}
@@ -2719,22 +2709,6 @@ export default function App() {
             await deleteSong(songId);
             await pushNotification(`🗑️ « ${title} » a été supprimé du répertoire par ${currentUser.name}.`, 'info');
             setEditingSong(null);
-          }}
-        />
-      )}
-
-      {showSettings && (
-        <SettingsModal
-          currentUser={currentUser}
-          onClose={() => setShowSettings(false)}
-          onSave={async (platform) => {
-            await supabaseTable(`members?id=eq.${currentUser.id}`, {
-              method: 'PATCH',
-              headers: { Prefer: 'return=minimal' },
-              body: JSON.stringify({ preferred_platform: platform }),
-            });
-            setMembers((prev) => prev.map((m) => (m.id === currentUser.id ? { ...m, preferred_platform: platform } : m)));
-            setShowSettings(false);
           }}
         />
       )}
@@ -3059,7 +3033,7 @@ function MemberPicker({ members, onAuthenticated, error }) {
 /*  TOP BAR                                                             */
 /* ------------------------------------------------------------------ */
 
-function TopBar({ currentUser, onSignOut, onOpenSettings, tab, setTab, phaseActive }) {
+function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
   return (
     <header style={{ borderBottom: '1px solid #2A2A2E', position: 'sticky', top: 0, zIndex: 10, background: '#0B0B0Cee', backdropFilter: 'blur(6px)' }}>
       <div style={{ maxWidth: 880, margin: '0 auto', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -3077,9 +3051,6 @@ function TopBar({ currentUser, onSignOut, onOpenSettings, tab, setTab, phaseActi
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={onOpenSettings} title="Réglages" className="clx-btn clx-btn-ghost" style={{ padding: 8, borderRadius: 6, display: 'flex' }}>
-            <Settings size={15} />
-          </button>
           <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', padding: '0 4px' }}>
             {currentUser.name} · {currentUser.instrument}
           </div>
@@ -3229,7 +3200,7 @@ function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, sta
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {songs.map((song) => (
-            <SongRow key={song.id} song={song} members={members} currentUser={currentUser} onEdit={onEditClick} />
+            <SongRow key={song.id} song={song} members={members} onEdit={onEditClick} />
           ))}
         </div>
       )}
@@ -3250,7 +3221,7 @@ function EmptyState({ text }) {
   );
 }
 
-function SongRow({ song, members, currentUser, onEdit }) {
+function SongRow({ song, members, onEdit }) {
   const author = members.find((m) => m.id === song.added_by_user_id);
   const st = STATUS[song.status];
   const missing = !song.duration_seconds || !song.language || song.language === 'OTHER';
@@ -3299,12 +3270,12 @@ function SongRow({ song, members, currentUser, onEdit }) {
           )}
 
           <a
-            href={listenUrl(song, currentUser.preferred_platform)}
+            href={listenUrl(song)}
             target="_blank"
             rel="noopener noreferrer"
             className="clx-btn clx-btn-ghost"
             style={{ padding: '7px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#F5F1E8', textDecoration: 'none' }}
-            title={song.links?.custom_url ? 'Ouvrir le lien' : `Chercher sur ${PLATFORMS[currentUser.preferred_platform] || 'Spotify'}`}
+            title={song.links?.custom_url ? 'Ouvrir le lien' : 'Chercher sur Deezer'}
           >
             <Radio size={13} /> <ExternalLink size={11} />
           </a>
@@ -3546,26 +3517,6 @@ function Modal({ onClose, title, icon: Icon, children, wide }) {
         {children}
       </div>
     </div>
-  );
-}
-
-function SettingsModal({ currentUser, onClose, onSave }) {
-  const [platform, setPlatform] = useState(currentUser.preferred_platform || 'spotify');
-  return (
-    <Modal onClose={onClose} title="Réglages" icon={Settings}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ fontSize: 13, color: '#9A958C' }}>Connecté en tant que <strong style={{ color: '#F5F1E8' }}>{currentUser.name}</strong> ({currentUser.instrument})</div>
-        <Field label="Service d'écoute préféré">
-          <select className="clx-input" value={platform} onChange={(e) => setPlatform(e.target.value)}>
-            {Object.entries(PLATFORMS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </Field>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
-          <button onClick={onClose} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
-          <button onClick={() => onSave(platform)} className="clx-btn clx-btn-primary" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Enregistrer</button>
-        </div>
-      </div>
-    </Modal>
   );
 }
 
@@ -3845,7 +3796,7 @@ function ProposalStep({ songs, members, currentUser, phase, updateSongs, deleteS
       </div>
       {proposed.length === 0 ? <EmptyState text="Aucune proposition pour l'instant." /> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {proposed.map((s) => <SongRow key={s.id} song={s} members={members} currentUser={currentUser} onEdit={setEditingSong} />)}
+          {proposed.map((s) => <SongRow key={s.id} song={s} members={members} onEdit={setEditingSong} />)}
         </div>
       )}
       {showAdd && (
