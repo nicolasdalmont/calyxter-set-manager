@@ -2291,6 +2291,7 @@ export default function App() {
   const [phaseHistory, setPhaseHistory] = useState([]);
   const [ideas, setIdeas] = useState([]);
   const [concertToOpen, setConcertToOpen] = useState(null);
+  const [openPhaseHistory, setOpenPhaseHistory] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [membersError, setMembersError] = useState('');
 
@@ -2613,6 +2614,7 @@ export default function App() {
             launchPhase={launchPhase}
             onAddClick={() => setShowAdd(true)}
             onEditClick={(song) => setEditingSong(song)}
+            onShowPhaseHistory={() => { setOpenPhaseHistory(true); setTab('phase'); }}
           />
         )}
 
@@ -2628,6 +2630,8 @@ export default function App() {
             updateSongs={updateSongs}
             deleteSong={deleteSong}
             pushNotification={pushNotification}
+            forceShowHistory={openPhaseHistory}
+            onHistoryConsumed={() => setOpenPhaseHistory(false)}
           />
         )}
 
@@ -3042,12 +3046,11 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
         </div>
 
         <nav className="clx-topnav" style={{ display: 'flex', gap: 4 }}>
-          <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} />
-          <TabButton icon={ListPlus} label="Phase de choix" active={tab === 'phase'} onClick={() => setTab('phase')} pulse={phaseActive} />
+          <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} pulse={phaseActive} />
           <TabButton icon={Calendar} label="Rendez-vous" active={tab === 'rendezvous'} onClick={() => setTab('rendezvous')} />
           <TabButton icon={Mic2} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
           <TabButton icon={Lightbulb} label="Boîte à idées" active={tab === 'ideas'} onClick={() => setTab('ideas')} />
-          <TabButton icon={MessageCircle} label="Historique" active={tab === 'notifications'} onClick={() => setTab('notifications')} />
+          <TabButton icon={MessageCircle} label="Journal d'activité" active={tab === 'notifications'} onClick={() => setTab('notifications')} />
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -3111,7 +3114,7 @@ function TabButton({ icon: Icon, label, active, onClick, pulse }) {
 /*  REPERTOIRE TAB                                                      */
 /* ------------------------------------------------------------------ */
 
-function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, statusFilter, setStatusFilter, langFilter, setLangFilter, artistFilter, setArtistFilter, artistOptions, members, currentUser, phase, launchPhase, onAddClick, onEditClick }) {
+function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, statusFilter, setStatusFilter, langFilter, setLangFilter, artistFilter, setArtistFilter, artistOptions, members, currentUser, phase, launchPhase, onAddClick, onEditClick, onShowPhaseHistory }) {
   const [launching, setLaunching] = useState(false);
 
   const handleLaunch = async () => {
@@ -3125,7 +3128,7 @@ function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, sta
 
   return (
     <div>
-      {!phase && (
+      {!phase ? (
         <div className="clx-card" style={{ padding: '14px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div className="clx-tape" />
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -3134,13 +3137,24 @@ function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, sta
               Prêt·e à choisir les prochains morceaux à travailler ?
             </div>
           </div>
-          <button
-            onClick={handleLaunch}
-            disabled={launching}
-            className="clx-btn clx-btn-primary"
-            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: launching ? 0.6 : 1, flexShrink: 0 }}
-          >
-            {launching ? 'Lancement…' : 'Lancer une phase de choix'}
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={onShowPhaseHistory} className="clx-btn clx-btn-ghost" style={{ padding: '9px 12px', borderRadius: 6, fontSize: 12 }}>
+              Historique des phases
+            </button>
+            <button
+              onClick={handleLaunch}
+              disabled={launching}
+              className="clx-btn clx-btn-primary"
+              style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: launching ? 0.6 : 1 }}
+            >
+              {launching ? 'Lancement…' : 'Lancer une phase de choix'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <button onClick={onShowPhaseHistory} className="clx-btn clx-btn-ghost" style={{ padding: '7px 12px', borderRadius: 6, fontSize: 12 }}>
+            Historique des phases
           </button>
         </div>
       )}
@@ -3527,7 +3541,7 @@ function Modal({ onClose, title, icon: Icon, children, wide }) {
 function NotificationLog({ notifications }) {
   return (
     <div>
-      <div className="clx-display" style={{ fontSize: 22, marginBottom: 4 }}>Historique du groupe</div>
+      <div className="clx-display" style={{ fontSize: 22, marginBottom: 4 }}>Journal d'activité</div>
       <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginBottom: 18 }}>
         Journal des événements : ajouts, votes, changements de statut, concerts…
       </div>
@@ -3553,8 +3567,15 @@ function NotificationLog({ notifications }) {
 /*  PHASE WORKFLOW TAB                                                  */
 /* ------------------------------------------------------------------ */
 
-function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updatePhase, cancelPhase, updateSongs, deleteSong, pushNotification }) {
+function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updatePhase, cancelPhase, updateSongs, deleteSong, pushNotification, forceShowHistory, onHistoryConsumed }) {
   const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    if (forceShowHistory) {
+      setShowHistory(true);
+      if (onHistoryConsumed) onHistoryConsumed();
+    }
+  }, [forceShowHistory, onHistoryConsumed]);
 
   if (showHistory) {
     return <PhaseHistoryView phaseHistory={phaseHistory} members={members} onBack={() => setShowHistory(false)} />;
