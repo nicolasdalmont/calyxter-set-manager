@@ -3,7 +3,7 @@ import {
   Search, Plus, X, Check, ExternalLink, ListPlus, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Settings, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
-  Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy
+  Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -60,6 +60,13 @@ const RECURRENCE_UNIT_LABEL = {
   year: { singular: 'an', plural: 'ans' },
 };
 const MAX_RECURRENCE_OCCURRENCES = 200; // filet de sécurité anti-boucle / série démesurée
+
+const IDEA_STATUS = {
+  created: { label: 'Créée', badge: 'CRÉÉE', color: '#7C8BA8' },
+  processed: { label: 'Traitée', badge: 'TRAITÉE', color: '#E8B04B' },
+  done: { label: 'Terminée', badge: 'TERMINÉE', color: '#6FA287' },
+};
+const IDEA_STATUS_ORDER = ['created', 'processed', 'done'];
 
 const DEFAULT_MEMBERS = [
   { id: 'usr_sandra',    name: 'Sandra',    instrument: 'Chant',                       preferred_platform: 'spotify' },
@@ -2169,6 +2176,11 @@ async function fetchEvents() {
   return rows || [];
 }
 
+async function fetchIdeas() {
+  const rows = await supabaseTable('ideas?select=*&order=created_at.desc');
+  return rows || [];
+}
+
 async function callMemberAuth(action, memberId, password) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/member-auth`, {
     method: 'POST',
@@ -2285,6 +2297,7 @@ export default function App() {
   const [concerts, setConcerts] = useState([]);
   const [events, setEvents] = useState([]);
   const [phaseHistory, setPhaseHistory] = useState([]);
+  const [ideas, setIdeas] = useState([]);
   const [concertToOpen, setConcertToOpen] = useState(null);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [membersError, setMembersError] = useState('');
@@ -2303,7 +2316,7 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [supaMembers, s, p, n, c, ev, ph] = await Promise.all([
+        const [supaMembers, s, p, n, c, ev, ph, id] = await Promise.all([
           withTimeout(fetchMembersFromSupabase(), 8000, null),
           withTimeout(loadOrSeedSongs(), 8000, DEFAULT_SONGS),
           withTimeout(fetchActivePhase(), 8000, null),
@@ -2311,6 +2324,7 @@ export default function App() {
           withTimeout(fetchConcerts(), 8000, []),
           withTimeout(fetchEvents(), 8000, []),
           withTimeout(fetchPhaseHistory(), 8000, []),
+          withTimeout(fetchIdeas(), 8000, []),
         ]);
         if (cancelled) return;
         if (supaMembers) {
@@ -2324,6 +2338,7 @@ export default function App() {
         setConcerts(c);
         setEvents(ev);
         setPhaseHistory(ph);
+        setIdeas(id);
         setCurrentUserId(loadPersonal('current-member-id'));
       } catch (e) {
         console.error('Failed to load app data', e);
@@ -2440,6 +2455,27 @@ export default function App() {
     }
   }, []);
 
+  const saveIdea = useCallback(async (idea) => {
+    setIdeas((prev) => {
+      const exists = prev.some((i) => i.id === idea.id);
+      return exists ? prev.map((i) => (i.id === idea.id ? idea : i)) : [idea, ...prev];
+    });
+    try {
+      await upsertRows('ideas', [idea]);
+    } catch (e) {
+      console.error("Erreur en enregistrant l'idée", e);
+    }
+  }, []);
+
+  const deleteIdea = useCallback(async (ideaId) => {
+    setIdeas((prev) => prev.filter((i) => i.id !== ideaId));
+    try {
+      await supabaseTable(`ideas?id=eq.${ideaId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    } catch (e) {
+      console.error("Erreur en supprimant l'idée", e);
+    }
+  }, []);
+
   const updatePhase = useCallback(async (updater) => {
     let prevPhase;
     let next;
@@ -2489,6 +2525,25 @@ export default function App() {
       console.error('Erreur en annulant la phase', e);
     }
   }, [updateSongs]);
+
+  // Lancement d'une phase de choix — déclenchable depuis le Répertoire par
+  // n'importe quel membre. Bascule automatiquement vers l'onglet Phase de
+  // choix pour enchaîner directement sur le workflow.
+  const launchPhase = useCallback(async () => {
+    const newPhase = {
+      id: uid('phs'),
+      initiated_by_user_id: currentUser.id,
+      current_step: 'proposal',
+      vetoes: [],
+      votes: [],
+      vote_drafts: {},
+      tie_break_votes: [],
+      created_at: new Date().toISOString(),
+    };
+    await updatePhase(newPhase);
+    await pushNotification(`🚀 ${currentUser.name} a lancé une nouvelle phase de choix !`, 'launch');
+    setTab('phase');
+  }, [currentUser, updatePhase, pushNotification]);
 
   const matchesNonArtistFilters = (s) => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false;
@@ -2547,6 +2602,10 @@ export default function App() {
         phaseActive={!!phase}
       />
 
+      {phase && tab !== 'phase' && (
+        <ActivePhaseBanner phase={phase} onOpen={() => setTab('phase')} />
+      )}
+
       <main style={{ maxWidth: 880, margin: '0 auto', padding: '20px 16px 64px', position: 'relative', zIndex: 1 }}>
         {tab === 'repertoire' && (
           <Repertoire
@@ -2560,6 +2619,8 @@ export default function App() {
             artistOptions={artistOptions}
             members={members}
             currentUser={currentUser}
+            phase={phase}
+            launchPhase={launchPhase}
             onAddClick={() => setShowAdd(true)}
             onEditClick={(song) => setEditingSong(song)}
           />
@@ -2604,6 +2665,17 @@ export default function App() {
             deleteEvent={deleteEvent}
             pushNotification={pushNotification}
             onViewConcert={(concertId) => { setConcertToOpen(concertId); setTab('concerts'); }}
+          />
+        )}
+
+        {tab === 'ideas' && (
+          <IdeasTab
+            ideas={ideas}
+            members={members}
+            currentUser={currentUser}
+            saveIdea={saveIdea}
+            deleteIdea={deleteIdea}
+            pushNotification={pushNotification}
           />
         )}
 
@@ -3000,6 +3072,7 @@ function TopBar({ currentUser, onSignOut, onOpenSettings, tab, setTab, phaseActi
           <TabButton icon={ListPlus} label="Phase de choix" active={tab === 'phase'} onClick={() => setTab('phase')} pulse={phaseActive} />
           <TabButton icon={Calendar} label="Rendez-vous" active={tab === 'rendezvous'} onClick={() => setTab('rendezvous')} />
           <TabButton icon={Mic2} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
+          <TabButton icon={Lightbulb} label="Boîte à idées" active={tab === 'ideas'} onClick={() => setTab('ideas')} />
           <TabButton icon={MessageCircle} label="Historique" active={tab === 'notifications'} onClick={() => setTab('notifications')} />
         </nav>
 
@@ -3016,6 +3089,28 @@ function TopBar({ currentUser, onSignOut, onOpenSettings, tab, setTab, phaseActi
         </div>
       </div>
     </header>
+  );
+}
+
+function ActivePhaseBanner({ phase, onOpen }) {
+  return (
+    <button
+      onClick={onOpen}
+      style={{
+        display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
+        background: '#F2A93B18', borderBottom: '1px solid #F2A93B55', color: '#F5F1E8',
+      }}
+    >
+      <div style={{ maxWidth: 880, margin: '0 auto', padding: '9px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+          <ListPlus size={15} color="#F2A93B" style={{ flexShrink: 0 }} />
+          Phase de choix en cours — étape « {STEP_LABEL[phase.current_step]} »
+        </div>
+        <div className="clx-mono" style={{ fontSize: 11, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          Voir <ChevronRight size={13} />
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -3045,9 +3140,40 @@ function TabButton({ icon: Icon, label, active, onClick, pulse }) {
 /*  REPERTOIRE TAB                                                      */
 /* ------------------------------------------------------------------ */
 
-function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, statusFilter, setStatusFilter, langFilter, setLangFilter, artistFilter, setArtistFilter, artistOptions, members, currentUser, onAddClick, onEditClick }) {
+function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, statusFilter, setStatusFilter, langFilter, setLangFilter, artistFilter, setArtistFilter, artistOptions, members, currentUser, phase, launchPhase, onAddClick, onEditClick }) {
+  const [launching, setLaunching] = useState(false);
+
+  const handleLaunch = async () => {
+    setLaunching(true);
+    try {
+      await launchPhase();
+    } finally {
+      setLaunching(false);
+    }
+  };
+
   return (
     <div>
+      {!phase && (
+        <div className="clx-card" style={{ padding: '14px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div className="clx-tape" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <ListPlus size={18} color="#F2A93B" style={{ flexShrink: 0 }} />
+            <div style={{ fontSize: 13, color: '#9A958C' }}>
+              Prêt·e à choisir les prochains morceaux à travailler ?
+            </div>
+          </div>
+          <button
+            onClick={handleLaunch}
+            disabled={launching}
+            className="clx-btn clx-btn-primary"
+            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: launching ? 0.6 : 1, flexShrink: 0 }}
+          >
+            {launching ? 'Lancement…' : 'Lancer une phase de choix'}
+          </button>
+        </div>
+      )}
+
       <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 14 }}>
           <span style={{ fontWeight: 700 }}>{songs.length}</span> morceau{songs.length > 1 ? 'x' : ''} affiché{songs.length > 1 ? 's' : ''}
@@ -3484,15 +3610,7 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
   }
 
   if (!phase) {
-    return (
-      <NoPhase
-        members={members}
-        currentUser={currentUser}
-        updatePhase={updatePhase}
-        pushNotification={pushNotification}
-        onShowHistory={() => setShowHistory(true)}
-      />
-    );
+    return <NoPhase onShowHistory={() => setShowHistory(true)} />;
   }
 
   const initiator = members.find((m) => m.id === phase.initiated_by_user_id);
@@ -3584,38 +3702,18 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
   );
 }
 
-function NoPhase({ members, currentUser, updatePhase, pushNotification, onShowHistory }) {
-  const launch = async () => {
-    const newPhase = {
-      id: uid('phs'),
-      initiated_by_user_id: currentUser.id,
-      current_step: 'proposal',
-      vetoes: [],
-      votes: [],
-      vote_drafts: {},
-      tie_break_votes: [],
-      created_at: new Date().toISOString(),
-    };
-    await updatePhase(newPhase);
-    await pushNotification(`🚀 ${currentUser.name} a lancé une nouvelle phase de choix !`, 'launch');
-  };
-
+function NoPhase({ onShowHistory }) {
   return (
     <div className="clx-card" style={{ padding: '40px 24px', textAlign: 'center' }}>
       <div className="clx-tape" />
       <ListPlus size={26} color="#F2A93B" style={{ marginBottom: 10 }} />
       <div className="clx-display" style={{ fontSize: 24, marginBottom: 6 }}>Aucune phase en cours</div>
       <div style={{ fontSize: 13, color: '#9A958C', maxWidth: 380, margin: '0 auto 20px' }}>
-        Proposition → Veto → Vote → Résultat. N'importe quel membre du groupe peut lancer une phase de choix.
+        Proposition → Veto → Vote → Résultat. Lance une nouvelle phase de choix depuis l'onglet Répertoire, où que tu sois — n'importe quel membre du groupe peut le faire.
       </div>
-      <button onClick={launch} className="clx-btn clx-btn-primary" style={{ padding: '10px 20px', borderRadius: 6, fontSize: 13 }}>
-        Lancer une phase de choix
+      <button onClick={onShowHistory} className="clx-btn clx-btn-ghost" style={{ padding: '7px 12px', borderRadius: 6, fontSize: 12 }}>
+        Voir l'historique des phases
       </button>
-      <div style={{ marginTop: 14 }}>
-        <button onClick={onShowHistory} className="clx-btn clx-btn-ghost" style={{ padding: '7px 12px', borderRadius: 6, fontSize: 12 }}>
-          Voir l'historique des phases
-        </button>
-      </div>
     </div>
   );
 }
@@ -5361,6 +5459,136 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
             style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, opacity: saving ? 0.6 : 1 }}
           >
             {saving ? 'Enregistrement…' : (isEdit ? 'Enregistrer les modifications' : 'Créer le rendez-vous')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  BOÎTE À IDÉES — suggestions d'amélioration de l'application        */
+/* ------------------------------------------------------------------ */
+
+function IdeasTab({ ideas, members, currentUser, saveIdea, deleteIdea, pushNotification }) {
+  const [content, setContent] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const filtered = statusFilter === 'all' ? ideas : ideas.filter((i) => i.status === statusFilter);
+
+  const submit = async () => {
+    if (!content.trim()) return;
+    setSubmitting(true);
+    const idea = {
+      id: uid('idea'),
+      content: content.trim(),
+      created_by_user_id: currentUser.id,
+      status: 'created',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      await saveIdea(idea);
+      await pushNotification(`💡 ${currentUser.name} a ajouté une idée : « ${idea.content.slice(0, 90)}${idea.content.length > 90 ? '…' : ''} ».`, 'info');
+      setContent('');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const changeStatus = async (idea, newStatus) => {
+    if (newStatus === idea.status) return;
+    await saveIdea({ ...idea, status: newStatus, updated_at: new Date().toISOString() });
+    if (newStatus === 'done') {
+      await pushNotification(`✅ Idée marquée comme terminée : « ${idea.content.slice(0, 90)}${idea.content.length > 90 ? '…' : ''} ».`, 'info');
+    }
+  };
+
+  const handleDelete = async (idea) => {
+    if (!window.confirm('Supprimer définitivement cette idée ? Cette action est irréversible.')) return;
+    await deleteIdea(idea.id);
+  };
+
+  return (
+    <div>
+      <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ fontSize: 14 }}>
+          <span style={{ fontWeight: 700 }}>{filtered.length}</span> idée{filtered.length > 1 ? 's' : ''}
+        </div>
+      </div>
+
+      <div className="clx-card" style={{ padding: 16, marginBottom: 18 }}>
+        <div className="clx-tape" />
+        <Field label="Nouvelle idée">
+          <textarea
+            className="clx-input"
+            style={{ minHeight: 72, resize: 'vertical', fontFamily: 'inherit' }}
+            placeholder="Décris ton idée d'amélioration pour l'application…"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
+        </Field>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+          <button
+            onClick={submit}
+            disabled={!content.trim() || submitting}
+            className="clx-btn clx-btn-primary"
+            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: (!content.trim() || submitting) ? 0.5 : 1 }}
+          >
+            <Plus size={15} /> Ajouter l'idée
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+        <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>Tous</Chip>
+        {IDEA_STATUS_ORDER.map((k) => (
+          <Chip key={k} active={statusFilter === k} onClick={() => setStatusFilter(k)}>{IDEA_STATUS[k].label}</Chip>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState text={ideas.length === 0 ? 'Aucune idée pour le moment — sois le premier à en proposer une !' : 'Aucune idée ne correspond à ce filtre.'} />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {filtered.map((idea) => (
+            <IdeaCard key={idea.id} idea={idea} members={members} onChangeStatus={changeStatus} onDelete={() => handleDelete(idea)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IdeaCard({ idea, members, onChangeStatus, onDelete }) {
+  const creator = members.find((m) => m.id === idea.created_by_user_id);
+  const statusInfo = IDEA_STATUS[idea.status] || IDEA_STATUS.created;
+  const when = new Date(idea.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div className="clx-card" style={{ padding: '14px 16px' }}>
+      <div style={{ fontSize: 14, whiteSpace: 'pre-wrap', marginBottom: 10 }}>{idea.content}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862' }}>
+          Par {creator ? creator.name : 'membre inconnu'} · {when}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <select
+            className="clx-input"
+            style={{ fontSize: 11, padding: '5px 8px', width: 'auto', color: statusInfo.color, borderColor: `${statusInfo.color}55` }}
+            value={idea.status}
+            onChange={(e) => onChangeStatus(idea, e.target.value)}
+          >
+            {IDEA_STATUS_ORDER.map((k) => <option key={k} value={k}>{IDEA_STATUS[k].label}</option>)}
+          </select>
+          <button
+            onClick={onDelete}
+            className="clx-btn clx-btn-ghost"
+            style={{ padding: '6px 7px', borderRadius: 6, display: 'flex', color: '#C1454B' }}
+            title="Supprimer cette idée"
+          >
+            <Trash2 size={13} />
           </button>
         </div>
       </div>
