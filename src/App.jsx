@@ -3143,7 +3143,7 @@ function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, sta
               Prêt·e à choisir les prochains morceaux à travailler ?
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={onShowPhaseHistory} className="clx-btn clx-btn-ghost" style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13 }}>
               Historique des phases
             </button>
@@ -3485,7 +3485,7 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
           <input className="clx-input" value={customUrl} onChange={(e) => setCustomUrl(e.target.value)} placeholder="Pour une composition ou une démo" />
         </Field>
         {error && <div style={{ color: '#C1454B', fontSize: 12 }}>{error}</div>}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
           {isEdit ? (
             <button
               type="button"
@@ -3495,12 +3495,12 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
                 }
               }}
               className="clx-btn"
-              style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55' }}
+              style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center' }}
             >
               Supprimer
             </button>
           ) : <span />}
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button onClick={onClose} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center' }}>Annuler</button>
             <button onClick={submit} className="clx-btn clx-btn-primary" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center' }}>{isEdit ? 'Enregistrer les modifications' : 'Ajouter au répertoire'}</button>
           </div>
@@ -4900,7 +4900,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {isEdit ? (
           <button
             onClick={handleDelete}
@@ -4910,7 +4910,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
             <Trash2 size={14} /> Supprimer le concert
           </button>
         ) : <span />}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center' }}>Annuler</button>
           <button
             onClick={submit}
@@ -5141,7 +5141,7 @@ function RendezVousCard({ item, members, onOpen, onQuickDelete, isNext }) {
           </div>
         </div>
 
-        <div style={{ flex: 1, minWidth: 180 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
             {isNext && (
@@ -5418,7 +5418,7 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
         ))}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {isEdit ? (
           <button
             onClick={handleDelete}
@@ -5428,7 +5428,7 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
             <Trash2 size={14} /> {isRecurring ? 'Supprimer toute la série' : 'Supprimer le rendez-vous'}
           </button>
         ) : <span />}
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center' }}>Annuler</button>
           <button
             onClick={submit}
