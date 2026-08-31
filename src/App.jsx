@@ -2785,7 +2785,13 @@ function GlobalStyle() {
       .clx-btn {
         font-family: 'Inter', sans-serif;
         font-weight: 600;
-        border: none;
+        /* 1px de bordure transparente par défaut (plutôt que "none") : les
+           variantes qui n'affichent pas de bordure visible (primary,
+           danger…) réservent quand même le même espace que celles qui en
+           ont une (ghost, boutons de suppression à bordure inline…), pour
+           que des boutons contigus dans une même rangée aient toujours
+           exactement la même hauteur, quelle que soit leur variante. */
+        border: 1px solid transparent;
         cursor: pointer;
         transition: transform 0.08s ease, filter 0.15s ease, background 0.15s ease;
       }
@@ -3138,7 +3144,7 @@ function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, sta
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button onClick={onShowPhaseHistory} className="clx-btn clx-btn-ghost" style={{ padding: '9px 12px', borderRadius: 6, fontSize: 12 }}>
+            <button onClick={onShowPhaseHistory} className="clx-btn clx-btn-ghost" style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13 }}>
               Historique des phases
             </button>
             <button
@@ -3653,7 +3659,7 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
         <button
           onClick={handleCancel}
           className="clx-btn"
-          style={{ padding: '9px 14px', borderRadius: 6, fontSize: 12, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
+          style={{ padding: '10px 14px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
         >
           <Ban size={14} /> Annuler la phase en cours
         </button>
