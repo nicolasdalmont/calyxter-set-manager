@@ -4441,8 +4441,6 @@ function generateOccurrences(event) {
   return occurrences;
 }
 
-const SETLIST_STATUSES = ['ready', 'to_prepare', 'rejected'];
-
 function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, deleteConcert, pushNotification, initialConcertId, onInitialConcertConsumed }) {
   const [editingConcert, setEditingConcert] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
 
@@ -4594,7 +4592,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   const [eventTime, setEventTime] = useState(formatConcertTime(concert?.event_time) || '');
   const [venue, setVenue] = useState(concert?.venue || '');
   const [selectedIds, setSelectedIds] = useState((concert?.song_ids || []).filter((id) => songs.some((s) => s.id === id)));
-  const [showRejected, setShowRejected] = useState(false);
+  const [statusFilter, setStatusFilter] = useState(new Set(['ready'])); // Prêt sélectionné par défaut ; multi-sélection libre
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -4624,9 +4622,16 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
     }
   };
 
-  const eligibleStatuses = showRejected ? SETLIST_STATUSES : ['ready', 'to_prepare'];
+  const toggleStatusFilter = (status) => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status); else next.add(status);
+      return next;
+    });
+  };
+
   const candidateSongs = songs
-    .filter((s) => !selectedIds.includes(s.id) && eligibleStatuses.includes(s.status))
+    .filter((s) => !selectedIds.includes(s.id) && statusFilter.has(s.status))
     .filter((s) => {
       if (!search.trim()) return true;
       const q = search.trim().toLowerCase();
@@ -4864,8 +4869,9 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        <Chip active={!showRejected} onClick={() => setShowRejected(false)}>Prêt + En préparation</Chip>
-        <Chip active={showRejected} onClick={() => setShowRejected(true)}>+ Inclure les morceaux sortis</Chip>
+        <Chip active={statusFilter.has('ready')} onClick={() => toggleStatusFilter('ready')}>Prêt</Chip>
+        <Chip active={statusFilter.has('to_prepare')} onClick={() => toggleStatusFilter('to_prepare')}>À préparer</Chip>
+        <Chip active={statusFilter.has('rejected')} onClick={() => toggleStatusFilter('rejected')}>Sorti</Chip>
       </div>
 
       {candidateSongs.length === 0 ? (
@@ -4981,6 +4987,7 @@ const RENDEZVOUS_KIND_ORDER = ['repetition', 'atelier', 'residence', 'autre', 'c
 
 function RendezVousTab({ events, concerts, members, currentUser, saveEvent, deleteEvent, pushNotification, onViewConcert }) {
   const [editingEvent, setEditingEvent] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
+  const [editingOccurrenceDate, setEditingOccurrenceDate] = useState(null); // occurrence précise cliquée dans la liste (pour une série récurrente)
   const [kindFilter, setKindFilter] = useState('all'); // 'all' ou une valeur de RENDEZVOUS_KIND_ORDER — choix unique, comme le Répertoire
 
   const allMerged = mergeEventsAndConcerts(events, concerts);
@@ -5003,9 +5010,10 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
     return (
       <RendezVousEditor
         event={editingEvent}
+        occurrenceDate={editingOccurrenceDate}
         members={members}
         currentUser={currentUser}
-        onCancel={() => setEditingEvent(undefined)}
+        onCancel={() => { setEditingEvent(undefined); setEditingOccurrenceDate(null); }}
         onSave={async (event, isNew) => {
           await saveEvent(event);
           await pushNotification(
@@ -5015,11 +5023,20 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
             'info'
           );
           setEditingEvent(undefined);
+          setEditingOccurrenceDate(null);
         }}
         onDelete={async (eventId, subject) => {
           await deleteEvent(eventId);
           await pushNotification(`🗑️ ${currentUser.name} a supprimé le rendez-vous « ${subject} ».`, 'info');
           setEditingEvent(undefined);
+          setEditingOccurrenceDate(null);
+        }}
+        onDeleteOccurrence={async (rawEvent, occurrenceDate) => {
+          const updated = { ...rawEvent, excluded_dates: [...new Set([...(rawEvent.excluded_dates || []), occurrenceDate])] };
+          await saveEvent(updated);
+          await pushNotification(`🗑️ ${currentUser.name} a supprimé une occurrence du rendez-vous récurrent « ${rawEvent.subject} » (${formatConcertDate(occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })}).`, 'info');
+          setEditingEvent(undefined);
+          setEditingOccurrenceDate(null);
         }}
       />
     );
@@ -5031,7 +5048,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
         <div style={{ fontSize: 14 }}>
           <span style={{ fontWeight: 700 }}>{merged.length}</span> rendez-vous
         </div>
-        <button onClick={() => setEditingEvent(null)} className="clx-btn clx-btn-primary" style={{ borderRadius: 6, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+        <button onClick={() => { setEditingEvent(null); setEditingOccurrenceDate(null); }} className="clx-btn clx-btn-primary" style={{ borderRadius: 6, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
           <Plus size={15} /> Nouveau rendez-vous
         </button>
       </div>
@@ -5058,18 +5075,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
                     onViewConcert(item.id);
                   } else {
                     setEditingEvent(item.raw);
-                  }
-                }}
-                onQuickDelete={item.source === 'concert' ? undefined : async () => {
-                  if (item.isRecurring) {
-                    if (!window.confirm(`Supprimer uniquement l'occurrence du ${formatConcertDate(item.occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })} pour « ${item.subject} » ? Les autres dates de la série ne seront pas affectées.`)) return;
-                    const updated = { ...item.raw, excluded_dates: [...new Set([...(item.raw.excluded_dates || []), item.occurrenceDate])] };
-                    await saveEvent(updated);
-                    await pushNotification(`🗑️ ${currentUser.name} a supprimé une occurrence du rendez-vous récurrent « ${item.subject} » (${formatConcertDate(item.occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })}).`, 'info');
-                  } else {
-                    if (!window.confirm(`Supprimer définitivement le rendez-vous « ${item.subject} » ? Cette action est irréversible.`)) return;
-                    await deleteEvent(item.raw.id);
-                    await pushNotification(`🗑️ ${currentUser.name} a supprimé le rendez-vous « ${item.subject} ».`, 'info');
+                    setEditingOccurrenceDate(item.occurrenceDate);
                   }
                 }}
               />
@@ -5081,7 +5087,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
   );
 }
 
-function RendezVousCard({ item, members, onOpen, onQuickDelete, isNext }) {
+function RendezVousCard({ item, members, onOpen, isNext }) {
   const kindInfo = item.source === 'concert' ? CONCERT_EVENT_KIND : (EVENT_KIND[item.kind] || EVENT_KIND.autre);
   const past = isPastConcert({ event_date: item.end_date || item.event_date });
   const isMultiDay = item.end_date && item.end_date !== item.event_date;
@@ -5108,90 +5114,71 @@ function RendezVousCard({ item, members, onOpen, onQuickDelete, isNext }) {
       : item.participant_ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', '));
 
   return (
-    <div
+    <button
+      onClick={onOpen}
       className="clx-card clx-row"
       style={{
         padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-        opacity: past ? 0.6 : 1,
+        width: '100%', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer', opacity: past ? 0.6 : 1,
         borderColor: isNext ? '#F2A93B' : undefined,
         boxShadow: isNext ? '0 0 0 1px #F2A93B55' : undefined,
       }}
     >
-      <button
-        onClick={onOpen}
-        className="clx-btn"
+      <div
+        className="clx-mono"
         style={{
-          flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-          background: 'transparent', border: 'none', padding: 0, textAlign: 'left', color: '#F5F1E8', cursor: 'pointer',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          width: 54, height: 54, borderRadius: 6, flexShrink: 0,
+          background: past ? '#101012' : `${kindInfo.color}22`, border: `1px solid ${past ? '#2A2A2E' : `${kindInfo.color}55`}`,
         }}
       >
-        <div
-          className="clx-mono"
-          style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            width: 54, height: 54, borderRadius: 6, flexShrink: 0,
-            background: past ? '#101012' : `${kindInfo.color}22`, border: `1px solid ${past ? '#2A2A2E' : `${kindInfo.color}55`}`,
-          }}
-        >
-          <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : kindInfo.color }}>
-            {formatConcertDate(item.event_date, { day: 'numeric' })}
-          </div>
-          <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
-            {formatConcertDate(item.event_date, { month: 'short' })}
-          </div>
+        <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : kindInfo.color }}>
+          {formatConcertDate(item.event_date, { day: 'numeric' })}
         </div>
+        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+          {formatConcertDate(item.event_date, { month: 'short' })}
+        </div>
+      </div>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
-            {isNext && (
-              <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
-            )}
-            {item.isRecurring && (
-              <span className="clx-mono" style={{ fontSize: 10, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 3 }}>
-                <Repeat size={10} /> récurrent
-              </span>
-            )}
-            {item.source === 'concert' && (
-              <span className="clx-mono" style={{ fontSize: 10, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 3 }}>
-                <Mic2 size={10} /> non modifiable ici
-              </span>
-            )}
-          </div>
-          <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>{item.subject}</div>
-          <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <Calendar size={11} /> {dateLabel}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
+          {isNext && (
+            <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
+          )}
+          {item.isRecurring && (
+            <span className="clx-mono" style={{ fontSize: 10, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Repeat size={10} /> récurrent
             </span>
-            {timeLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {timeLabel}</span>}
-            {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
-          </div>
-          <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
-            <Users size={11} /> {participantNames}
-          </div>
-          {recurrenceLabel && (
-            <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 3 }}>{recurrenceLabel}</div>
+          )}
+          {item.source === 'concert' && (
+            <span className="clx-mono" style={{ fontSize: 10, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 3 }}>
+              <Mic2 size={10} /> non modifiable ici
+            </span>
           )}
         </div>
+        <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>{item.subject}</div>
+        <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Calendar size={11} /> {dateLabel}
+          </span>
+          {timeLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {timeLabel}</span>}
+          {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
+        </div>
+        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+          <Users size={11} /> {participantNames}
+        </div>
+        {recurrenceLabel && (
+          <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 3 }}>{recurrenceLabel}</div>
+        )}
+      </div>
 
-        <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
-      </button>
-
-      {onQuickDelete && (
-        <button
-          onClick={onQuickDelete}
-          className="clx-btn clx-btn-ghost"
-          style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', flexShrink: 0, color: '#C1454B' }}
-          title={item.isRecurring ? 'Supprimer cette occurrence' : 'Supprimer ce rendez-vous'}
-        >
-          <Trash2 size={14} />
-        </button>
-      )}
-    </div>
+      <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+    </button>
   );
 }
 
-function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDelete }) {
+function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCancel, onSave, onDelete, onDeleteOccurrence }) {
   const isEdit = !!event;
   const [kind, setKind] = useState(event?.kind || 'repetition');
   const [subject, setSubject] = useState(event?.subject || '');
@@ -5283,13 +5270,21 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
     }
   };
 
+  const isRecurringSeries = !!(event?.recurrence_unit && event?.recurrence_interval && event?.recurrence_until);
+  const canDeleteOccurrence = isEdit && isRecurringSeries && !!occurrenceDate;
+
   const handleDelete = () => {
-    const isRecurringSeries = !!(event.recurrence_unit && event.recurrence_interval && event.recurrence_until);
     const message = isRecurringSeries
-      ? `Supprimer définitivement TOUTE la série « ${event.subject} » (toutes ses occurrences) ? Pour ne retirer qu'une seule date, utilise plutôt le bouton de suppression sur cette occurrence dans la liste. Cette action est irréversible.`
+      ? `Supprimer définitivement TOUTE la série « ${event.subject} » (toutes ses occurrences) ? Pour ne retirer qu'une seule date, utilise plutôt "Supprimer cette occurrence" ci-dessous. Cette action est irréversible.`
       : `Supprimer définitivement le rendez-vous « ${event.subject} » ? Cette action est irréversible.`;
     if (window.confirm(message)) {
       onDelete(event.id, event.subject);
+    }
+  };
+
+  const handleDeleteOccurrence = () => {
+    if (window.confirm(`Supprimer uniquement l'occurrence du ${formatConcertDate(occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })} pour « ${event.subject} » ? Les autres dates de la série ne seront pas affectées.`)) {
+      onDeleteOccurrence(event, occurrenceDate);
     }
   };
 
@@ -5420,13 +5415,24 @@ function RendezVousEditor({ event, members, currentUser, onCancel, onSave, onDel
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {isEdit ? (
-          <button
-            onClick={handleDelete}
-            className="clx-btn"
-            style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            <Trash2 size={14} /> {isRecurring ? 'Supprimer toute la série' : 'Supprimer le rendez-vous'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {canDeleteOccurrence && (
+              <button
+                onClick={handleDeleteOccurrence}
+                className="clx-btn"
+                style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <Trash2 size={14} /> Supprimer cette occurrence
+              </button>
+            )}
+            <button
+              onClick={handleDelete}
+              className="clx-btn"
+              style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Trash2 size={14} /> {isRecurringSeries ? 'Supprimer toute la série' : 'Supprimer le rendez-vous'}
+            </button>
+          </div>
         ) : <span />}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center' }}>Annuler</button>
