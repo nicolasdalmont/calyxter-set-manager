@@ -1449,8 +1449,12 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
   const nextConcert = mergeEventsAndConcerts([], concerts)
     .find((item) => (item.end_date || item.event_date) >= todayStr) || null;
 
-  const readyCount = songs.filter((s) => s.status === 'ready').length;
-  const toPrepareCount = songs.filter((s) => s.status === 'to_prepare').length;
+  const readySongs = songs.filter((s) => s.status === 'ready');
+  const toPrepareSongs = songs.filter((s) => s.status === 'to_prepare');
+  const readyCount = readySongs.length;
+  const toPrepareCount = toPrepareSongs.length;
+  const readySeconds = readySongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+  const toPrepareSeconds = toPrepareSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
 
   // Propositions "depuis la fin de la dernière phase clôturée" : phaseHistory
   // est trié du plus récent au plus ancien (voir fetchPhaseHistory), donc
@@ -1583,10 +1587,12 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
           <div style={{ flex: '1 1 160px', background: '#101012', border: '1px solid #2A2A2E', borderRadius: 6, padding: '14px 16px' }}>
             <div className="clx-mono" style={{ fontSize: 30, fontWeight: 700, color: '#6FA287', textShadow: '0 0 14px rgba(111,162,135,0.35)' }}>{readyCount}</div>
             <div style={{ fontSize: 12, color: '#9A958C', marginTop: 2 }}>morceau{readyCount > 1 ? 'x' : ''} prêt{readyCount > 1 ? 's' : ''}</div>
+            <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginTop: 6 }}>Durée théorique : {formatTotalDuration(readySeconds)}</div>
           </div>
           <div style={{ flex: '1 1 160px', background: '#101012', border: '1px solid #2A2A2E', borderRadius: 6, padding: '14px 16px' }}>
             <div className="clx-mono" style={{ fontSize: 30, fontWeight: 700, color: '#E8B04B', textShadow: '0 0 14px rgba(232,176,75,0.35)' }}>{toPrepareCount}</div>
             <div style={{ fontSize: 12, color: '#9A958C', marginTop: 2 }}>en préparation</div>
+            <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginTop: 6 }}>Durée théorique : {formatTotalDuration(toPrepareSeconds)}</div>
           </div>
           <button onClick={() => setTab('repertoire')} className="clx-mono" style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginLeft: 'auto' }}>
             Voir le répertoire <ChevronRight size={13} />
