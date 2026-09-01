@@ -4,7 +4,7 @@ import {
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
-  Home, ClipboardList
+  Home, ClipboardList, Drum, Guitar, Piano
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -170,7 +170,19 @@ async function supabaseTable(path, options = {}) {
 }
 
 async function fetchMembersFromSupabase() {
-  return supabaseTable('members?select=id,name,instrument,created_at,last_seen_at&order=name.asc');
+  return supabaseTable('members?select=id,name,instrument,created_at,last_activity_at&order=name.asc');
+}
+
+// Signale une activité de l'utilisateur·rice courant·e (tamponnage serveur
+// de last_activity_at, via member-auth — cf. onglet Accueil). Volontairement
+// silencieux en cas d'échec : un raté ne doit jamais empêcher l'usage normal
+// de l'appli, ce n'est qu'un indicateur de confort.
+async function touchMemberActivity(memberId) {
+  try {
+    await callMemberAuth('touch', memberId);
+  } catch (e) {
+    console.error("Erreur en signalant l'activité", e);
+  }
 }
 
 async function upsertRows(table, rows) {
@@ -416,11 +428,23 @@ export default function App() {
   const onAuthenticated = useCallback((member) => {
     setCurrentUserId(member.id);
     savePersonal('current-member-id', member.id);
-    // Reflet optimiste : le member-auth vient de tamponner last_seen_at
-    // côté serveur, on met à jour localement sans attendre un rechargement
-    // complet pour que l'écran d'accueil affiche "à l'instant" tout de suite.
-    setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, last_seen_at: new Date().toISOString() } : m)));
   }, []);
+
+  // "Dernière activité" (écran Accueil, section Dernières connexions) : le
+  // mot de passe n'est demandé qu'à la toute première connexion — ensuite,
+  // l'identité reste mémorisée localement (voir loadPersonal ci-dessus) et
+  // l'appli ne redemande jamais de se reconnecter. Se contenter de tamponner
+  // l'activité au moment de l'authentification (member-auth) sous-estimerait
+  // donc très largement la fréquence d'usage réelle. On la retamponne ici,
+  // à chaque ouverture de l'application avec un·e utilisateur·rice connu·e —
+  // connexion fraîche ou session mémorisée confondues, puisque les deux
+  // passent par un changement de currentUserId.
+  useEffect(() => {
+    if (!currentUserId) return;
+    const nowIso = new Date().toISOString();
+    setMembers((prev) => prev.map((m) => (m.id === currentUserId ? { ...m, last_activity_at: nowIso } : m)));
+    touchMemberActivity(currentUserId);
+  }, [currentUserId]);
 
   const signOut = useCallback(() => {
     setCurrentUserId(null);
@@ -1238,10 +1262,16 @@ function avatarColorFor(name) {
 // Horodatage relatif pour "Dernières connexions" : granularité décroissante
 // (minutes puis heures puis jours), avec un repère "hier" explicite au-delà
 // de 24 h passées minuit, comme dans la maquette validée.
+//
+// NB : la donnée sous-jacente (last_activity_at) est une dernière ACTIVITÉ,
+// pas une dernière authentification — le mot de passe n'est demandé qu'à la
+// toute première connexion, l'identité restant mémorisée ensuite (voir
+// touchMemberActivity), donc s'appuyer sur les seuls événements de connexion
+// sous-estimerait très largement la fréquence d'usage réelle.
 function formatRelativeTime(iso) {
-  if (!iso) return 'Jamais connecté·e';
+  if (!iso) return 'Aucune activité';
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return 'Jamais connecté·e';
+  if (Number.isNaN(date.getTime())) return 'Aucune activité';
   const now = new Date();
   const diffMin = Math.floor((now - date) / 60000);
   if (diffMin < 1) return "à l'instant";
@@ -1258,7 +1288,7 @@ function formatRelativeTime(iso) {
   return formatConcertDate(toISODate(date), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// Vert (<1h), ambre (<24h), gris au-delà ou si jamais connecté·e.
+// Vert (<1h), ambre (<24h), gris au-delà ou si aucune activité enregistrée.
 function lastSeenDotColor(iso) {
   if (!iso) return '#6B6862';
   const date = new Date(iso);
@@ -1267,6 +1297,102 @@ function lastSeenDotColor(iso) {
   if (diffH < 1) return '#6FA287';
   if (diffH < 24) return '#E8B04B';
   return '#6B6862';
+}
+
+// Icône par membre, en lien avec son instrument (couleur de fond = avatar
+// habituel, dérivé du nom via avatarColorFor). Basée sur des icônes lucide
+// déjà utilisées ailleurs dans l'appli — aucune nouvelle dépendance — sauf
+// pour Niko (basse) : lucide n'a pas d'icône dédiée, donc BassIcon reprend
+// l'icône guitare réelle et l'étire/réduit par transformation SVG plutôt
+// que de redessiner les tracés à la main (voir BassIcon ci-dessous).
+//
+// Associé par prénom exact (colonne `name` en base) car deux membres
+// partagent le même instrument (Véro et Gawel, chant) mais doivent avoir
+// des icônes visuellement différentes (micro retourné) : un simple mappage
+// par instrument ne suffirait pas à les distinguer.
+const MEMBER_ICON_BY_NAME = {
+  Do: { Icon: Drum },
+  Dave: { Icon: Piano },
+  Alex: { Icon: Guitar },
+  Véro: { Icon: Mic2, mirror: true },
+  Gawel: { Icon: Mic2, mirror: false },
+};
+const AVATAR_INK = '#16130A';
+
+// Icône "basse" : aucune icône dédiée dans lucide (manque connu de la
+// bibliothèque) — on repart donc de la vraie icône guitare et on l'étire
+// après coup par transformation SVG (translate/scale), plutôt que de
+// recopier à la main les tracés de la guitare (risque d'erreur sur des
+// courbes de Bézier complexes). Le manche s'allonge du côté de la tête,
+// qui reste à son extrémité ; le corps est légèrement réduit pour que
+// l'icône garde le même encombrement global.
+function BassIcon({ size, color }) {
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    const svg = wrapRef.current && wrapRef.current.querySelector('svg');
+    if (!svg || svg.dataset.bassStretched) return;
+    const [neck, headstock, tick, body] = svg.querySelectorAll('path');
+    if (!neck || !headstock || !tick || !body) return;
+
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const wrap = (el, transform) => {
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.setAttribute('transform', transform);
+      el.replaceWith(g);
+      g.appendChild(el);
+    };
+
+    // Point où le manche rejoint le corps sur l'icône guitare d'origine :
+    // reste fixe, c'est le pivot des transformations.
+    const pivot = { x: 11.9, y: 12.1 };
+    // Extrémité du manche côté tête, avant allongement.
+    const neckEnd = { x: 16.414, y: 7.586 };
+    const stretch = 1.2;
+    const bodyShrink = 0.87;
+
+    wrap(neck, `translate(${pivot.x} ${pivot.y}) scale(${stretch}) translate(${-pivot.x} ${-pivot.y})`);
+
+    const neckEndStretched = {
+      x: pivot.x + (neckEnd.x - pivot.x) * stretch,
+      y: pivot.y + (neckEnd.y - pivot.y) * stretch,
+    };
+    wrap(headstock, `translate(${neckEndStretched.x - neckEnd.x} ${neckEndStretched.y - neckEnd.y})`);
+
+    const bodyGroup = document.createElementNS(SVG_NS, 'g');
+    bodyGroup.setAttribute('transform', `translate(${pivot.x} ${pivot.y}) scale(${bodyShrink}) translate(${-pivot.x} ${-pivot.y})`);
+    tick.replaceWith(bodyGroup);
+    bodyGroup.appendChild(tick);
+    bodyGroup.appendChild(body);
+
+    svg.dataset.bassStretched = 'true';
+  }, []);
+
+  return (
+    <span ref={wrapRef} style={{ display: 'inline-flex' }}>
+      <Guitar size={size} color={color} />
+    </span>
+  );
+}
+
+// Icône d'un membre pour les avatars (écran Accueil). À défaut de
+// correspondance (membre non listé dans MEMBER_ICON_BY_NAME), on retombe
+// sur l'initiale du prénom — le comportement d'origine — plutôt que
+// d'afficher une icône générique qui ne représenterait rien.
+function MemberAvatarIcon({ member, size }) {
+  if (member.name === 'Niko') {
+    return <BassIcon size={size} color={AVATAR_INK} />;
+  }
+  const entry = MEMBER_ICON_BY_NAME[member.name];
+  if (!entry) {
+    return (
+      <span className="clx-display" style={{ fontSize: size, color: AVATAR_INK }}>
+        {(member.name || '?').charAt(0).toUpperCase()}
+      </span>
+    );
+  }
+  const { Icon, mirror } = entry;
+  return <Icon size={size} color={AVATAR_INK} style={mirror ? { transform: 'scaleX(-1)' } : undefined} />;
 }
 
 // Petite carte compacte pour "Prochain rendez-vous" / "Prochain concert" —
@@ -1336,10 +1462,10 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
   const hasVoted = !!(phase && phase.votes || []).some((v) => v.user_id === currentUser.id);
 
   const lastSeenSorted = [...members].sort((a, b) => {
-    if (!a.last_seen_at && !b.last_seen_at) return a.name.localeCompare(b.name, 'fr');
-    if (!a.last_seen_at) return 1;
-    if (!b.last_seen_at) return -1;
-    return b.last_seen_at.localeCompare(a.last_seen_at);
+    if (!a.last_activity_at && !b.last_activity_at) return a.name.localeCompare(b.name, 'fr');
+    if (!a.last_activity_at) return 1;
+    if (!b.last_activity_at) return -1;
+    return b.last_activity_at.localeCompare(a.last_activity_at);
   });
 
   const NUDGE = {
@@ -1353,10 +1479,20 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
 
   return (
     <div>
-      <div style={{ marginBottom: 24 }}>
-        <div className="clx-display" style={{ fontSize: 36, lineHeight: 1 }}>Bonjour, {currentUser.name}</div>
-        <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', marginTop: 6 }}>
-          {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · Voici où en est le groupe.
+      <div style={{ marginBottom: 24, display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div
+          style={{
+            width: 48, height: 48, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, background: avatarColorFor(currentUser.name),
+          }}
+        >
+          <MemberAvatarIcon member={currentUser} size={22} />
+        </div>
+        <div>
+          <div className="clx-display" style={{ fontSize: 36, lineHeight: 1 }}>Bonjour, {currentUser.name}</div>
+          <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', marginTop: 6 }}>
+            {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · Voici où en est le groupe.
+          </div>
         </div>
       </div>
 
@@ -1467,10 +1603,9 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
           {lastSeenSorted.map((m, i) => (
             <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22' }}>
               <div
-                className="clx-display"
-                style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0, color: '#16130A', background: avatarColorFor(m.name) }}
+                style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: avatarColorFor(m.name) }}
               >
-                {(m.name || '?').charAt(0).toUpperCase()}
+                <MemberAvatarIcon member={m} size={16} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>
@@ -1478,8 +1613,8 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
                 </div>
                 <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862' }}>{m.instrument}</div>
               </div>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lastSeenDotColor(m.last_seen_at) }} />
-              <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', width: 90, textAlign: 'right', flexShrink: 0 }}>{formatRelativeTime(m.last_seen_at)}</div>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lastSeenDotColor(m.last_activity_at) }} />
+              <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', width: 90, textAlign: 'right', flexShrink: 0 }}>{formatRelativeTime(m.last_activity_at)}</div>
             </div>
           ))}
         </div>
