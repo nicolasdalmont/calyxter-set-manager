@@ -1248,10 +1248,11 @@ function TabButton({ icon: Icon, label, active, onClick, pulse }) {
 /*  ACCUEIL TAB                                                         */
 /* ------------------------------------------------------------------ */
 
-// Palette cyclique pour les avatars des membres (initiale sur fond coloré) :
-// aucune couleur n'est stockée en base, on la dérive du nom pour qu'un même
-// membre garde toujours la même couleur d'une session à l'autre.
-const AVATAR_PALETTE = ['#F2A93B', '#7C8BA8', '#E8B04B', '#6FA287', '#C1454B', '#9A958C'];
+// Palette des cercles d'avatar (icône par membre, § 11.5) : seulement deux
+// couleurs, ambre et gris, alternées par membre. Aucune couleur n'est
+// stockée en base, on la dérive du nom pour qu'un même membre garde
+// toujours la même couleur d'une session à l'autre.
+const AVATAR_PALETTE = ['#E8B04B', '#9A958C'];
 function avatarColorFor(name) {
   const str = name || '';
   let hash = 0;
@@ -1288,14 +1289,15 @@ function formatRelativeTime(iso) {
   return formatConcertDate(toISODate(date), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// Deux états seulement, jamais de rouge : ambre (jaune) pour une activité
-// de moins de 24h, gris au-delà ou si aucune activité enregistrée.
+// Vert (<1h), ambre (<24h), gris au-delà ou si aucune activité enregistrée.
 function lastSeenDotColor(iso) {
   if (!iso) return '#6B6862';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '#6B6862';
   const diffH = (Date.now() - date.getTime()) / 3600000;
-  return diffH < 24 ? '#E8B04B' : '#6B6862';
+  if (diffH < 1) return '#6FA287';
+  if (diffH < 24) return '#E8B04B';
+  return '#6B6862';
 }
 
 // Icône par membre, en lien avec son instrument (couleur de fond = avatar
