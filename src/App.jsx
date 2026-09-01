@@ -1288,15 +1288,14 @@ function formatRelativeTime(iso) {
   return formatConcertDate(toISODate(date), { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// Vert (<1h), ambre (<24h), gris au-delà ou si aucune activité enregistrée.
+// Deux états seulement, jamais de rouge : ambre (jaune) pour une activité
+// de moins de 24h, gris au-delà ou si aucune activité enregistrée.
 function lastSeenDotColor(iso) {
   if (!iso) return '#6B6862';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '#6B6862';
   const diffH = (Date.now() - date.getTime()) / 3600000;
-  if (diffH < 1) return '#6FA287';
-  if (diffH < 24) return '#E8B04B';
-  return '#6B6862';
+  return diffH < 24 ? '#E8B04B' : '#6B6862';
 }
 
 // Icône par membre, en lien avec son instrument (couleur de fond = avatar
