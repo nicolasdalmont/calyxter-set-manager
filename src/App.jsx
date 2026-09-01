@@ -3,7 +3,8 @@ import {
   Search, Plus, X, Check, ExternalLink, ListPlus, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
-  Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb
+  Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
+  Home, ClipboardList
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -169,7 +170,7 @@ async function supabaseTable(path, options = {}) {
 }
 
 async function fetchMembersFromSupabase() {
-  return supabaseTable('members?select=id,name,instrument,created_at&order=name.asc');
+  return supabaseTable('members?select=id,name,instrument,created_at,last_seen_at&order=name.asc');
 }
 
 async function upsertRows(table, rows) {
@@ -359,7 +360,7 @@ export default function App() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [membersError, setMembersError] = useState('');
 
-  const [tab, setTab] = useState('repertoire');
+  const [tab, setTab] = useState('accueil');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [langFilter, setLangFilter] = useState('all');
@@ -415,6 +416,10 @@ export default function App() {
   const onAuthenticated = useCallback((member) => {
     setCurrentUserId(member.id);
     savePersonal('current-member-id', member.id);
+    // Reflet optimiste : le member-auth vient de tamponner last_seen_at
+    // côté serveur, on met à jour localement sans attendre un rechargement
+    // complet pour que l'écran d'accueil affiche "à l'instant" tout de suite.
+    setMembers((prev) => prev.map((m) => (m.id === member.id ? { ...m, last_seen_at: new Date().toISOString() } : m)));
   }, []);
 
   const signOut = useCallback(() => {
@@ -662,6 +667,19 @@ export default function App() {
       )}
 
       <main style={{ maxWidth: 880, margin: '0 auto', padding: '20px 16px 64px', position: 'relative', zIndex: 1 }}>
+        {tab === 'accueil' && (
+          <AccueilTab
+            currentUser={currentUser}
+            members={members}
+            songs={songs}
+            phase={phase}
+            phaseHistory={phaseHistory}
+            events={events}
+            concerts={concerts}
+            setTab={setTab}
+          />
+        )}
+
         {tab === 'repertoire' && (
           <Repertoire
             songs={filteredSongs}
@@ -934,6 +952,27 @@ function GlobalStyle() {
         .clx-tab-btn { padding: 9px 10px; }
       }
 
+      .clx-home-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+      @media (max-width: 640px) {
+        .clx-home-grid { grid-template-columns: 1fr; }
+      }
+
+      .section-label {
+        font-family: 'Space Mono', monospace;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: #9A958C;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
       @media (max-width: 560px) {
         .clx-song-info { flex: 1 1 100%; order: 1; }
         .clx-song-cover { order: 0; }
@@ -1116,6 +1155,7 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
         </div>
 
         <nav className="clx-topnav" style={{ display: 'flex', gap: 4 }}>
+          <TabButton icon={Home} label="Accueil" active={tab === 'accueil'} onClick={() => setTab('accueil')} />
           <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} pulse={phaseActive} />
           <TabButton icon={Calendar} label="Rendez-vous" active={tab === 'rendezvous'} onClick={() => setTab('rendezvous')} />
           <TabButton icon={Mic2} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
@@ -1177,6 +1217,274 @@ function TabButton({ icon: Icon, label, active, onClick, pulse }) {
       <span className="clx-tab-label">{label}</span>
       {pulse && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#C1454B', marginLeft: 2, flexShrink: 0 }} />}
     </button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  ACCUEIL TAB                                                         */
+/* ------------------------------------------------------------------ */
+
+// Palette cyclique pour les avatars des membres (initiale sur fond coloré) :
+// aucune couleur n'est stockée en base, on la dérive du nom pour qu'un même
+// membre garde toujours la même couleur d'une session à l'autre.
+const AVATAR_PALETTE = ['#F2A93B', '#7C8BA8', '#E8B04B', '#6FA287', '#C1454B', '#9A958C'];
+function avatarColorFor(name) {
+  const str = name || '';
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+
+// Horodatage relatif pour "Dernières connexions" : granularité décroissante
+// (minutes puis heures puis jours), avec un repère "hier" explicite au-delà
+// de 24 h passées minuit, comme dans la maquette validée.
+function formatRelativeTime(iso) {
+  if (!iso) return 'Jamais connecté·e';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Jamais connecté·e';
+  const now = new Date();
+  const diffMin = Math.floor((now - date) / 60000);
+  if (diffMin < 1) return "à l'instant";
+  if (diffMin < 60) return `il y a ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `il y a ${diffH} h`;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayDiff = Math.round((startOfToday - startOfDate) / 86400000);
+  if (dayDiff === 1) {
+    return `hier, ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  }
+  if (dayDiff > 1 && dayDiff < 7) return `il y a ${dayDiff} jours`;
+  return formatConcertDate(toISODate(date), { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// Vert (<1h), ambre (<24h), gris au-delà ou si jamais connecté·e.
+function lastSeenDotColor(iso) {
+  if (!iso) return '#6B6862';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '#6B6862';
+  const diffH = (Date.now() - date.getTime()) / 3600000;
+  if (diffH < 1) return '#6FA287';
+  if (diffH < 24) return '#E8B04B';
+  return '#6B6862';
+}
+
+// Petite carte compacte pour "Prochain rendez-vous" / "Prochain concert" —
+// reprend la forme des occurrences fusionnées par mergeEventsAndConcerts
+// (mêmes champs que RendezVousCard) mais dans une présentation resserrée,
+// sans bouton d'action (clic = navigation vers l'onglet correspondant).
+function HomeAgendaCard({ item, onOpen }) {
+  const kindInfo = item.source === 'concert' ? CONCERT_EVENT_KIND : (EVENT_KIND[item.kind] || EVENT_KIND.autre);
+  const start = formatConcertTime(item.start_time);
+  const end = formatConcertTime(item.end_time);
+  const timeLabel = item.all_day ? 'Toute la journée' : (start ? (end ? `${start} – ${end}` : start) : null);
+
+  return (
+    <button
+      onClick={onOpen}
+      className="clx-card"
+      style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer' }}
+    >
+      <div className="clx-tape" style={item.source === 'concert' ? { background: 'rgba(193,69,75,0.85)' } : undefined} />
+      <div
+        className="clx-mono"
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          width: 54, height: 54, borderRadius: 6, flexShrink: 0,
+          background: `${kindInfo.color}22`, border: `1px solid ${kindInfo.color}55`,
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: kindInfo.color }}>
+          {formatConcertDate(item.event_date, { day: 'numeric' })}
+        </div>
+        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+          {formatConcertDate(item.event_date, { month: 'short' })}
+        </div>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
+        <div style={{ fontWeight: 700, fontSize: 15, marginTop: 5 }}>{item.subject}</div>
+        {(timeLabel || item.venue) && (
+          <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+            <Clock size={11} style={{ flexShrink: 0 }} />
+            {[timeLabel, item.venue].filter(Boolean).join(' · ')}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, concerts, setTab }) {
+  const todayStr = toISODate(new Date());
+
+  const nextEvent = mergeEventsAndConcerts(events, [])
+    .find((item) => (item.end_date || item.event_date) >= todayStr) || null;
+  const nextConcert = mergeEventsAndConcerts([], concerts)
+    .find((item) => (item.end_date || item.event_date) >= todayStr) || null;
+
+  const readyCount = songs.filter((s) => s.status === 'ready').length;
+  const toPrepareCount = songs.filter((s) => s.status === 'to_prepare').length;
+
+  // Propositions "depuis la fin de la dernière phase clôturée" : phaseHistory
+  // est trié du plus récent au plus ancien (voir fetchPhaseHistory), donc
+  // phaseHistory[0].closed_at borne la fenêtre. À défaut d'historique, on
+  // compte toutes les propositions encore au statut "Proposé".
+  const sinceLastClosed = phaseHistory[0]?.closed_at || null;
+  const proposalsSinceLastClosed = songs.filter((s) => s.status === 'proposed' && (!sinceLastClosed || s.created_at >= sinceLastClosed)).length;
+
+  const hasVoted = !!(phase && phase.votes || []).some((v) => v.user_id === currentUser.id);
+
+  const lastSeenSorted = [...members].sort((a, b) => {
+    if (!a.last_seen_at && !b.last_seen_at) return a.name.localeCompare(b.name, 'fr');
+    if (!a.last_seen_at) return 1;
+    if (!b.last_seen_at) return -1;
+    return b.last_seen_at.localeCompare(a.last_seen_at);
+  });
+
+  const NUDGE = {
+    proposal: { color: '#7C8BA8', text: "Pense à partager tes propositions si tu ne l'as pas encore fait." },
+    veto: { color: '#C1454B', text: "Pense à écouter les propositions pour te faire une idée, tu as le droit de mettre un veto sur les morceaux que tu ne veux pas jouer." },
+    vote: hasVoted
+      ? { color: '#6FA287', text: "On attend les derniers votes avant d'annoncer les résultats." }
+      : { color: '#E8B04B', text: "Pense à valider ton vote que l'on puisse annoncer les résultats." },
+  };
+  const nudge = phase ? NUDGE[phase.current_step] : null;
+
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <div className="clx-display" style={{ fontSize: 36, lineHeight: 1 }}>Bonjour, {currentUser.name}</div>
+        <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', marginTop: 6 }}>
+          {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · Voici où en est le groupe.
+        </div>
+      </div>
+
+      <div className="clx-home-grid" style={{ marginBottom: 20 }}>
+        <div>
+          <div className="section-label">
+            <Calendar size={12} /> Prochain rendez-vous
+          </div>
+          {nextEvent ? (
+            <HomeAgendaCard item={nextEvent} onOpen={() => setTab('rendezvous')} />
+          ) : (
+            <EmptyState text="Aucun rendez-vous à venir." />
+          )}
+        </div>
+        <div>
+          <div className="section-label">
+            <Mic2 size={12} /> Prochain concert
+          </div>
+          {nextConcert ? (
+            <HomeAgendaCard item={nextConcert} onOpen={() => setTab('concerts')} />
+          ) : (
+            <EmptyState text="Aucun concert à venir." />
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div className="section-label">
+          <ClipboardList size={12} /> Phase de choix
+        </div>
+        {phase ? (
+          <div className="clx-card" style={{ padding: 18 }}>
+            <div className="clx-tape" />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+              <div className="clx-display" style={{ fontSize: 20 }}>Phase de choix en cours</div>
+              <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>
+                ÉTAPE : {STEP_LABEL[phase.current_step].toUpperCase()}
+              </span>
+            </div>
+
+            <div style={{ marginBottom: nudge ? 16 : 20 }}>
+              <Stepper current={phase.current_step} />
+            </div>
+
+            {nudge && (
+              <div className="clx-card" style={{ padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8, borderColor: `${nudge.color}55` }}>
+                <AlertTriangle size={14} color={nudge.color} style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: 13 }}>{nudge.text}</span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#101012', border: '1px solid #2A2A2E', borderRadius: 6, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#9A958C' }}>
+                <ListPlus size={13} color="#7C8BA8" style={{ flexShrink: 0 }} />
+                <span><strong style={{ color: '#F5F1E8' }}>{proposalsSinceLastClosed}</strong> morceau{proposalsSinceLastClosed > 1 ? 'x' : ''} proposé{proposalsSinceLastClosed > 1 ? 's' : ''} depuis la dernière phase clôturée</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#9A958C' }}>
+                <Ban size={13} color="#C1454B" style={{ flexShrink: 0 }} />
+                <span><strong style={{ color: '#F5F1E8' }}>{phase.vetoes.length}</strong> rejeté{phase.vetoes.length > 1 ? 's' : ''} par veto</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#9A958C' }}>
+                <Users size={13} color="#F2A93B" style={{ flexShrink: 0 }} />
+                <span><strong style={{ color: '#F5F1E8' }}>{phase.votes.length}/{members.length}</strong> membres ont voté</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setTab('phase')} className="clx-mono" style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                Voir la phase de choix <ChevronRight size={13} />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="clx-card" style={{ padding: '28px 20px', textAlign: 'center' }}>
+            <div className="clx-tape" />
+            <div className="clx-display" style={{ fontSize: 18, marginBottom: 4 }}>Aucune phase de choix en cours</div>
+            <div style={{ fontSize: 12, color: '#9A958C' }}>Lance-en une depuis le Répertoire quand le groupe est prêt.</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div className="section-label">
+          <ListMusic size={12} /> Répertoire
+        </div>
+        <div className="clx-card" style={{ padding: 18, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div className="clx-tape" />
+          <div style={{ flex: '1 1 160px', background: '#101012', border: '1px solid #2A2A2E', borderRadius: 6, padding: '14px 16px' }}>
+            <div className="clx-mono" style={{ fontSize: 30, fontWeight: 700, color: '#6FA287', textShadow: '0 0 14px rgba(111,162,135,0.35)' }}>{readyCount}</div>
+            <div style={{ fontSize: 12, color: '#9A958C', marginTop: 2 }}>morceau{readyCount > 1 ? 'x' : ''} prêt{readyCount > 1 ? 's' : ''}</div>
+          </div>
+          <div style={{ flex: '1 1 160px', background: '#101012', border: '1px solid #2A2A2E', borderRadius: 6, padding: '14px 16px' }}>
+            <div className="clx-mono" style={{ fontSize: 30, fontWeight: 700, color: '#E8B04B', textShadow: '0 0 14px rgba(232,176,75,0.35)' }}>{toPrepareCount}</div>
+            <div style={{ fontSize: 12, color: '#9A958C', marginTop: 2 }}>en préparation</div>
+          </div>
+          <button onClick={() => setTab('repertoire')} className="clx-mono" style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginLeft: 'auto' }}>
+            Voir le répertoire <ChevronRight size={13} />
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div className="section-label">
+          <Users size={12} /> Dernières connexions
+        </div>
+        <div className="clx-card" style={{ padding: '6px 16px' }}>
+          <div className="clx-tape" />
+          {lastSeenSorted.map((m, i) => (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22' }}>
+              <div
+                className="clx-display"
+                style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0, color: '#16130A', background: avatarColorFor(m.name) }}
+              >
+                {(m.name || '?').charAt(0).toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  {m.name} {m.id === currentUser.id && <span style={{ color: '#6B6862', fontWeight: 400 }}>— toi</span>}
+                </div>
+                <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862' }}>{m.instrument}</div>
+              </div>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lastSeenDotColor(m.last_seen_at) }} />
+              <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', width: 90, textAlign: 'right', flexShrink: 0 }}>{formatRelativeTime(m.last_seen_at)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
