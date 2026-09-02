@@ -1248,16 +1248,29 @@ function TabButton({ icon: Icon, label, active, onClick, pulse }) {
 /*  ACCUEIL TAB                                                         */
 /* ------------------------------------------------------------------ */
 
-// Palette des cercles d'avatar (icône par membre, § 11.5) : seulement deux
-// couleurs, ambre et gris, alternées par membre. Aucune couleur n'est
-// stockée en base, on la dérive du nom pour qu'un même membre garde
-// toujours la même couleur d'une session à l'autre.
-const AVATAR_PALETTE = ['#E8B04B', '#9A958C'];
+// Palette des cercles d'avatar (icône par membre, § 11.5) : une couleur
+// pastel dédiée par membre, choisie sans logique genrée (pas de rose/mauve
+// réservés à certains prénoms), et suffisamment distincte des couleurs de
+// statut utilisées ailleurs (veto rouge, prêt vert, etc.). Aucune couleur
+// n'est stockée en base : associée par prénom exact, comme MEMBER_ICON_BY_NAME.
+const AVATAR_COLOR_BY_NAME = {
+  Do: '#F0C987',
+  Dave: '#A9CDB9',
+  Alex: '#A7C7DE',
+  Véro: '#8FC9C4',
+  Gawel: '#E3B08F',
+  Niko: '#D6CC8C',
+};
+// Filet de sécurité pour un membre non listé ci-dessus (ex. nouvel arrivant) :
+// une couleur est tirée de façon stable dans cette petite palette de secours,
+// dérivée du prénom, en attendant qu'on lui attribue une teinte dédiée.
+const AVATAR_FALLBACK_PALETTE = ['#E8B04B', '#9A958C'];
 function avatarColorFor(name) {
+  if (name && AVATAR_COLOR_BY_NAME[name]) return AVATAR_COLOR_BY_NAME[name];
   const str = name || '';
   let hash = 0;
   for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+  return AVATAR_FALLBACK_PALETTE[hash % AVATAR_FALLBACK_PALETTE.length];
 }
 
 // Horodatage relatif pour "Dernières connexions" : granularité décroissante
