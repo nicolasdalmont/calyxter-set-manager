@@ -1400,11 +1400,17 @@ function MemberAvatarIcon({ member, size }) {
 // reprend la forme des occurrences fusionnées par mergeEventsAndConcerts
 // (mêmes champs que RendezVousCard) mais dans une présentation resserrée,
 // sans bouton d'action (clic = navigation vers l'onglet correspondant).
-function HomeAgendaCard({ item, onOpen }) {
+function HomeAgendaCard({ item, onOpen, members }) {
   const kindInfo = item.source === 'concert' ? CONCERT_EVENT_KIND : (EVENT_KIND[item.kind] || EVENT_KIND.autre);
   const start = formatConcertTime(item.start_time);
   const end = formatConcertTime(item.end_time);
   const timeLabel = item.all_day ? 'Toute la journée' : (start ? (end ? `${start} – ${end}` : start) : null);
+
+  const participantNames = item.participant_ids === null
+    ? 'Tout le groupe'
+    : (item.participant_ids.length === 0
+      ? 'Aucun participant renseigné'
+      : item.participant_ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', '));
 
   return (
     <button
@@ -1437,6 +1443,9 @@ function HomeAgendaCard({ item, onOpen }) {
             {[timeLabel, item.venue].filter(Boolean).join(' · ')}
           </div>
         )}
+        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+          <Users size={11} style={{ flexShrink: 0 }} /> {participantNames}
+        </div>
       </div>
     </button>
   );
@@ -1507,7 +1516,7 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
             <Calendar size={12} /> Prochain rendez-vous
           </div>
           {nextEvent ? (
-            <HomeAgendaCard item={nextEvent} onOpen={() => setTab('rendezvous')} />
+            <HomeAgendaCard item={nextEvent} onOpen={() => setTab('rendezvous')} members={members} />
           ) : (
             <EmptyState text="Aucun rendez-vous à venir." />
           )}
@@ -1517,7 +1526,7 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
             <Mic2 size={12} /> Prochain concert
           </div>
           {nextConcert ? (
-            <HomeAgendaCard item={nextConcert} onOpen={() => setTab('concerts')} />
+            <HomeAgendaCard item={nextConcert} onOpen={() => setTab('concerts')} members={members} />
           ) : (
             <EmptyState text="Aucun concert à venir." />
           )}
