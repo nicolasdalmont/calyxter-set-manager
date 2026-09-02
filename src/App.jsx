@@ -1037,11 +1037,38 @@ function GlobalStyle() {
         gap: 6px;
       }
 
+      /* Lignes de liste (Répertoire, Concerts, Rendez-vous) : même
+         réorganisation en dessous de 560px sur les trois écrans — la
+         vignette de gauche (pochette ou pastille date) et le titre restent
+         groupés sur la 1re ligne, le reste (statuts, actions) passe
+         proprement à la ligne suivante plutôt que de se comprimer. */
       @media (max-width: 560px) {
-        .clx-song-info { flex: 1 1 100%; order: 1; }
-        .clx-song-cover { order: 0; }
-        .clx-song-meta { order: 2; flex: 1 1 100%; justify-content: space-between; margin-top: 4px; }
+        .clx-row-info { flex: 1 1 100%; order: 1; }
+        .clx-row-cover { order: 0; }
+        .clx-row-meta { order: 2; flex: 1 1 100%; justify-content: space-between; margin-top: 4px; }
       }
+
+      /* Action secondaire en bout de ligne (écouter, commenter…) : même
+         traitement partout — séparateur vertical, icône seule, feedback au
+         survol — que la ligne entière soit par ailleurs cliquable (Concerts,
+         Rendez-vous, Répertoire) ou non. */
+      .clx-row-action {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        padding: 0 16px;
+        background: none;
+        border: none;
+        border-left: 1px solid #2A2A2E;
+        color: #6B6862;
+        cursor: pointer;
+        flex-shrink: 0;
+        text-decoration: none;
+      }
+      .clx-row-action:hover { color: #F2A93B; background: #18181D; }
+      .clx-row-action.active { color: #F2A93B; }
 
       @media (prefers-reduced-motion: reduce) {
         .clx-btn, .clx-spin { transition: none; animation: none; }
@@ -1794,7 +1821,7 @@ function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, sta
       {songs.length === 0 ? (
         <EmptyState text="Aucun morceau ne correspond à ces filtres." />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
           {songs.map((song) => (
             <SongRow key={song.id} song={song} members={members} onEdit={onEditClick} />
           ))}
@@ -1822,28 +1849,31 @@ function SongRow({ song, members, onEdit }) {
   const st = STATUS[song.status];
   const missing = !song.duration_seconds || !song.language || song.language === 'OTHER';
   const coverUrl = song.links?.cover_url;
-  return (
-    <div className="clx-card clx-row" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+
+  // Contenu commun, qu'il soit rendu dans un bouton (ligne cliquable, cas
+  // normal) ou dans un simple <div> (onEdit non fourni) — voir plus bas.
+  const content = (
+    <>
       {coverUrl ? (
         <img
           src={coverUrl}
           alt=""
-          className="clx-song-cover"
-          style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, objectFit: 'cover', border: '1px solid #2A2A2E' }}
+          className="clx-row-cover"
+          style={{ width: 54, height: 54, borderRadius: 6, flexShrink: 0, objectFit: 'cover', border: '1px solid #2A2A2E' }}
         />
       ) : (
-        <div className="clx-song-cover" style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Music2 size={16} color="#6B6862" />
+        <div className="clx-row-cover" style={{ width: 54, height: 54, borderRadius: 6, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Music2 size={20} color="#6B6862" />
         </div>
       )}
 
-      <div className="clx-song-info" style={{ flex: 1, minWidth: 0 }}>
+      <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 15 }}>{song.title}</div>
         <div style={{ fontSize: 13, color: '#9A958C' }}>{song.artist}{song.album ? ` · ${song.album}` : ''}</div>
         {author && <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 4 }}>Proposé par {author.name} ({author.instrument})</div>}
       </div>
 
-      <div className="clx-song-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+      <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span className="clx-badge" style={{ background: `${st.color}22`, color: st.color, border: `1px solid ${st.color}55` }}>{st.badge}</span>
           {song.language && <span className="clx-badge" style={{ background: `${LANGUAGE_TAG[song.language].color}22`, color: LANGUAGE_TAG[song.language].color, border: `1px solid ${LANGUAGE_TAG[song.language].color}55` }}>{LANGUAGE_TAG[song.language].short}</span>}
@@ -1853,30 +1883,45 @@ function SongRow({ song, members, onEdit }) {
           <div className="clx-mono" style={{ fontSize: 13, color: song.duration_seconds ? '#9A958C' : '#C1454B', width: 46, textAlign: 'right' }}>
             {formatSongDuration(song.duration_seconds)}
           </div>
-
-          {onEdit && (
-            <button
-              onClick={() => onEdit(song)}
-              className="clx-btn clx-btn-ghost"
-              style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', color: missing ? '#F2A93B' : '#F5F1E8' }}
-              title={missing ? 'Compléter les données manquantes' : 'Modifier le morceau'}
-            >
-              <Pencil size={13} />
-            </button>
-          )}
-
-          <a
-            href={listenUrl(song)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="clx-btn clx-btn-ghost"
-            style={{ padding: '7px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#F5F1E8', textDecoration: 'none' }}
-            title={song.links?.custom_url ? 'Ouvrir le lien' : 'Chercher sur Deezer'}
-          >
-            <Radio size={13} /> <ExternalLink size={11} />
-          </a>
+          {onEdit && <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />}
         </div>
       </div>
+    </>
+  );
+
+  // Ligne entièrement cliquable pour ouvrir l'édition — même principe que
+  // les cartes Concerts et Rendez-vous — avec le lien d'écoute comme
+  // action secondaire distincte (bulle en bout de ligne), plutôt qu'un
+  // bouton crayon séparé au milieu de la ligne.
+  return (
+    <div className="clx-card clx-row" style={{ display: 'flex', alignItems: 'stretch' }}>
+      {onEdit ? (
+        <button
+          onClick={() => onEdit(song)}
+          style={{
+            flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+            padding: '14px 16px', background: 'none', border: 'none', font: 'inherit', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer',
+          }}
+          title={missing ? 'Compléter les données manquantes' : 'Modifier le morceau'}
+        >
+          {content}
+        </button>
+      ) : (
+        <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '14px 16px' }}>
+          {content}
+        </div>
+      )}
+
+      <a
+        href={listenUrl(song)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="clx-row-action"
+        title={song.links?.custom_url ? 'Ouvrir le lien' : 'Chercher sur Deezer'}
+      >
+        <Radio size={16} />
+        <ExternalLink size={11} />
+      </a>
     </div>
   );
 }
@@ -3255,7 +3300,7 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
         }}
       >
         <div
-          className="clx-mono"
+          className="clx-mono clx-row-cover"
           style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             width: 54, height: 54, borderRadius: 6, flexShrink: 0,
@@ -3270,7 +3315,7 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
           </div>
         </div>
 
-        <div style={{ flex: 1, minWidth: 180 }}>
+        <div className="clx-row-info" style={{ flex: 1, minWidth: 180 }}>
           <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             {concert.name}
             {isNext && (
@@ -3286,7 +3331,7 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{ textAlign: 'right' }}>
             <div className="clx-mono" style={{ fontSize: 13 }}>{setSongs.length} morceau{setSongs.length > 1 ? 'x' : ''}</div>
             <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C' }}>{formatTotalDuration(totalSeconds)}</div>
@@ -3297,13 +3342,8 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
 
       <button
         onClick={onOpenComments}
-        className="clx-mono"
+        className={`clx-mono clx-row-action${commentCount > 0 ? ' active' : ''}`}
         title="Voir les commentaires"
-        style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-          padding: '0 16px', background: 'none', border: 'none', borderLeft: '1px solid #2A2A2E',
-          color: commentCount > 0 ? '#F2A93B' : '#6B6862', cursor: 'pointer', flexShrink: 0,
-        }}
       >
         <MessageCircle size={16} />
         <span style={{ fontSize: 11 }}>{commentCount}</span>
@@ -3803,7 +3843,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
 
   return (
     <div>
-      <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+      <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 14 }}>
           <span style={{ fontWeight: 700 }}>{merged.length}</span> rendez-vous
         </div>
@@ -3902,7 +3942,7 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
         }}
       >
         <div
-          className="clx-mono"
+          className="clx-mono clx-row-cover"
           style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             width: 54, height: 54, borderRadius: 6, flexShrink: 0,
@@ -3917,7 +3957,7 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
           </div>
         </div>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
             {isNext && (
@@ -3950,18 +3990,15 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
           )}
         </div>
 
-        <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+        <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center' }}>
+          <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+        </div>
       </button>
 
       <button
         onClick={onOpenComments}
-        className="clx-mono"
+        className={`clx-mono clx-row-action${commentCount > 0 ? ' active' : ''}`}
         title="Voir les commentaires"
-        style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-          padding: '0 16px', background: 'none', border: 'none', borderLeft: '1px solid #2A2A2E',
-          color: commentCount > 0 ? '#F2A93B' : '#6B6862', cursor: 'pointer', flexShrink: 0,
-        }}
       >
         <MessageCircle size={16} />
         <span style={{ fontSize: 11 }}>{commentCount}</span>
