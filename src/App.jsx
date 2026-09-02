@@ -3958,23 +3958,7 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
         </div>
 
         <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
-            {isNext && (
-              <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
-            )}
-            {item.isRecurring && (
-              <span className="clx-mono" style={{ fontSize: 10, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 3 }}>
-                <Repeat size={10} /> récurrent
-              </span>
-            )}
-            {item.source === 'concert' && (
-              <span className="clx-mono" style={{ fontSize: 10, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 3 }}>
-                <Mic2 size={10} /> non modifiable ici
-              </span>
-            )}
-          </div>
-          <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>{item.subject}</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{item.subject}</div>
           <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <Calendar size={11} /> {dateLabel}
@@ -3990,7 +3974,23 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
           )}
         </div>
 
-        <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center' }}>
+        <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
+            {isNext && (
+              <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
+            )}
+            {item.isRecurring && (
+              <span className="clx-mono" style={{ fontSize: 10, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Repeat size={10} /> récurrent
+              </span>
+            )}
+            {item.source === 'concert' && (
+              <span className="clx-mono" style={{ fontSize: 10, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Mic2 size={10} /> non modifiable ici
+              </span>
+            )}
+          </div>
           <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
         </div>
       </button>
