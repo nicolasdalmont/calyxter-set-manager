@@ -361,7 +361,7 @@ Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résid
 
 - Filtre par type à choix unique (Tous, ou exactement un type à la fois), identique dans son fonctionnement au filtre de statut du Répertoire (§ 5.2).
 
-- Code couleur par type, repris sur la pastille de date, le badge de catégorie et (écran Accueil) la bande d'angle : Répétition bleu ardoise, Atelier de travail sauge, Résidence or, Autre taupe, Concert turquoise. Le turquoise du concert le distingue nettement des autres rendez-vous dans la liste ; il a remplacé un rouge qui se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti"). Un rendez-vous passé perd sa couleur au profit d'un gris neutre.
+- Code couleur par type, repris sur la pastille de date, le badge de catégorie et (écran Accueil) la bande d'angle : Répétition bleu ardoise, Atelier de travail sauge, Résidence or, Autre violet, Concert turquoise. Le turquoise du concert le distingue nettement des autres rendez-vous dans la liste ; il a remplacé un rouge qui se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti"). Le violet du type "Autre" a de même remplacé un taupe qui, étant le gris neutre d'interface de l'application, faisait lire ces rendez-vous comme passés ou désactivés. Un rendez-vous passé, lui, perd bien sa couleur au profit d'un gris neutre.
 
 - Les libellés de la ligne (indication "récurrent" le cas échéant, badge "PROCHAIN" le cas échéant, puis catégorie du rendez-vous) sont regroupés en bout de ligne dans cet ordre, au même endroit et selon la même logique de repli sur mobile que les badges de statut et de langue du Répertoire (§ 13.2) — le titre du rendez-vous occupe désormais la première ligne de la carte.
 
@@ -658,7 +658,7 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - Pastille de date des écrans Accueil (§ 11.2), Concerts (§ 7.1) et Rendez-vous (§ 8.3) : ajout de l'année sous le jour et le mois (§ 13.3).
 
-- Couleur du type "Concert" dans l'agenda des rendez-vous (§ 8.3) et sur l'écran d'accueil : passage du rouge au turquoise (`#2E9FB8`). Le rouge se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti") et rendait les concerts peu identifiables dans la liste. §11.5 corrigé en conséquence (le rouge n'est plus décrit comme la couleur du concert).
+- Couleurs des types de rendez-vous (§ 8.3), sur la pastille de date, le badge et la bande d'angle de l'écran d'accueil : "Concert" passe du rouge au turquoise (`#2E9FB8`) — le rouge se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti") et rendait les concerts peu identifiables dans la liste ; "Autre" passe du taupe au violet (`#9884C4`) — le taupe est le gris neutre d'interface de l'application et faisait passer ces rendez-vous pour des événements passés ou désactivés. §11.5 corrigé en conséquence (le rouge n'est plus décrit comme la couleur du concert).
 
 # 17. Références
 

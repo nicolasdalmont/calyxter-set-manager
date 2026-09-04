@@ -44,7 +44,11 @@ const EVENT_KIND = {
   repetition: { label: 'Répétition',         badge: 'RÉPÉT',     color: '#7C8BA8' },
   atelier:    { label: 'Atelier de travail', badge: 'ATELIER',   color: '#6FA287' },
   residence:  { label: 'Résidence',          badge: 'RÉSIDENCE', color: '#E8B04B' },
-  autre:      { label: 'Autre',              badge: 'AUTRE',     color: '#6B6862' },
+  // Violet doux : couleur à part entière (l'ancien taupe #6B6862, qui est le
+  // gris neutre d'UI de l'app, faisait lire un rendez-vous "Autre" comme un
+  // événement passé ou désactivé), non spécifique — adapté à une catégorie
+  // fourre-tout — et distinct des autres types comme du turquoise du concert.
+  autre:      { label: 'Autre',              badge: 'AUTRE',     color: '#9884C4' },
 };
 // Turquoise soutenu, distinct des autres types de rendez-vous et surtout de
 // la couleur d'alerte rouge (#C1454B, réservée aux vetos, erreurs, suppressions
