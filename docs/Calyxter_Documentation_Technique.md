@@ -319,7 +319,7 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 - Ouverture automatique de la liste positionnée sur le prochain concert à venir, placé en haut de la zone défilante (les concerts passés restent accessibles en remontant), mis en évidence par un badge "PROCHAIN" et une bordure accentuée — même mécanique que l'agenda des rendez-vous (§ 8.3). Si aucun concert n'est à venir, la liste se cale sur le dernier concert passé (le plus récent) plutôt que sur le plus ancien : à la différence des rendez-vous, alimentés par des répétitions récurrentes, les concerts n'ont pas toujours une prochaine occurrence programmée. La zone défilante a une hauteur fixe et se prolonge par une cale vide sous la dernière carte, pour qu'un défilement reste toujours possible même quand les concerts tiennent tous dans la zone visible (sans quoi les concerts passés resteraient affichés en tête) ; le revers assumé est un espace vide sous la liste lorsqu'elle est courte.
 
-- Chaque carte affiche le nom, la date, l'heure, le lieu, le nombre de morceaux du set et sa durée totale, ainsi qu'une bulle affichant le nombre de commentaires laissés sur le concert (§ 8.5).
+- Chaque carte affiche, sur trois lignes sous la pastille de date : le nom du concert ; la date, l'heure et le lieu ; le nombre de morceaux du set et sa durée totale. Le badge "PROCHAIN" et l'icône crayon sont regroupés en bout de ligne, à l'emplacement occupé par les badges de statut et de langue du Répertoire (§ 13.3) — présentation désormais identique à celle des cartes Rendez-vous (§ 8.3), le concert n'ayant pas de catégorie propre à afficher en plus. Une bulle affiche par ailleurs le nombre de commentaires laissés sur le concert (§ 8.5). La pastille de date d'un concert à venir utilise la couleur du type "Concert" (§ 8.3) plutôt que l'ambre, y compris pour le prochain concert.
 
 ## 7.2 Création et édition d'un concert
 
@@ -534,6 +534,8 @@ Les trois écrans présentant une liste de cartes (Répertoire, Concerts, Rendez
 
 - Sur l'écran Rendez-vous, les libellés ("récurrent", "PROCHAIN", catégorie) rejoignent ce même bloc de fin de ligne, dans cet ordre, à l'emplacement occupé par les badges de statut et de langue sur le Répertoire (§ 8.3) — le titre du rendez-vous apparaît donc désormais en première position sur la carte, comme le titre d'un morceau sur le Répertoire. La mention "non modifiable ici", auparavant affichée sur les concerts intégrés à cette liste, a été retirée : elle entrait en contradiction avec le clic sur la ligne, qui ouvre bien le concert en édition (§ 7).
 
+- Sur l'écran Concerts, même bloc de fin de ligne pour le badge "PROCHAIN" (§ 7.1), et troisième ligne sous le titre pour le nombre de morceaux du set et sa durée totale (auparavant affichés à part, en bout de ligne) — la carte suit désormais exactement la même structure que celle d'un rendez-vous (titre, ligne date/heure/lieu, ligne d'information complémentaire, bloc de fin de ligne).
+
 # 14. Déploiement et infrastructure
 
 - Code source hébergé sur GitHub ; tout changement poussé sur la branche principale déclenche un redéploiement automatique sur Vercel.
@@ -659,6 +661,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Pastille de date des écrans Accueil (§ 11.2), Concerts (§ 7.1) et Rendez-vous (§ 8.3) : ajout de l'année sous le jour et le mois (§ 13.3).
 
 - Couleurs des types de rendez-vous (§ 8.3), sur la pastille de date, le badge et la bande d'angle de l'écran d'accueil : "Concert" passe du rouge au turquoise (`#2E9FB8`) — le rouge se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti") et rendait les concerts peu identifiables dans la liste ; "Autre" passe du taupe au violet (`#9884C4`) — le taupe est le gris neutre d'interface de l'application et faisait passer ces rendez-vous pour des événements passés ou désactivés. §11.5 corrigé en conséquence (le rouge n'est plus décrit comme la couleur du concert).
+
+- Harmonisation de la carte de l'écran Concerts (§ 7.1, § 13.3) sur celle de l'écran Rendez-vous : le badge "PROCHAIN", auparavant accolé au nom du concert, rejoint désormais le bloc de fin de ligne partagé avec l'icône crayon ; le nombre de morceaux du set et sa durée totale, auparavant affichés à part en bout de ligne, deviennent une troisième ligne sous la ligne date/heure/lieu. La pastille de date d'un concert à venir utilise désormais la couleur turquoise du type "Concert" plutôt que l'ambre, y compris pour le prochain concert (l'ambre restant réservé au badge "PROCHAIN" lui-même et à la bordure de la carte).
 
 # 17. Références
 

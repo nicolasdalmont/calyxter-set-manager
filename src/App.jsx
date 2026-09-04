@@ -3407,10 +3407,10 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
           style={{
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             width: 54, height: 54, borderRadius: 6, flexShrink: 0,
-            background: past ? '#101012' : '#F2A93B22', border: `1px solid ${past ? '#2A2A2E' : '#F2A93B55'}`,
+            background: past ? '#101012' : `${CONCERT_EVENT_KIND.color}22`, border: `1px solid ${past ? '#2A2A2E' : `${CONCERT_EVENT_KIND.color}55`}`,
           }}
         >
-          <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : '#F2A93B' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : CONCERT_EVENT_KIND.color }}>
             {formatConcertDate(concert.event_date, { day: 'numeric' })}
           </div>
           <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
@@ -3421,13 +3421,8 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
           </div>
         </div>
 
-        <div className="clx-row-info" style={{ flex: 1, minWidth: 180 }}>
-          <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {concert.name}
-            {isNext && (
-              <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
-            )}
-          </div>
+        <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{concert.name}</div>
           <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <Calendar size={11} /> {formatConcertDate(concert.event_date)}
@@ -3435,14 +3430,18 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
             {time && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {time}</span>}
             {concert.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {concert.venue}</span>}
           </div>
+          <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+            <ListMusic size={11} /> {setSongs.length} morceau{setSongs.length > 1 ? 'x' : ''} · {formatTotalDuration(totalSeconds)}
+          </div>
         </div>
 
-        <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div className="clx-mono" style={{ fontSize: 13 }}>{setSongs.length} morceau{setSongs.length > 1 ? 'x' : ''}</div>
-            <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C' }}>{formatTotalDuration(totalSeconds)}</div>
+        <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {isNext && (
+              <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
+            )}
           </div>
-          <Pencil size={14} color="#6B6862" />
+          <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
         </div>
       </button>
 
