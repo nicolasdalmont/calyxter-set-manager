@@ -3261,16 +3261,21 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
   // RendezVousTab pour le détail du problème que cela évite sur mobile).
   const todayStr = toISODate(new Date());
   const nextIndex = sortedConcerts.findIndex((c) => (c.event_date || '') >= todayStr);
+  // Si aucun concert n'est à venir, on cale la liste sur le dernier concert
+  // passé (le plus récent) plutôt que de la laisser en haut sur le plus
+  // ancien : contrairement aux rendez-vous (répétitions récurrentes), les
+  // concerts n'ont pas toujours une prochaine occurrence programmée.
+  const focusIndex = nextIndex === -1 ? sortedConcerts.length - 1 : nextIndex;
   const listRef = useRef(null);
-  const nextConcertRef = useRef(null);
+  const focusConcertRef = useRef(null);
   useEffect(() => {
-    if (nextConcertRef.current && listRef.current) {
+    if (focusConcertRef.current && listRef.current) {
       const container = listRef.current;
-      const item = nextConcertRef.current;
+      const item = focusConcertRef.current;
       const offset = item.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
       container.scrollTop = Math.max(offset - 4, 0);
     }
-  }, [editingConcert]);
+  }, [editingConcert, sortedConcerts.length]);
 
   if (editingConcert !== undefined) {
     return (
@@ -3315,7 +3320,7 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
       ) : (
         <div ref={listRef} className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
           {sortedConcerts.map((concert, index) => (
-            <div key={concert.id} ref={index === nextIndex ? nextConcertRef : null}>
+            <div key={concert.id} ref={index === focusIndex ? focusConcertRef : null}>
               <ConcertCard
                 concert={concert}
                 songs={songs}

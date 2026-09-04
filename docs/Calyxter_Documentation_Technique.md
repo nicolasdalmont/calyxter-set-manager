@@ -315,7 +315,7 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 - Concerts triés par date croissante, dans une liste défilante (hauteur limitée, défilement interne).
 
-- Ouverture automatique de la liste centrée sur le prochain concert à venir, mis en évidence par un badge "PROCHAIN" et une bordure accentuée — évite d'avoir à faire défiler manuellement les concerts passés.
+- Ouverture automatique de la liste positionnée sur le prochain concert à venir, placé en haut de la zone défilante (les concerts passés restent accessibles en remontant), mis en évidence par un badge "PROCHAIN" et une bordure accentuée — même mécanique que l'agenda des rendez-vous (§ 8.3). Si aucun concert n'est à venir, la liste se cale sur le dernier concert passé (le plus récent) plutôt que sur le plus ancien : à la différence des rendez-vous, alimentés par des répétitions récurrentes, les concerts n'ont pas toujours une prochaine occurrence programmée.
 
 - Chaque carte affiche le nom, la date, l'heure, le lieu, le nombre de morceaux du set et sa durée totale, ainsi qu'une bulle affichant le nombre de commentaires laissés sur le concert (§ 8.5).
 
@@ -645,6 +645,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Correction de la suppression des commentaires liés (§ 3.8) : deleteConcert et deleteEvent suppriment désormais les lignes de la table comments référençant le concert ou le rendez-vous avant de le supprimer. Auparavant, supprimer un concert ou un rendez-vous commenté échouait en base sur une violation de contrainte de clé étrangère (aucune clause ON DELETE côté schéma).
 
 - Ajout d'un fichier .gitignore à la racine du dépôt (.DS_Store, node_modules/, dist/, .env*) et arrêt du suivi Git des fichiers .DS_Store précédemment commités.
+
+- Écran liste des concerts (§ 7.1) : le défilement automatique vers le prochain concert se rejoue désormais lorsque la liste des concerts finit de se charger (et non plus à la seule ouverture de l'onglet), et se cale sur le dernier concert passé quand aucun concert n'est à venir.
 
 # 17. Références
 
