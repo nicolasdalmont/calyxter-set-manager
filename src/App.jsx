@@ -250,6 +250,19 @@ async function fetchIdeas() {
   return rows || [];
 }
 
+// Commentaires sur les rendez-vous et concerts (table partagée, voir
+// migration_comments.sql) : chargés en une fois comme le reste des
+// données, filtrés côté client par event_id/concert_id (voir
+// commentsForTarget ci-dessous).
+async function fetchComments() {
+  const rows = await supabaseTable('comments?select=*&order=created_at.asc');
+  return rows || [];
+}
+
+function commentsForTarget(comments, targetType, targetId) {
+  return comments.filter((c) => (targetType === 'event' ? c.event_id === targetId : c.concert_id === targetId));
+}
+
 async function callMemberAuth(action, memberId, password) {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/member-auth`, {
     method: 'POST',
@@ -367,6 +380,7 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [phaseHistory, setPhaseHistory] = useState([]);
   const [ideas, setIdeas] = useState([]);
+  const [comments, setComments] = useState([]);
   const [concertToOpen, setConcertToOpen] = useState(null);
   const [openPhaseHistory, setOpenPhaseHistory] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
@@ -385,7 +399,7 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [supaMembers, s, p, n, c, ev, ph, id] = await Promise.all([
+        const [supaMembers, s, p, n, c, ev, ph, id, cm] = await Promise.all([
           withTimeout(fetchMembersFromSupabase(), 8000, null),
           withTimeout(loadSongs(), 8000, []),
           withTimeout(fetchActivePhase(), 8000, null),
@@ -394,6 +408,7 @@ export default function App() {
           withTimeout(fetchEvents(), 8000, []),
           withTimeout(fetchPhaseHistory(), 8000, []),
           withTimeout(fetchIdeas(), 8000, []),
+          withTimeout(fetchComments(), 8000, []),
         ]);
         if (cancelled) return;
         if (supaMembers) {
@@ -408,6 +423,7 @@ export default function App() {
         setEvents(ev);
         setPhaseHistory(ph);
         setIdeas(id);
+        setComments(cm);
         setCurrentUserId(loadPersonal('current-member-id'));
       } catch (e) {
         console.error('Failed to load app data', e);
@@ -558,6 +574,24 @@ export default function App() {
       await supabaseTable(`ideas?id=eq.${ideaId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
     } catch (e) {
       console.error("Erreur en supprimant l'idée", e);
+    }
+  }, []);
+
+  const saveComment = useCallback(async (comment) => {
+    setComments((prev) => [...prev, comment]);
+    try {
+      await upsertRows('comments', [comment]);
+    } catch (e) {
+      console.error('Erreur en enregistrant le commentaire', e);
+    }
+  }, []);
+
+  const deleteComment = useCallback(async (commentId) => {
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    try {
+      await supabaseTable(`comments?id=eq.${commentId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+    } catch (e) {
+      console.error('Erreur en supprimant le commentaire', e);
     }
   }, []);
 
@@ -758,6 +792,9 @@ export default function App() {
             pushNotification={pushNotification}
             initialConcertId={concertToOpen}
             onInitialConcertConsumed={() => setConcertToOpen(null)}
+            comments={comments}
+            saveComment={saveComment}
+            deleteComment={deleteComment}
           />
         )}
 
@@ -771,6 +808,9 @@ export default function App() {
             deleteEvent={deleteEvent}
             pushNotification={pushNotification}
             onViewConcert={(concertId) => { setConcertToOpen(concertId); setTab('concerts'); }}
+            comments={comments}
+            saveComment={saveComment}
+            deleteComment={deleteComment}
           />
         )}
 
@@ -1003,11 +1043,38 @@ function GlobalStyle() {
         gap: 6px;
       }
 
+      /* Lignes de liste (Répertoire, Concerts, Rendez-vous) : même
+         réorganisation en dessous de 560px sur les trois écrans — la
+         vignette de gauche (pochette ou pastille date) et le titre restent
+         groupés sur la 1re ligne, le reste (statuts, actions) passe
+         proprement à la ligne suivante plutôt que de se comprimer. */
       @media (max-width: 560px) {
-        .clx-song-info { flex: 1 1 100%; order: 1; }
-        .clx-song-cover { order: 0; }
-        .clx-song-meta { order: 2; flex: 1 1 100%; justify-content: space-between; margin-top: 4px; }
+        .clx-row-info { flex: 1 1 100%; order: 1; }
+        .clx-row-cover { order: 0; }
+        .clx-row-meta { order: 2; flex: 1 1 100%; justify-content: space-between; margin-top: 4px; }
       }
+
+      /* Action secondaire en bout de ligne (écouter, commenter…) : même
+         traitement partout — séparateur vertical, icône seule, feedback au
+         survol — que la ligne entière soit par ailleurs cliquable (Concerts,
+         Rendez-vous, Répertoire) ou non. */
+      .clx-row-action {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        padding: 0 16px;
+        background: none;
+        border: none;
+        border-left: 1px solid #2A2A2E;
+        color: #6B6862;
+        cursor: pointer;
+        flex-shrink: 0;
+        text-decoration: none;
+      }
+      .clx-row-action:hover { color: #F2A93B; background: #18181D; }
+      .clx-row-action.active { color: #F2A93B; }
 
       @media (prefers-reduced-motion: reduce) {
         .clx-btn, .clx-spin { transition: none; animation: none; }
@@ -1254,16 +1321,29 @@ function TabButton({ icon: Icon, label, active, onClick, pulse }) {
 /*  ACCUEIL TAB                                                         */
 /* ------------------------------------------------------------------ */
 
-// Palette des cercles d'avatar (icône par membre, § 11.5) : seulement deux
-// couleurs, ambre et gris, alternées par membre. Aucune couleur n'est
-// stockée en base, on la dérive du nom pour qu'un même membre garde
-// toujours la même couleur d'une session à l'autre.
-const AVATAR_PALETTE = ['#E8B04B', '#9A958C'];
+// Palette des cercles d'avatar (icône par membre, § 11.5) : une couleur
+// pastel dédiée par membre, choisie sans logique genrée (pas de rose/mauve
+// réservés à certains prénoms), et suffisamment distincte des couleurs de
+// statut utilisées ailleurs (veto rouge, prêt vert, etc.). Aucune couleur
+// n'est stockée en base : associée par prénom exact, comme MEMBER_ICON_BY_NAME.
+const AVATAR_COLOR_BY_NAME = {
+  Do: '#F0C987',
+  Dave: '#A9CDB9',
+  Alex: '#A7C7DE',
+  Véro: '#8FC9C4',
+  Gawel: '#E3B08F',
+  Niko: '#D6CC8C',
+};
+// Filet de sécurité pour un membre non listé ci-dessus (ex. nouvel arrivant) :
+// une couleur est tirée de façon stable dans cette petite palette de secours,
+// dérivée du prénom, en attendant qu'on lui attribue une teinte dédiée.
+const AVATAR_FALLBACK_PALETTE = ['#E8B04B', '#9A958C'];
 function avatarColorFor(name) {
+  if (name && AVATAR_COLOR_BY_NAME[name]) return AVATAR_COLOR_BY_NAME[name];
   const str = name || '';
   let hash = 0;
   for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+  return AVATAR_FALLBACK_PALETTE[hash % AVATAR_FALLBACK_PALETTE.length];
 }
 
 // Horodatage relatif pour "Dernières connexions" : granularité décroissante
@@ -1406,11 +1486,17 @@ function MemberAvatarIcon({ member, size }) {
 // reprend la forme des occurrences fusionnées par mergeEventsAndConcerts
 // (mêmes champs que RendezVousCard) mais dans une présentation resserrée,
 // sans bouton d'action (clic = navigation vers l'onglet correspondant).
-function HomeAgendaCard({ item, onOpen }) {
+function HomeAgendaCard({ item, onOpen, members }) {
   const kindInfo = item.source === 'concert' ? CONCERT_EVENT_KIND : (EVENT_KIND[item.kind] || EVENT_KIND.autre);
   const start = formatConcertTime(item.start_time);
   const end = formatConcertTime(item.end_time);
   const timeLabel = item.all_day ? 'Toute la journée' : (start ? (end ? `${start} – ${end}` : start) : null);
+
+  const participantNames = item.participant_ids === null
+    ? 'Tout le groupe'
+    : (item.participant_ids.length === 0
+      ? 'Aucun participant renseigné'
+      : item.participant_ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', '));
 
   return (
     <button
@@ -1443,6 +1529,9 @@ function HomeAgendaCard({ item, onOpen }) {
             {[timeLabel, item.venue].filter(Boolean).join(' · ')}
           </div>
         )}
+        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+          <Users size={11} style={{ flexShrink: 0 }} /> {participantNames}
+        </div>
       </div>
     </button>
   );
@@ -1513,7 +1602,7 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
             <Calendar size={12} /> Prochain rendez-vous
           </div>
           {nextEvent ? (
-            <HomeAgendaCard item={nextEvent} onOpen={() => setTab('rendezvous')} />
+            <HomeAgendaCard item={nextEvent} onOpen={() => setTab('rendezvous')} members={members} />
           ) : (
             <EmptyState text="Aucun rendez-vous à venir." />
           )}
@@ -1523,7 +1612,7 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
             <Mic2 size={12} /> Prochain concert
           </div>
           {nextConcert ? (
-            <HomeAgendaCard item={nextConcert} onOpen={() => setTab('concerts')} />
+            <HomeAgendaCard item={nextConcert} onOpen={() => setTab('concerts')} members={members} />
           ) : (
             <EmptyState text="Aucun concert à venir." />
           )}
@@ -1738,7 +1827,7 @@ function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, sta
       {songs.length === 0 ? (
         <EmptyState text="Aucun morceau ne correspond à ces filtres." />
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
           {songs.map((song) => (
             <SongRow key={song.id} song={song} members={members} onEdit={onEditClick} />
           ))}
@@ -1766,28 +1855,31 @@ function SongRow({ song, members, onEdit }) {
   const st = STATUS[song.status];
   const missing = !song.duration_seconds || !song.language || song.language === 'OTHER';
   const coverUrl = song.links?.cover_url;
-  return (
-    <div className="clx-card clx-row" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+
+  // Contenu commun, qu'il soit rendu dans un bouton (ligne cliquable, cas
+  // normal) ou dans un simple <div> (onEdit non fourni) — voir plus bas.
+  const content = (
+    <>
       {coverUrl ? (
         <img
           src={coverUrl}
           alt=""
-          className="clx-song-cover"
-          style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, objectFit: 'cover', border: '1px solid #2A2A2E' }}
+          className="clx-row-cover"
+          style={{ width: 54, height: 54, borderRadius: 6, flexShrink: 0, objectFit: 'cover', border: '1px solid #2A2A2E' }}
         />
       ) : (
-        <div className="clx-song-cover" style={{ width: 44, height: 44, borderRadius: 4, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Music2 size={16} color="#6B6862" />
+        <div className="clx-row-cover" style={{ width: 54, height: 54, borderRadius: 6, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Music2 size={20} color="#6B6862" />
         </div>
       )}
 
-      <div className="clx-song-info" style={{ flex: 1, minWidth: 0 }}>
+      <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 15 }}>{song.title}</div>
         <div style={{ fontSize: 13, color: '#9A958C' }}>{song.artist}{song.album ? ` · ${song.album}` : ''}</div>
         {author && <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 4 }}>Proposé par {author.name} ({author.instrument})</div>}
       </div>
 
-      <div className="clx-song-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+      <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span className="clx-badge" style={{ background: `${st.color}22`, color: st.color, border: `1px solid ${st.color}55` }}>{st.badge}</span>
           {song.language && <span className="clx-badge" style={{ background: `${LANGUAGE_TAG[song.language].color}22`, color: LANGUAGE_TAG[song.language].color, border: `1px solid ${LANGUAGE_TAG[song.language].color}55` }}>{LANGUAGE_TAG[song.language].short}</span>}
@@ -1797,30 +1889,45 @@ function SongRow({ song, members, onEdit }) {
           <div className="clx-mono" style={{ fontSize: 13, color: song.duration_seconds ? '#9A958C' : '#C1454B', width: 46, textAlign: 'right' }}>
             {formatSongDuration(song.duration_seconds)}
           </div>
-
-          {onEdit && (
-            <button
-              onClick={() => onEdit(song)}
-              className="clx-btn clx-btn-ghost"
-              style={{ padding: '7px 8px', borderRadius: 6, display: 'flex', color: missing ? '#F2A93B' : '#F5F1E8' }}
-              title={missing ? 'Compléter les données manquantes' : 'Modifier le morceau'}
-            >
-              <Pencil size={13} />
-            </button>
-          )}
-
-          <a
-            href={listenUrl(song)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="clx-btn clx-btn-ghost"
-            style={{ padding: '7px 10px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#F5F1E8', textDecoration: 'none' }}
-            title={song.links?.custom_url ? 'Ouvrir le lien' : 'Chercher sur Deezer'}
-          >
-            <Radio size={13} /> <ExternalLink size={11} />
-          </a>
+          {onEdit && <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />}
         </div>
       </div>
+    </>
+  );
+
+  // Ligne entièrement cliquable pour ouvrir l'édition — même principe que
+  // les cartes Concerts et Rendez-vous — avec le lien d'écoute comme
+  // action secondaire distincte (bulle en bout de ligne), plutôt qu'un
+  // bouton crayon séparé au milieu de la ligne.
+  return (
+    <div className="clx-card clx-row" style={{ display: 'flex', alignItems: 'stretch' }}>
+      {onEdit ? (
+        <button
+          onClick={() => onEdit(song)}
+          style={{
+            flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+            padding: '14px 16px', background: 'none', border: 'none', font: 'inherit', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer',
+          }}
+          title={missing ? 'Compléter les données manquantes' : 'Modifier le morceau'}
+        >
+          {content}
+        </button>
+      ) : (
+        <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', padding: '14px 16px' }}>
+          {content}
+        </div>
+      )}
+
+      <a
+        href={listenUrl(song)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="clx-row-action"
+        title={song.links?.custom_url ? 'Ouvrir le lien' : 'Chercher sur Deezer'}
+      >
+        <Radio size={16} />
+        <ExternalLink size={11} />
+      </a>
     </div>
   );
 }
@@ -2057,6 +2164,92 @@ function Modal({ onClose, title, icon: Icon, children, wide }) {
         {children}
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  COMMENTAIRES (rendez-vous et concerts, table partagée "comments")  */
+/* ------------------------------------------------------------------ */
+
+// Modale de commentaires, partagée entre l'onglet Rendez-vous et l'onglet
+// Concerts : `target` identifie l'élément commenté ({ type: 'event'|'concert',
+// id, label }). Ouverte depuis la bulle affichée dans les listes (voir
+// RendezVousCard / ConcertCard) — tous les membres peuvent lire, ajouter et
+// supprimer un commentaire, sans restriction liée à l'auteur.
+function CommentsModal({ target, comments, members, onAdd, onDelete, onClose }) {
+  const [content, setContent] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const list = commentsForTarget(comments, target.type, target.id)
+    .slice()
+    .sort((a, b) => a.created_at.localeCompare(b.created_at));
+
+  const submit = async () => {
+    if (!content.trim()) return;
+    setSubmitting(true);
+    try {
+      await onAdd(content.trim());
+      setContent('');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (comment) => {
+    if (!window.confirm('Supprimer définitivement ce commentaire ?')) return;
+    await onDelete(comment);
+  };
+
+  return (
+    <Modal onClose={onClose} title={`Commentaires — ${target.label}`} icon={MessageCircle} wide>
+      {list.length === 0 ? (
+        <EmptyState text="Aucun commentaire pour l'instant." />
+      ) : (
+        <div className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '45vh', overflowY: 'auto', marginBottom: 16, paddingRight: 4 }}>
+          {list.map((c) => {
+            const author = members.find((m) => m.id === c.member_id);
+            const when = new Date(c.created_at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            return (
+              <div key={c.id} className="clx-card" style={{ padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: avatarColorFor(author?.name) }}>
+                      {author ? <MemberAvatarIcon member={author} size={13} /> : <span style={{ fontSize: 11, color: AVATAR_INK }}>?</span>}
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{author ? author.name : 'Membre supprimé'}</span>
+                  </div>
+                  <button onClick={() => handleDelete(c)} className="clx-btn clx-btn-ghost" style={{ padding: '5px 6px', borderRadius: 6, display: 'flex', color: '#C1454B', flexShrink: 0 }} title="Supprimer ce commentaire">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', marginTop: 8 }}>{c.content}</div>
+                <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 6 }}>{when}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <Field label="Ajouter un commentaire">
+        <textarea
+          className="clx-input"
+          style={{ minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }}
+          placeholder="Écrire un commentaire…"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+        />
+      </Field>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+        <button
+          onClick={submit}
+          disabled={!content.trim() || submitting}
+          className="clx-btn clx-btn-primary"
+          style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: (!content.trim() || submitting) ? 0.5 : 1 }}
+        >
+          <Plus size={15} /> Publier
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -3009,8 +3202,29 @@ function generateOccurrences(event) {
   return occurrences;
 }
 
-function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, deleteConcert, pushNotification, initialConcertId, onInitialConcertConsumed }) {
+function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, deleteConcert, pushNotification, initialConcertId, onInitialConcertConsumed, comments, saveComment, deleteComment }) {
   const [editingConcert, setEditingConcert] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
+  const [commentsTarget, setCommentsTarget] = useState(null); // { type: 'concert', id, label } — commentaires ouverts depuis la liste
+
+  const handleAddComment = async (text) => {
+    if (!commentsTarget) return;
+    await saveComment({
+      id: uid(),
+      event_id: null,
+      concert_id: commentsTarget.id,
+      member_id: currentUser.id,
+      content: text,
+      created_at: new Date().toISOString(),
+    });
+    await pushNotification(`💬 ${currentUser.name} a commenté « ${commentsTarget.label} ».`, 'info');
+  };
+
+  const handleDeleteComment = async (comment) => {
+    await deleteComment(comment.id);
+    if (commentsTarget) {
+      await pushNotification(`🗑️ ${currentUser.name} a supprimé un commentaire sur « ${commentsTarget.label} ».`, 'info');
+    }
+  };
 
   // Arrivée depuis l'onglet Rendez-vous sur un concert précis : on l'ouvre
   // directement en édition, puis on "consomme" la demande côté App pour ne
@@ -3090,72 +3304,105 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
         <div ref={listRef} className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
           {sortedConcerts.map((concert, index) => (
             <div key={concert.id} ref={index === nextIndex ? nextConcertRef : null}>
-              <ConcertCard concert={concert} songs={songs} isNext={index === nextIndex} onOpen={() => setEditingConcert(concert)} />
+              <ConcertCard
+                concert={concert}
+                songs={songs}
+                isNext={index === nextIndex}
+                onOpen={() => setEditingConcert(concert)}
+                commentCount={commentsForTarget(comments, 'concert', concert.id).length}
+                onOpenComments={() => setCommentsTarget({ type: 'concert', id: concert.id, label: concert.name })}
+              />
             </div>
           ))}
         </div>
+      )}
+
+      {commentsTarget && (
+        <CommentsModal
+          target={commentsTarget}
+          comments={comments}
+          members={members}
+          onAdd={handleAddComment}
+          onDelete={handleDeleteComment}
+          onClose={() => setCommentsTarget(null)}
+        />
       )}
     </div>
   );
 }
 
-function ConcertCard({ concert, songs, onOpen, isNext }) {
+function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComments }) {
   const setSongs = (concert.song_ids || []).map((id) => songs.find((s) => s.id === id)).filter(Boolean);
   const totalSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
   const past = isPastConcert(concert);
   const time = formatConcertTime(concert.event_time);
 
   return (
-    <button
-      onClick={onOpen}
+    <div
       className="clx-card clx-row"
       style={{
-        padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-        width: '100%', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer', opacity: past ? 0.6 : 1,
+        display: 'flex', alignItems: 'stretch', opacity: past ? 0.6 : 1,
         borderColor: isNext ? '#F2A93B' : undefined,
         boxShadow: isNext ? '0 0 0 1px #F2A93B55' : undefined,
       }}
     >
-      <div
-        className="clx-mono"
+      <button
+        onClick={onOpen}
         style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          width: 54, height: 54, borderRadius: 6, flexShrink: 0,
-          background: past ? '#101012' : '#F2A93B22', border: `1px solid ${past ? '#2A2A2E' : '#F2A93B55'}`,
+          flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          padding: '14px 16px', background: 'none', border: 'none', font: 'inherit', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer',
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : '#F2A93B' }}>
-          {formatConcertDate(concert.event_date, { day: 'numeric' })}
+        <div
+          className="clx-mono clx-row-cover"
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            width: 54, height: 54, borderRadius: 6, flexShrink: 0,
+            background: past ? '#101012' : '#F2A93B22', border: `1px solid ${past ? '#2A2A2E' : '#F2A93B55'}`,
+          }}
+        >
+          <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : '#F2A93B' }}>
+            {formatConcertDate(concert.event_date, { day: 'numeric' })}
+          </div>
+          <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+            {formatConcertDate(concert.event_date, { month: 'short' })}
+          </div>
         </div>
-        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
-          {formatConcertDate(concert.event_date, { month: 'short' })}
-        </div>
-      </div>
 
-      <div style={{ flex: 1, minWidth: 180 }}>
-        <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {concert.name}
-          {isNext && (
-            <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
-          )}
+        <div className="clx-row-info" style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontWeight: 700, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {concert.name}
+            {isNext && (
+              <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Calendar size={11} /> {formatConcertDate(concert.event_date)}
+            </span>
+            {time && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {time}</span>}
+            {concert.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {concert.venue}</span>}
+          </div>
         </div>
-        <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Calendar size={11} /> {formatConcertDate(concert.event_date)}
-          </span>
-          {time && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {time}</span>}
-          {concert.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {concert.venue}</span>}
-        </div>
-      </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-        <div style={{ textAlign: 'right' }}>
-          <div className="clx-mono" style={{ fontSize: 13 }}>{setSongs.length} morceau{setSongs.length > 1 ? 'x' : ''}</div>
-          <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C' }}>{formatTotalDuration(totalSeconds)}</div>
+        <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ textAlign: 'right' }}>
+            <div className="clx-mono" style={{ fontSize: 13 }}>{setSongs.length} morceau{setSongs.length > 1 ? 'x' : ''}</div>
+            <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C' }}>{formatTotalDuration(totalSeconds)}</div>
+          </div>
+          <Pencil size={14} color="#6B6862" />
         </div>
-        <Pencil size={14} color="#6B6862" />
-      </div>
-    </button>
+      </button>
+
+      <button
+        onClick={onOpenComments}
+        className={`clx-mono clx-row-action${commentCount > 0 ? ' active' : ''}`}
+        title="Voir les commentaires"
+      >
+        <MessageCircle size={16} />
+        <span style={{ fontSize: 11 }}>{commentCount}</span>
+      </button>
+    </div>
   );
 }
 
@@ -3559,10 +3806,31 @@ function mergeEventsAndConcerts(events, concerts) {
 const RENDEZVOUS_KIND_INFO = { ...EVENT_KIND, concert: CONCERT_EVENT_KIND };
 const RENDEZVOUS_KIND_ORDER = ['repetition', 'atelier', 'residence', 'autre', 'concert'];
 
-function RendezVousTab({ events, concerts, members, currentUser, saveEvent, deleteEvent, pushNotification, onViewConcert }) {
+function RendezVousTab({ events, concerts, members, currentUser, saveEvent, deleteEvent, pushNotification, onViewConcert, comments, saveComment, deleteComment }) {
   const [editingEvent, setEditingEvent] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
   const [editingOccurrenceDate, setEditingOccurrenceDate] = useState(null); // occurrence précise cliquée dans la liste (pour une série récurrente)
   const [kindFilter, setKindFilter] = useState('all'); // 'all' ou une valeur de RENDEZVOUS_KIND_ORDER — choix unique, comme le Répertoire
+  const [commentsTarget, setCommentsTarget] = useState(null); // { type: 'event'|'concert', id, label } — commentaires ouverts depuis la liste
+
+  const handleAddComment = async (text) => {
+    if (!commentsTarget) return;
+    await saveComment({
+      id: uid(),
+      event_id: commentsTarget.type === 'event' ? commentsTarget.id : null,
+      concert_id: commentsTarget.type === 'concert' ? commentsTarget.id : null,
+      member_id: currentUser.id,
+      content: text,
+      created_at: new Date().toISOString(),
+    });
+    await pushNotification(`💬 ${currentUser.name} a commenté « ${commentsTarget.label} ».`, 'info');
+  };
+
+  const handleDeleteComment = async (comment) => {
+    await deleteComment(comment.id);
+    if (commentsTarget) {
+      await pushNotification(`🗑️ ${currentUser.name} a supprimé un commentaire sur « ${commentsTarget.label} ».`, 'info');
+    }
+  };
 
   const allMerged = mergeEventsAndConcerts(events, concerts);
   const merged = kindFilter === 'all' ? allMerged : allMerged.filter((item) => item.kind === kindFilter);
@@ -3629,7 +3897,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
 
   return (
     <div>
-      <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+      <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 14 }}>
           <span style={{ fontWeight: 700 }}>{merged.length}</span> rendez-vous
         </div>
@@ -3663,16 +3931,29 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
                     setEditingOccurrenceDate(item.occurrenceDate);
                   }
                 }}
+                commentCount={commentsForTarget(comments, item.source === 'concert' ? 'concert' : 'event', item.id).length}
+                onOpenComments={() => setCommentsTarget({ type: item.source === 'concert' ? 'concert' : 'event', id: item.id, label: item.subject })}
               />
             </div>
           ))}
         </div>
       )}
+
+      {commentsTarget && (
+        <CommentsModal
+          target={commentsTarget}
+          comments={comments}
+          members={members}
+          onAdd={handleAddComment}
+          onDelete={handleDeleteComment}
+          onClose={() => setCommentsTarget(null)}
+        />
+      )}
     </div>
   );
 }
 
-function RendezVousCard({ item, members, onOpen, isNext }) {
+function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenComments }) {
   const kindInfo = item.source === 'concert' ? CONCERT_EVENT_KIND : (EVENT_KIND[item.kind] || EVENT_KIND.autre);
   const past = isPastConcert({ event_date: item.end_date || item.event_date });
   const isMultiDay = item.end_date && item.end_date !== item.event_date;
@@ -3699,67 +3980,79 @@ function RendezVousCard({ item, members, onOpen, isNext }) {
       : item.participant_ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', '));
 
   return (
-    <button
-      onClick={onOpen}
+    <div
       className="clx-card clx-row"
       style={{
-        padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-        width: '100%', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer', opacity: past ? 0.6 : 1,
+        display: 'flex', alignItems: 'stretch', opacity: past ? 0.6 : 1,
         borderColor: isNext ? '#F2A93B' : undefined,
         boxShadow: isNext ? '0 0 0 1px #F2A93B55' : undefined,
       }}
     >
-      <div
-        className="clx-mono"
+      <button
+        onClick={onOpen}
         style={{
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          width: 54, height: 54, borderRadius: 6, flexShrink: 0,
-          background: past ? '#101012' : `${kindInfo.color}22`, border: `1px solid ${past ? '#2A2A2E' : `${kindInfo.color}55`}`,
+          flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          padding: '14px 16px', background: 'none', border: 'none', font: 'inherit', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer',
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : kindInfo.color }}>
-          {formatConcertDate(item.event_date, { day: 'numeric' })}
+        <div
+          className="clx-mono clx-row-cover"
+          style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            width: 54, height: 54, borderRadius: 6, flexShrink: 0,
+            background: past ? '#101012' : `${kindInfo.color}22`, border: `1px solid ${past ? '#2A2A2E' : `${kindInfo.color}55`}`,
+          }}
+        >
+          <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : kindInfo.color }}>
+            {formatConcertDate(item.event_date, { day: 'numeric' })}
+          </div>
+          <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+            {formatConcertDate(item.event_date, { month: 'short' })}
+          </div>
         </div>
-        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
-          {formatConcertDate(item.event_date, { month: 'short' })}
-        </div>
-      </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
-          {isNext && (
-            <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
-          )}
-          {item.isRecurring && (
-            <span className="clx-mono" style={{ fontSize: 10, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 3 }}>
-              <Repeat size={10} /> récurrent
+        <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{item.subject}</div>
+          <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Calendar size={11} /> {dateLabel}
             </span>
+            {timeLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {timeLabel}</span>}
+            {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
+          </div>
+          <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+            <Users size={11} /> {participantNames}
+          </div>
+          {recurrenceLabel && (
+            <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 3 }}>{recurrenceLabel}</div>
           )}
-          {item.source === 'concert' && (
-            <span className="clx-mono" style={{ fontSize: 10, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 3 }}>
-              <Mic2 size={10} /> non modifiable ici
-            </span>
-          )}
         </div>
-        <div style={{ fontWeight: 700, fontSize: 16, marginTop: 4 }}>{item.subject}</div>
-        <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Calendar size={11} /> {dateLabel}
-          </span>
-          {timeLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {timeLabel}</span>}
-          {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
-        </div>
-        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
-          <Users size={11} /> {participantNames}
-        </div>
-        {recurrenceLabel && (
-          <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 3 }}>{recurrenceLabel}</div>
-        )}
-      </div>
 
-      <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
-    </button>
+        <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            {item.isRecurring && (
+              <span className="clx-mono" style={{ fontSize: 10, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 3 }}>
+                <Repeat size={10} /> récurrent
+              </span>
+            )}
+            {isNext && (
+              <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
+            )}
+            <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
+          </div>
+          <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+        </div>
+      </button>
+
+      <button
+        onClick={onOpenComments}
+        className={`clx-mono clx-row-action${commentCount > 0 ? ' active' : ''}`}
+        title="Voir les commentaires"
+      >
+        <MessageCircle size={16} />
+        <span style={{ fontSize: 11 }}>{commentCount}</span>
+      </button>
+    </div>
   );
 }
 
