@@ -315,6 +315,8 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 - Concerts triés par date croissante, dans une liste défilante (hauteur limitée, défilement interne).
 
+- Compteur en tête de liste : nombre de concerts **à venir** ("X concert(s) programmé(s)"), les concerts passés étant exclus du décompte (un concert du jour compte comme à venir). Ils restent affichés dans la liste, seulement au-dessus du prochain concert.
+
 - Ouverture automatique de la liste positionnée sur le prochain concert à venir, placé en haut de la zone défilante (les concerts passés restent accessibles en remontant), mis en évidence par un badge "PROCHAIN" et une bordure accentuée — même mécanique que l'agenda des rendez-vous (§ 8.3). Si aucun concert n'est à venir, la liste se cale sur le dernier concert passé (le plus récent) plutôt que sur le plus ancien : à la différence des rendez-vous, alimentés par des répétitions récurrentes, les concerts n'ont pas toujours une prochaine occurrence programmée. La zone défilante a une hauteur fixe et se prolonge par une cale vide sous la dernière carte, pour qu'un défilement reste toujours possible même quand les concerts tiennent tous dans la zone visible (sans quoi les concerts passés resteraient affichés en tête) ; le revers assumé est un espace vide sous la liste lorsqu'elle est courte.
 
 - Chaque carte affiche le nom, la date, l'heure, le lieu, le nombre de morceaux du set et sa durée totale, ainsi qu'une bulle affichant le nombre de commentaires laissés sur le concert (§ 8.5).
@@ -354,6 +356,8 @@ Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résid
 ## 8.3 Écran liste et filtre
 
 - Rendez-vous triés par date croissante, dans une liste défilante, ouverte automatiquement centrée sur le prochain événement à venir (même mécanique que le module Concerts, badge "PROCHAIN" inclus).
+
+- Compteur en tête de liste : nombre de rendez-vous **à venir** ("X rendez-vous à venir"), les rendez-vous passés étant exclus du décompte (un rendez-vous en cours, dont la date de fin n'est pas dépassée, compte comme à venir). Le décompte porte sur les rendez-vous que le filtre par type actif laisse afficher, concerts intégrés compris. Les rendez-vous passés restent affichés dans la liste.
 
 - Filtre par type à choix unique (Tous, ou exactement un type à la fois), identique dans son fonctionnement au filtre de statut du Répertoire (§ 5.2).
 
@@ -520,7 +524,7 @@ Les trois écrans présentant une liste de cartes (Répertoire, Concerts, Rendez
 
 - Action secondaire en bout de ligne (écouter un morceau sur le Répertoire, consulter les commentaires sur Concerts et Rendez-vous, § 8.5) présentée de façon identique : bulle séparée par un filet vertical, avec le même comportement au survol.
 
-- Vignette de gauche (pochette d'album ou pastille de date) au même gabarit sur les trois écrans.
+- Vignette de gauche (pochette d'album ou pastille de date) au même gabarit sur les trois écrans. La pastille de date affiche le jour, le mois abrégé puis l'année, sur trois lignes — présentation identique sur les écrans Accueil (§ 11.2), Concerts (§ 7.1) et Rendez-vous (§ 8.3).
 
 - Liste contenue dans un conteneur à hauteur limitée avec défilement interne, propre à chaque écran plutôt que de faire défiler la page entière.
 
@@ -647,6 +651,10 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Ajout d'un fichier .gitignore à la racine du dépôt (.DS_Store, node_modules/, dist/, .env*) et arrêt du suivi Git des fichiers .DS_Store précédemment commités.
 
 - Écran liste des concerts (§ 7.1) : le défilement automatique amène désormais réellement le prochain concert en haut de la zone défilante, comme sur l'agenda des rendez-vous. Trois ajustements : la zone a une hauteur fixe prolongée d'une cale vide (un défilement est donc toujours possible, même quand la liste est courte — auparavant elle tenait entièrement dans la zone visible et les concerts passés restaient en tête) ; le défilement se rejoue quand la liste finit de charger et non plus à la seule ouverture de l'onglet ; la liste se cale sur le dernier concert passé quand aucun concert n'est à venir.
+
+- Compteurs en tête des listes Concerts (§ 7.1) et Rendez-vous (§ 8.3) : ils décomptent désormais uniquement les éléments à venir ("X concert(s) programmé(s)", "X rendez-vous à venir"), les éléments passés étant exclus du chiffre (ils restent affichés dans la liste). Pour les rendez-vous, le décompte suit le filtre par type actif.
+
+- Pastille de date des écrans Accueil (§ 11.2), Concerts (§ 7.1) et Rendez-vous (§ 8.3) : ajout de l'année sous le jour et le mois (§ 13.3).
 
 # 17. Références
 

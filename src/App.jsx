@@ -1531,6 +1531,9 @@ function HomeAgendaCard({ item, onOpen, members }) {
         <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
           {formatConcertDate(item.event_date, { month: 'short' })}
         </div>
+        <div style={{ fontSize: 9, color: '#6B6862', marginTop: 1 }}>
+          {formatConcertDate(item.event_date, { year: 'numeric' })}
+        </div>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
@@ -3271,6 +3274,9 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
   // en haut de la zone visible.
   const todayStr = toISODate(new Date());
   const nextIndex = sortedConcerts.findIndex((c) => (c.event_date || '') >= todayStr);
+  // Compteur en tête de liste : uniquement les concerts encore à venir (un
+  // concert du jour compte comme à venir), les concerts passés sont exclus.
+  const upcomingConcertsCount = sortedConcerts.filter((c) => (c.event_date || '') >= todayStr).length;
   // Si aucun concert n'est à venir, on cale la liste sur le dernier concert
   // passé (le plus récent) plutôt que de la laisser en haut sur le plus
   // ancien : contrairement aux rendez-vous (répétitions récurrentes), les
@@ -3323,7 +3329,7 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
     <div>
       <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 14 }}>
-          <span style={{ fontWeight: 700 }}>{concerts.length}</span> concert{concerts.length > 1 ? 's' : ''} programmé{concerts.length > 1 ? 's' : ''}
+          <span style={{ fontWeight: 700 }}>{upcomingConcertsCount}</span> concert{upcomingConcertsCount > 1 ? 's' : ''} programmé{upcomingConcertsCount > 1 ? 's' : ''}
         </div>
         <button onClick={() => setEditingConcert(null)} className="clx-btn clx-btn-primary" style={{ borderRadius: 6, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
           <Plus size={15} /> Nouveau concert
@@ -3402,6 +3408,9 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
           </div>
           <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
             {formatConcertDate(concert.event_date, { month: 'short' })}
+          </div>
+          <div style={{ fontSize: 9, color: '#6B6862', marginTop: 1 }}>
+            {formatConcertDate(concert.event_date, { year: 'numeric' })}
           </div>
         </div>
 
@@ -3884,6 +3893,11 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
   // conteneur de la liste, la page reste calée en haut au chargement.
   const todayStr = toISODate(new Date());
   const nextIndex = merged.findIndex((item) => (item.end_date || item.event_date) >= todayStr);
+  // Compteur en tête de liste : uniquement les rendez-vous encore à venir
+  // (dont ceux en cours, dont la date de fin n'est pas passée) — parmi ceux
+  // que le filtre par type actif laisse afficher. Les rendez-vous passés
+  // sont exclus.
+  const upcomingCount = merged.filter((item) => (item.end_date || item.event_date) >= todayStr).length;
   const listRef = useRef(null);
   const nextItemRef = useRef(null);
   useEffect(() => {
@@ -3935,7 +3949,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
     <div>
       <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 14 }}>
-          <span style={{ fontWeight: 700 }}>{merged.length}</span> rendez-vous
+          <span style={{ fontWeight: 700 }}>{upcomingCount}</span> rendez-vous à venir
         </div>
         <button onClick={() => { setEditingEvent(null); setEditingOccurrenceDate(null); }} className="clx-btn clx-btn-primary" style={{ borderRadius: 6, padding: '9px 16px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
           <Plus size={15} /> Nouveau rendez-vous
@@ -4044,6 +4058,9 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
           </div>
           <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
             {formatConcertDate(item.event_date, { month: 'short' })}
+          </div>
+          <div style={{ fontSize: 9, color: '#6B6862', marginTop: 1 }}>
+            {formatConcertDate(item.event_date, { year: 'numeric' })}
           </div>
         </div>
 
