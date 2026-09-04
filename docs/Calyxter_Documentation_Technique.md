@@ -361,6 +361,8 @@ Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résid
 
 - Filtre par type à choix unique (Tous, ou exactement un type à la fois), identique dans son fonctionnement au filtre de statut du Répertoire (§ 5.2).
 
+- Code couleur par type, repris sur la pastille de date, le badge de catégorie et (écran Accueil) la bande d'angle : Répétition bleu ardoise, Atelier de travail sauge, Résidence or, Autre taupe, Concert turquoise. Le turquoise du concert le distingue nettement des autres rendez-vous dans la liste ; il a remplacé un rouge qui se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti"). Un rendez-vous passé perd sa couleur au profit d'un gris neutre.
+
 - Les libellés de la ligne (indication "récurrent" le cas échéant, badge "PROCHAIN" le cas échéant, puis catégorie du rendez-vous) sont regroupés en bout de ligne dans cet ordre, au même endroit et selon la même logique de repli sur mobile que les badges de statut et de langue du Répertoire (§ 13.2) — le titre du rendez-vous occupe désormais la première ligne de la carte.
 
 - Les concerts apparaissent dans cette liste au même titre que les autres rendez-vous : cliquer dessus bascule vers le module Concerts et ouvre directement le concert concerné en édition (la mention "non modifiable ici", auparavant affichée sur ces lignes, a été retirée — elle entrait en contradiction avec ce comportement au clic et n'apportait qu'une confusion). Les données affichées proviennent en direct de la table concerts — toute modification faite depuis le module Concerts se répercute donc immédiatement dans l'agenda.
@@ -462,7 +464,7 @@ Chaque membre est représenté par une icône liée à son instrument plutôt qu
 
 L'association se fait par le prénom exact du membre, et non par son seul instrument : deux membres (Véro et Gawel) partagent le même instrument (chant) mais doivent apparaître avec des icônes visuellement distinctes. Un membre non couvert par ce tableau (ex. nouvel arrivant dans le groupe) conserve l'affichage par défaut : initiale du prénom sur fond coloré.
 
-Le fond coloré du cercle d'avatar (icône ou initiale) attribue désormais une couleur pastel individuelle à chaque membre — Do (or pastel), Dave (sauge pastel), Alex (bleu ciel pastel), Véro (turquoise pastel), Gawel (terracotta pastel), Niko (moutarde pastel) — choisies pour rester bien distinctes les unes des autres sans recourir à une logique genrée (pas de rose ni de mauve réservés à certains prénoms), et sans jamais utiliser le rouge, cette couleur restant réservée dans l'application aux statuts d'alerte (veto, morceau sorti, concert). La couleur est associée au prénom exact du membre (même principe que le tableau des icônes ci-dessus), qui la conserve donc de façon stable d'une session à l'autre ; un membre non couvert par cette liste (ex. nouvel arrivant) retombe sur un mécanisme de secours à deux couleurs (ambre / gris), en attendant qu'une teinte dédiée lui soit attribuée.
+Le fond coloré du cercle d'avatar (icône ou initiale) attribue désormais une couleur pastel individuelle à chaque membre — Do (or pastel), Dave (sauge pastel), Alex (bleu ciel pastel), Véro (turquoise pastel), Gawel (terracotta pastel), Niko (moutarde pastel) — choisies pour rester bien distinctes les unes des autres sans recourir à une logique genrée (pas de rose ni de mauve réservés à certains prénoms), et sans jamais utiliser le rouge, cette couleur restant réservée dans l'application aux statuts d'alerte (veto, morceau sorti, erreurs de saisie, actions de suppression). La couleur est associée au prénom exact du membre (même principe que le tableau des icônes ci-dessus), qui la conserve donc de façon stable d'une session à l'autre ; un membre non couvert par cette liste (ex. nouvel arrivant) retombe sur un mécanisme de secours à deux couleurs (ambre / gris), en attendant qu'une teinte dédiée lui soit attribuée.
 
 ## 11.6 Dernières connexions
 
@@ -655,6 +657,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Compteurs en tête des listes Concerts (§ 7.1) et Rendez-vous (§ 8.3) : ils décomptent désormais uniquement les éléments à venir ("X concert(s) programmé(s)", "X rendez-vous à venir"), les éléments passés étant exclus du chiffre (ils restent affichés dans la liste). Pour les rendez-vous, le décompte suit le filtre par type actif.
 
 - Pastille de date des écrans Accueil (§ 11.2), Concerts (§ 7.1) et Rendez-vous (§ 8.3) : ajout de l'année sous le jour et le mois (§ 13.3).
+
+- Couleur du type "Concert" dans l'agenda des rendez-vous (§ 8.3) et sur l'écran d'accueil : passage du rouge au turquoise (`#2E9FB8`). Le rouge se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti") et rendait les concerts peu identifiables dans la liste. §11.5 corrigé en conséquence (le rouge n'est plus décrit comme la couleur du concert).
 
 # 17. Références
 

@@ -46,7 +46,10 @@ const EVENT_KIND = {
   residence:  { label: 'Résidence',          badge: 'RÉSIDENCE', color: '#E8B04B' },
   autre:      { label: 'Autre',              badge: 'AUTRE',     color: '#6B6862' },
 };
-const CONCERT_EVENT_KIND = { label: 'Concert', badge: 'CONCERT', color: '#C1454B' };
+// Turquoise soutenu, distinct des autres types de rendez-vous et surtout de
+// la couleur d'alerte rouge (#C1454B, réservée aux vetos, erreurs, suppressions
+// et au statut "Sorti") : un concert est un temps fort, pas une alerte.
+const CONCERT_EVENT_KIND = { label: 'Concert', badge: 'CONCERT', color: '#2E9FB8' };
 
 const RECURRENCE_UNIT_LABEL = {
   day: { singular: 'jour', plural: 'jours' },
@@ -1516,7 +1519,7 @@ function HomeAgendaCard({ item, onOpen, members }) {
       className="clx-card"
       style={{ padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer' }}
     >
-      <div className="clx-tape" style={item.source === 'concert' ? { background: 'rgba(193,69,75,0.85)' } : undefined} />
+      <div className="clx-tape" style={item.source === 'concert' ? { background: 'rgba(46,159,184,0.85)' } : undefined} />
       <div
         className="clx-mono"
         style={{
