@@ -160,7 +160,7 @@ Les concerts (table concerts) apparaissent automatiquement dans l'agenda des ren
 | content | text | Contenu libre du commentaire |
 | created_at | timestamptz | Horodatage |
 
-Table partagée entre les modules Rendez-vous et Concerts (§ 8.5) : en pratique chaque ligne ne référence que l'une des deux colonnes event_id / concert_id, jamais les deux. **Vérification faite contre la base réelle le 2026-09-04 (Schema Visualizer) : cette règle n'est pas imposée par une contrainte CHECK côté base, uniquement respectée côté code (saveComment)** — et la suppression d'un rendez-vous ou d'un concert n'entraîne **pas** de suppression en cascade de ses commentaires (aucune clause ON DELETE sur les clés étrangères de la table, ni d'ailleurs sur aucune des clés étrangères du schéma : added_by_user_id, initiated_by_user_id, created_by_user_id, member_id). Supprimer un rendez-vous ou un concert qui a des commentaires échoue donc aujourd'hui en base (violation de contrainte de clé étrangère), le code applicatif (deleteEvent/deleteConcert) ne supprimant pas les commentaires liés au préalable — point à corriger, signalé mais non traité dans le cadre de cette mise à jour.
+Table partagée entre les modules Rendez-vous et Concerts (§ 8.5) : en pratique chaque ligne ne référence que l'une des deux colonnes event_id / concert_id, jamais les deux. **Vérification faite contre la base réelle le 2026-09-04 (Schema Visualizer) : cette règle n'est pas imposée par une contrainte CHECK côté base, uniquement respectée côté code (saveComment)** — et la base ne comporte aucune clause ON DELETE sur les clés étrangères de la table (ni d'ailleurs sur aucune des clés étrangères du schéma : added_by_user_id, initiated_by_user_id, created_by_user_id, member_id). La suppression en cascade des commentaires liés à un rendez-vous ou à un concert est donc désormais prise en charge côté application : deleteEvent et deleteConcert (src/App.jsx) suppriment d'abord les lignes de comments référençant l'élément (via un DELETE filtré sur event_id ou concert_id) avant de supprimer l'élément lui-même. Auparavant cette suppression préalable n'était pas faite et supprimer un rendez-vous ou un concert commenté échouait en base sur une violation de contrainte de clé étrangère. Reste non traité : la suppression d'un membre référencé (added_by_user_id, etc.) échoue toujours en base pour la même raison — cas non exposé par l'interface actuelle.
 
 # 4. Sécurité et authentification
 
@@ -641,6 +641,10 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Historique des phases (§ 6.7) enrichi : en plus de l'initiateur, de la date de début, de la date de fin et de la durée, chaque phase clôturée affiche désormais le nombre de propositions, le nombre de morceaux rejetés par veto et le résultat final (titre et artiste des 3 morceaux retenus). Nombre de propositions et résultat proviennent d'un instantané pris à la clôture (nouvelles colonnes phases.proposed_count et phases.result, § 3.3), le recalcul a posteriori n'étant pas fiable.
 
 - Ce fichier et le script SQL consolidé de recréation de la base (recreate_full_schema.sql) rejoignent le dépôt Git (dossier docs/ et racine du dépôt), qui devient leur unique source de vérité — ils n'existaient auparavant que comme documents à part, avec le risque de désynchronisation que cela implique.
+
+- Correction de la suppression des commentaires liés (§ 3.8) : deleteConcert et deleteEvent suppriment désormais les lignes de la table comments référençant le concert ou le rendez-vous avant de le supprimer. Auparavant, supprimer un concert ou un rendez-vous commenté échouait en base sur une violation de contrainte de clé étrangère (aucune clause ON DELETE côté schéma).
+
+- Ajout d'un fichier .gitignore à la racine du dépôt (.DS_Store, node_modules/, dist/, .env*) et arrêt du suivi Git des fichiers .DS_Store précédemment commités.
 
 # 17. Références
 

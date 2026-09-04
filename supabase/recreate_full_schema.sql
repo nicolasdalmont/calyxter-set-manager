@@ -28,13 +28,13 @@
 -- (ni SET NULL, ni CASCADE) sur les clés étrangères ci-dessous, et la
 -- table comments ne comporte PAS de contrainte CHECK garantissant qu'une
 -- ligne référence exactement l'un des deux (event_id XOR concert_id).
--- Ce script reflète donc désormais la réalité : suppression d'un membre,
--- d'un événement ou d'un concert référencé échoue par défaut (NO ACTION)
--- tant que les lignes dépendantes n'ont pas été supprimées au préalable
--- (le code applicatif ne le fait pas non plus aujourd'hui pour
--- comments — à surveiller, voir deleteConcert/deleteEvent dans
--- src/App.jsx qui ne suppriment pas les commentaires liés avant de
--- supprimer l'événement/concert).
+-- Ce script reflète donc la réalité : suppression d'un membre, d'un
+-- événement ou d'un concert référencé échoue par défaut (NO ACTION) tant
+-- que les lignes dépendantes n'ont pas été supprimées au préalable. Le
+-- code applicatif prend désormais ce cas en charge pour comments :
+-- deleteConcert/deleteEvent (src/App.jsx) suppriment d'abord les
+-- commentaires liés avant de supprimer l'événement/concert. La
+-- suppression d'un membre référencé n'est pas exposée par l'interface.
 -- =====================================================================
 
 

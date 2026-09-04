@@ -528,7 +528,13 @@ export default function App() {
 
   const deleteConcert = useCallback(async (concertId) => {
     setConcerts((prev) => prev.filter((c) => c.id !== concertId));
+    setComments((prev) => prev.filter((c) => c.concert_id !== concertId));
     try {
+      // Les clés étrangères de la table comments n'ont aucune clause
+      // ON DELETE côté base (voir recreate_full_schema.sql) : il faut donc
+      // supprimer d'abord les commentaires liés, sinon la suppression du
+      // concert échoue sur une violation de contrainte de clé étrangère.
+      await supabaseTable(`comments?concert_id=eq.${concertId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
       await supabaseTable(`concerts?id=eq.${concertId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
     } catch (e) {
       console.error('Erreur en supprimant le concert', e);
@@ -549,7 +555,13 @@ export default function App() {
 
   const deleteEvent = useCallback(async (eventId) => {
     setEvents((prev) => prev.filter((e) => e.id !== eventId));
+    setComments((prev) => prev.filter((c) => c.event_id !== eventId));
     try {
+      // Les clés étrangères de la table comments n'ont aucune clause
+      // ON DELETE côté base (voir recreate_full_schema.sql) : il faut donc
+      // supprimer d'abord les commentaires liés, sinon la suppression du
+      // rendez-vous échoue sur une violation de contrainte de clé étrangère.
+      await supabaseTable(`comments?event_id=eq.${eventId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
       await supabaseTable(`events?id=eq.${eventId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
     } catch (e) {
       console.error('Erreur en supprimant le rendez-vous', e);
