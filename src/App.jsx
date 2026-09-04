@@ -3259,6 +3259,16 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
   // jusqu'à lui dès l'ouverture de l'onglet, en restant cantonnée à son
   // propre conteneur (jamais la page entière — voir le même correctif dans
   // RendezVousTab pour le détail du problème que cela évite sur mobile).
+  //
+  // À la différence de l'agenda des rendez-vous (liste toujours longue, car
+  // gonflée par les occurrences des répétitions récurrentes), la liste des
+  // concerts est souvent courte et tiendrait entièrement dans le conteneur :
+  // sans hauteur fixe ni marge basse, aucun défilement ne serait possible et
+  // le prochain concert resterait coincé sous les concerts passés. On fixe
+  // donc la hauteur du conteneur et on ajoute sous la dernière carte une
+  // cale vide d'une pleine hauteur de conteneur, pour qu'il y ait toujours
+  // de quoi remonter n'importe quel concert — y compris le dernier — tout
+  // en haut de la zone visible.
   const todayStr = toISODate(new Date());
   const nextIndex = sortedConcerts.findIndex((c) => (c.event_date || '') >= todayStr);
   // Si aucun concert n'est à venir, on cale la liste sur le dernier concert
@@ -3269,12 +3279,17 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
   const listRef = useRef(null);
   const focusConcertRef = useRef(null);
   useEffect(() => {
-    if (focusConcertRef.current && listRef.current) {
+    if (!focusConcertRef.current || !listRef.current) return;
+    // Un rAF pour laisser la mise en page se stabiliser (polices web,
+    // dernier reflow) avant de mesurer les positions.
+    const raf = requestAnimationFrame(() => {
+      if (!focusConcertRef.current || !listRef.current) return;
       const container = listRef.current;
       const item = focusConcertRef.current;
       const offset = item.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
       container.scrollTop = Math.max(offset - 4, 0);
-    }
+    });
+    return () => cancelAnimationFrame(raf);
   }, [editingConcert, sortedConcerts.length]);
 
   if (editingConcert !== undefined) {
@@ -3318,7 +3333,7 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
       {sortedConcerts.length === 0 ? (
         <EmptyState text="Aucun concert programmé pour le moment." />
       ) : (
-        <div ref={listRef} className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
+        <div ref={listRef} className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, height: '65vh', overflowY: 'auto', paddingRight: 4 }}>
           {sortedConcerts.map((concert, index) => (
             <div key={concert.id} ref={index === focusIndex ? focusConcertRef : null}>
               <ConcertCard
@@ -3331,6 +3346,10 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
               />
             </div>
           ))}
+          {/* Cale de fin de liste : garantit qu'un défilement est toujours
+              possible pour amener le prochain concert tout en haut, même
+              quand les concerts tiennent dans la zone visible (voir plus haut). */}
+          <div aria-hidden="true" style={{ flex: '0 0 auto', height: '65vh' }} />
         </div>
       )}
 

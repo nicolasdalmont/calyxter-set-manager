@@ -315,7 +315,7 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 - Concerts triés par date croissante, dans une liste défilante (hauteur limitée, défilement interne).
 
-- Ouverture automatique de la liste positionnée sur le prochain concert à venir, placé en haut de la zone défilante (les concerts passés restent accessibles en remontant), mis en évidence par un badge "PROCHAIN" et une bordure accentuée — même mécanique que l'agenda des rendez-vous (§ 8.3). Si aucun concert n'est à venir, la liste se cale sur le dernier concert passé (le plus récent) plutôt que sur le plus ancien : à la différence des rendez-vous, alimentés par des répétitions récurrentes, les concerts n'ont pas toujours une prochaine occurrence programmée.
+- Ouverture automatique de la liste positionnée sur le prochain concert à venir, placé en haut de la zone défilante (les concerts passés restent accessibles en remontant), mis en évidence par un badge "PROCHAIN" et une bordure accentuée — même mécanique que l'agenda des rendez-vous (§ 8.3). Si aucun concert n'est à venir, la liste se cale sur le dernier concert passé (le plus récent) plutôt que sur le plus ancien : à la différence des rendez-vous, alimentés par des répétitions récurrentes, les concerts n'ont pas toujours une prochaine occurrence programmée. La zone défilante a une hauteur fixe et se prolonge par une cale vide sous la dernière carte, pour qu'un défilement reste toujours possible même quand les concerts tiennent tous dans la zone visible (sans quoi les concerts passés resteraient affichés en tête) ; le revers assumé est un espace vide sous la liste lorsqu'elle est courte.
 
 - Chaque carte affiche le nom, la date, l'heure, le lieu, le nombre de morceaux du set et sa durée totale, ainsi qu'une bulle affichant le nombre de commentaires laissés sur le concert (§ 8.5).
 
@@ -646,7 +646,7 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - Ajout d'un fichier .gitignore à la racine du dépôt (.DS_Store, node_modules/, dist/, .env*) et arrêt du suivi Git des fichiers .DS_Store précédemment commités.
 
-- Écran liste des concerts (§ 7.1) : le défilement automatique vers le prochain concert se rejoue désormais lorsque la liste des concerts finit de se charger (et non plus à la seule ouverture de l'onglet), et se cale sur le dernier concert passé quand aucun concert n'est à venir.
+- Écran liste des concerts (§ 7.1) : le défilement automatique amène désormais réellement le prochain concert en haut de la zone défilante, comme sur l'agenda des rendez-vous. Trois ajustements : la zone a une hauteur fixe prolongée d'une cale vide (un défilement est donc toujours possible, même quand la liste est courte — auparavant elle tenait entièrement dans la zone visible et les concerts passés restaient en tête) ; le défilement se rejoue quand la liste finit de charger et non plus à la seule ouverture de l'onglet ; la liste se cale sur le dernier concert passé quand aucun concert n'est à venir.
 
 # 17. Références
 
