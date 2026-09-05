@@ -482,6 +482,8 @@ Deezer est l'unique plateforme d'écoute intégrée à l'application, et le rest
 
 # 13. Interface et navigation
 
+- Logo du groupe : dans la barre supérieure, il remplace le point ambre à gauche du nom "CALYXTER", à la hauteur des caractères du titre. Sur l'écran de connexion (choix du profil puis saisie du mot de passe), il occupe le haut de l'écran au-dessus du nom du groupe, large sur mobile (jusqu'à 360 px). Le fichier `public/logo.png` est dérivé de l'illustration source du groupe (motif en "X" au pinceau, "X négatif") : fond noir détouré par la luminance (le motif devient un aplat blanc cassé `#F5F1E8` à opacité variable), pour un rendu propre sur n'importe quel fond sombre sans recourir à un mode de fusion. Sur les deux écrans de connexion, le contenu est désormais aligné en haut (et non plus centré verticalement) pour que le logo reste visible même quand la liste des profils dépasse la hauteur de l'écran sur mobile.
+
 - Barre d'onglets responsive : en dessous de 640 px de largeur d'écran, les onglets passent en icônes seules (texte conservé pour les lecteurs d'écran et en info-bulle) et occupent toute la largeur disponible ; un défilement horizontal reste disponible en filet de sécurité dans tous les cas, pour qu'aucun onglet ne soit jamais tronqué ou inaccessible sur smartphone.
 
 - Nouvel onglet "Accueil" (icône maison), en première position dans la barre de navigation et affiché par défaut à l'ouverture de l'application (§ 11).
@@ -663,6 +665,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Couleurs des types de rendez-vous (§ 8.3), sur la pastille de date, le badge et la bande d'angle de l'écran d'accueil : "Concert" passe du rouge au turquoise (`#2E9FB8`) — le rouge se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti") et rendait les concerts peu identifiables dans la liste ; "Autre" passe du taupe au violet (`#9884C4`) — le taupe est le gris neutre d'interface de l'application et faisait passer ces rendez-vous pour des événements passés ou désactivés. §11.5 corrigé en conséquence (le rouge n'est plus décrit comme la couleur du concert).
 
 - Harmonisation de la carte de l'écran Concerts (§ 7.1, § 13.3) sur celle de l'écran Rendez-vous : le badge "PROCHAIN", auparavant accolé au nom du concert, rejoint désormais le bloc de fin de ligne partagé avec l'icône crayon ; le nombre de morceaux du set et sa durée totale, auparavant affichés à part en bout de ligne, deviennent une troisième ligne sous la ligne date/heure/lieu. La pastille de date d'un concert à venir utilise désormais la couleur turquoise du type "Concert" plutôt que l'ambre, y compris pour le prochain concert (l'ambre restant réservé au badge "PROCHAIN" lui-même et à la bordure de la carte).
+
+- Ajout du logo du groupe (§ 13) : il remplace le point ambre à gauche de "CALYXTER" dans la barre supérieure, et coiffe l'écran de connexion (large sur mobile). Fichier `public/logo.png` dérivé de l'illustration source "X négatif" (fond noir détouré par la luminance). Les deux écrans de connexion sont alignés en haut plutôt que centrés verticalement pour ne pas rogner le logo sur mobile.
 
 # 17. Références
 

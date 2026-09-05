@@ -1168,11 +1168,25 @@ function MemberPicker({ members, onAuthenticated, error }) {
     }
   };
 
+  // En-tête de marque, partagé par les deux écrans (choix du profil et
+  // mot de passe) : le logo du groupe occupe le haut de l'écran, large sur
+  // mobile (min(88vw, 360px)), au-dessus du nom du groupe.
+  const brandHeader = (
+    <>
+      <img
+        src="/logo.png"
+        alt="Calyxter"
+        style={{ width: 'min(88vw, 360px)', height: 'auto', display: 'block', marginBottom: 10 }}
+      />
+      <div className="clx-display" style={{ fontSize: 52, lineHeight: 1, marginBottom: 4 }}>CALYXTER</div>
+      <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', marginBottom: 32 }}>SET MANAGER</div>
+    </>
+  );
+
   if (mode === 'login' || mode === 'create') {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative', zIndex: 1 }}>
-        <div className="clx-display" style={{ fontSize: 52, lineHeight: 1, marginBottom: 4 }}>CALYXTER</div>
-        <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', marginBottom: 28 }}>SET MANAGER</div>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '32px 24px 48px', position: 'relative', zIndex: 1 }}>
+        {brandHeader}
 
         <form onSubmit={mode === 'login' ? submitLogin : submitCreate} className="clx-card" style={{ padding: 24, width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div className="clx-tape" />
@@ -1224,9 +1238,8 @@ function MemberPicker({ members, onAuthenticated, error }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative', zIndex: 1 }}>
-      <div className="clx-display" style={{ fontSize: 52, lineHeight: 1, marginBottom: 4 }}>CALYXTER</div>
-      <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', marginBottom: 36 }}>SET MANAGER</div>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '32px 24px 48px', position: 'relative', zIndex: 1 }}>
+      {brandHeader}
 
       <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginBottom: 14, textAlign: 'center', maxWidth: 380 }}>
         Choisis ton profil pour continuer.
@@ -1267,7 +1280,8 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
     <header style={{ borderBottom: '1px solid #2A2A2E', position: 'sticky', top: 0, zIndex: 10, background: '#0B0B0Cee', backdropFilter: 'blur(6px)' }}>
       <div style={{ maxWidth: 880, margin: '0 auto', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
         <div className="clx-display" style={{ fontSize: 26, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: '#F2A93B' }}>●</span> CALYXTER
+          <img src="/logo.png" alt="" aria-hidden="true" style={{ height: '1em', width: 'auto', display: 'block', flexShrink: 0 }} />
+          CALYXTER
         </div>
 
         <nav className="clx-topnav" style={{ display: 'flex', gap: 4 }}>
