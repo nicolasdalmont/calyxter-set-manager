@@ -70,14 +70,22 @@ async function main() {
     for (const t of TABLES) {
       const { rows } = await src.query(`select * from "${t}"`);
       if (rows.length === 0) { console.log(`  ${t}: 0`); continue; }
-      const cols = Object.keys(rows[0]);
+      // N'insérer que les colonnes présentes des DEUX côtés : le schéma peut
+      // diverger temporairement (ex. concerts.set_items ajouté côté Neon mais
+      // pas côté Supabase pendant la fenêtre de filet de sécurité).
+      const dstColsRes = await dst.query(
+        `select column_name from information_schema.columns where table_name = $1`, [t]
+      );
+      const dstCols = new Set(dstColsRes.rows.map((r) => r.column_name));
+      const cols = Object.keys(rows[0]).filter((c) => dstCols.has(c));
+      const skipped = Object.keys(rows[0]).filter((c) => !dstCols.has(c));
       const colList = cols.map((c) => `"${c}"`).join(', ');
       const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
       const text = `insert into "${t}" (${colList}) values (${placeholders})`;
       for (const row of rows) {
         await dst.query(text, cols.map((c) => norm(row[c])));
       }
-      console.log(`  ${t}: ${rows.length}`);
+      console.log(`  ${t}: ${rows.length}${skipped.length ? `  (colonnes ignorées, absentes côté ${DST_NAME} : ${skipped.join(', ')})` : ''}`);
     }
 
     console.log('\nVérification des volumes :');

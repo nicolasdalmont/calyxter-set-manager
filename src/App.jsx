@@ -4,7 +4,7 @@ import {
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
-  Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus
+  Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -3370,17 +3370,31 @@ function isPastConcert(concert) {
 // Texte formaté pour partage (WhatsApp, SMS, e-mail…) : ligne d'en-tête
 // (nom - date heure - lieu), le set complet un morceau par ligne, puis la
 // durée théorique totale.
-function buildConcertShareText(concert, setSongs, totalSeconds) {
+// `setItems` : liste ordonnée [{type:'song',song_id} | {type:'note',id,text}].
+// Les notes de transition apparaissent sur leur propre ligne, sans numéro ;
+// seuls les morceaux sont numérotés.
+function buildConcertShareText(concert, setItems, songs, totalSeconds) {
   const dateLabel = formatConcertDate(concert.event_date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const time = formatConcertTime(concert.event_time);
   const durationLabel = formatScheduleDuration(scheduleDurationMinutes(concert.event_time, concert.end_time));
   const timePart = time ? ` ${time}${durationLabel ? ` (${durationLabel})` : ''}` : '';
   const header = `${concert.name} - ${dateLabel}${timePart} - ${concert.venue || 'Lieu à confirmer'}`;
-  const setLines = setSongs.length > 0
-    ? setSongs.map((s, i) => `${i + 1}. ${s.title} — ${s.artist} (${formatSongDuration(s.duration_seconds)})`).join('\n')
-    : '(set vide)';
+  let songNo = 0;
+  const lines = (setItems || [])
+    .map((it) => {
+      if (it.type === 'note') {
+        const text = (it.text || '').trim();
+        return text ? `   → ${text}` : null;
+      }
+      const s = songs.find((x) => x.id === it.song_id);
+      if (!s) return null;
+      songNo += 1;
+      return `${songNo}. ${s.title} — ${s.artist} (${formatSongDuration(s.duration_seconds)})`;
+    })
+    .filter(Boolean);
+  const setBlock = lines.length > 0 ? lines.join('\n') : '(set vide)';
   const durationLine = `Durée totale du set : ${formatTotalDuration(totalSeconds)}`;
-  return [header, '', setLines, '', durationLine].join('\n');
+  return [header, '', setBlock, '', durationLine].join('\n');
 }
 
 // Copie dans le presse-papier avec repli si l'API Clipboard n'est pas
@@ -3854,7 +3868,22 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
     scheduleDurationMinutes(formatConcertTime(concert?.event_time), formatConcertTime(concert?.end_time)) ?? DEFAULT_DURATION_MIN
   );
   const [venue, setVenue] = useState(concert?.venue || '');
-  const [selectedIds, setSelectedIds] = useState((concert?.song_ids || []).filter((id) => songs.some((s) => s.id === id)));
+  // Set détaillé : liste ordonnée de morceaux et de notes de transition.
+  // Reconstruit depuis `song_ids` pour les concerts d'avant cette fonctionnalité.
+  const [items, setItems] = useState(() => {
+    const raw = Array.isArray(concert?.set_items) ? concert.set_items : [];
+    const norm = raw
+      .map((it) => {
+        if (it && it.type === 'note') return { type: 'note', id: it.id || uid(), text: String(it.text ?? '') };
+        if (it && it.type === 'song' && songs.some((s) => s.id === it.song_id)) return { type: 'song', song_id: it.song_id };
+        return null;
+      })
+      .filter(Boolean);
+    if (norm.length > 0) return norm;
+    return (concert?.song_ids || [])
+      .filter((id) => songs.some((s) => s.id === id))
+      .map((id) => ({ type: 'song', song_id: id }));
+  });
   const [statusFilter, setStatusFilter] = useState(new Set(['ready'])); // Prêt sélectionné par défaut ; multi-sélection libre
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
@@ -3866,13 +3895,16 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   const listRef = useRef(null);
   const scrollTimer = useRef(null);
 
-  const selectedSongs = selectedIds.map((id) => songs.find((s) => s.id === id)).filter(Boolean);
+  const songItems = items.filter((it) => it.type === 'song');
+  const selectedSongs = songItems.map((it) => songs.find((s) => s.id === it.song_id)).filter(Boolean);
   const totalSeconds = selectedSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+  const noteCount = items.filter((it) => it.type === 'note' && it.text.trim()).length;
 
   const handleCopy = async () => {
     const text = buildConcertShareText(
       { name: name.trim() || 'Concert', event_date: eventDate, event_time: eventTime || null, end_time: endTimeFrom(eventTime, durationMin), venue: venue.trim() },
-      selectedSongs,
+      items,
+      songs,
       totalSeconds
     );
     try {
@@ -3912,7 +3944,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   };
 
   const candidateSongs = songs
-    .filter((s) => !selectedIds.includes(s.id) && statusFilter.has(s.status))
+    .filter((s) => !songItems.some((it) => it.song_id === s.id) && statusFilter.has(s.status))
     .filter((s) => {
       if (!search.trim()) return true;
       const q = search.trim().toLowerCase();
@@ -3921,16 +3953,32 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
     .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
 
   const addSong = (songId) => {
-    setSelectedIds((prev) => (prev.includes(songId) ? prev : [...prev, songId]));
+    setItems((prev) => (prev.some((it) => it.type === 'song' && it.song_id === songId)
+      ? prev
+      : [...prev, { type: 'song', song_id: songId }]));
   };
 
-  const removeSong = (songId) => {
-    setSelectedIds((prev) => prev.filter((id) => id !== songId));
+  const removeItem = (index) => {
+    setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const moveSong = (fromIndex, toIndex) => {
+  // Note de transition insérée AVANT le morceau à `index` (on lance généralement
+  // le morceau qui suit : intro, remerciements, enchaînement…).
+  const addNoteBefore = (index) => {
+    setItems((prev) => {
+      const next = [...prev];
+      next.splice(index, 0, { type: 'note', id: uid(), text: '' });
+      return next;
+    });
+  };
+
+  const updateNote = (index, text) => {
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, text } : it)));
+  };
+
+  const moveItem = (fromIndex, toIndex) => {
     if (fromIndex === toIndex) return;
-    setSelectedIds((prev) => {
+    setItems((prev) => {
       const next = [...prev];
       const [moved] = next.splice(fromIndex, 1);
       let insertAt = toIndex;
@@ -3941,8 +3989,8 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
     });
   };
 
-  const moveUp = (index) => { if (index > 0) moveSong(index, index - 1); };
-  const moveDown = (index) => { if (index < selectedIds.length - 1) moveSong(index, index + 1); };
+  const moveUp = (index) => { if (index > 0) moveItem(index, index - 1); };
+  const moveDown = (index) => { if (index < items.length - 1) moveItem(index, index + 1); };
 
   const stopAutoScroll = () => {
     if (scrollTimer.current) { clearInterval(scrollTimer.current); scrollTimer.current = null; }
@@ -3968,7 +4016,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
     setDragOverIndex(null);
     dragIndex.current = null;
     if (from === null || from === undefined) return;
-    moveSong(from, index);
+    moveItem(from, index);
   };
 
   const submit = async () => {
@@ -3976,6 +4024,13 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
     if (!eventDate) { setError('La date du concert est obligatoire.'); return; }
     setError('');
     setSaving(true);
+    // On jette les notes laissées vides ; song_ids reste le reflet des morceaux
+    // du set (compteur, durée, agenda… continuent d'en dépendre).
+    const cleanItems = items
+      .filter((it) => it.type === 'song' || it.text.trim())
+      .map((it) => (it.type === 'note'
+        ? { type: 'note', id: it.id, text: it.text.trim() }
+        : { type: 'song', song_id: it.song_id }));
     const built = {
       id: concert?.id || uid(),
       name: name.trim(),
@@ -3983,7 +4038,8 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
       event_time: eventTime || null,
       end_time: endTimeFrom(eventTime, durationMin),
       venue: venue.trim() || null,
-      song_ids: selectedIds,
+      song_ids: cleanItems.filter((it) => it.type === 'song').map((it) => it.song_id),
+      set_items: cleanItems,
       created_by_user_id: concert?.created_by_user_id || currentUser.id,
       created_at: concert?.created_at || new Date().toISOString(),
     };
@@ -4064,12 +4120,15 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
       <div className="clx-counter" style={{ padding: '14px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 14 }}>
           <span style={{ fontWeight: 700 }}>{selectedSongs.length}</span> morceau{selectedSongs.length > 1 ? 'x' : ''} dans le set
+          {noteCount > 0 && (
+            <span style={{ color: '#9A958C' }}> · {noteCount} note{noteCount > 1 ? 's' : ''} de transition</span>
+          )}
         </div>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Durée du set : {formatTotalDuration(totalSeconds)}</div>
       </div>
 
-      {selectedSongs.length === 0 ? (
-        <EmptyState text="Aucun morceau sélectionné pour ce concert — ajoute-en depuis la liste ci-dessous." />
+      {items.length === 0 ? (
+        <EmptyState text="Aucun morceau dans ce set — ajoute-en depuis la liste ci-dessous." />
       ) : (
         <div
           ref={listRef}
@@ -4077,45 +4136,18 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
           className="clx-scrollbar"
           style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 24, maxHeight: '55vh', overflowY: 'auto', paddingRight: 4 }}
         >
-          {selectedIds.map((songId, index) => {
-            const song = selectedSongs.find((s) => s.id === songId);
-            if (!song) return null;
-            return (
-              <div
-                key={songId}
-                draggable
-                onDragStart={() => { dragIndex.current = index; }}
-                onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
-                onDragLeave={() => setDragOverIndex((cur) => (cur === index ? null : cur))}
-                onDrop={() => handleDrop(index)}
-                onDragEnd={() => { stopAutoScroll(); dragIndex.current = null; setDragOverIndex(null); }}
-                className="clx-card"
-                style={{
-                  padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
-                  borderColor: dragOverIndex === index ? '#F2A93B' : undefined,
-                  cursor: 'grab',
-                }}
-              >
-                <GripVertical size={15} color="#6B6862" style={{ flexShrink: 0 }} />
-                <div className="clx-mono" style={{
-                  width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 12, fontWeight: 700, flexShrink: 0, background: '#16161A', color: '#F2A93B', border: '1px solid #2A2A2E',
-                }}>
-                  {index + 1}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.title}</div>
-                  <div style={{ fontSize: 12, color: '#9A958C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.artist}</div>
-                </div>
-                <span
-                  className="clx-badge"
-                  style={{ background: `${STATUS[song.status].color}22`, color: STATUS[song.status].color, border: `1px solid ${STATUS[song.status].color}55`, flexShrink: 0 }}
-                >
-                  {STATUS[song.status].badge}
-                </span>
-                <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', width: 40, textAlign: 'right', flexShrink: 0 }}>
-                  {formatSongDuration(song.duration_seconds)}
-                </div>
+          {(() => {
+            let songNo = 0;
+            return items.map((it, index) => {
+              const dragProps = {
+                draggable: true,
+                onDragStart: () => { dragIndex.current = index; },
+                onDragOver: (e) => { e.preventDefault(); setDragOverIndex(index); },
+                onDragLeave: () => setDragOverIndex((cur) => (cur === index ? null : cur)),
+                onDrop: () => handleDrop(index),
+                onDragEnd: () => { stopAutoScroll(); dragIndex.current = null; setDragOverIndex(null); },
+              };
+              const moveButtons = (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
                   <button
                     onClick={() => moveUp(index)}
@@ -4128,25 +4160,107 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
                   </button>
                   <button
                     onClick={() => moveDown(index)}
-                    disabled={index === selectedIds.length - 1}
+                    disabled={index === items.length - 1}
                     className="clx-btn clx-btn-ghost"
-                    style={{ padding: 3, borderRadius: 4, display: 'flex', opacity: index === selectedIds.length - 1 ? 0.3 : 1, cursor: index === selectedIds.length - 1 ? 'default' : 'pointer' }}
+                    style={{ padding: 3, borderRadius: 4, display: 'flex', opacity: index === items.length - 1 ? 0.3 : 1, cursor: index === items.length - 1 ? 'default' : 'pointer' }}
                     title="Descendre"
                   >
                     <ChevronDown size={12} />
                   </button>
                 </div>
-                <button
-                  onClick={() => removeSong(songId)}
-                  className="clx-btn clx-btn-ghost"
-                  style={{ padding: '6px 7px', borderRadius: 4, display: 'flex', flexShrink: 0, color: '#C1454B' }}
-                  title="Retirer du set"
+              );
+
+              if (it.type === 'note') {
+                return (
+                  <div
+                    key={it.id}
+                    {...dragProps}
+                    className="clx-card"
+                    style={{
+                      padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 10,
+                      borderStyle: 'dashed',
+                      borderColor: dragOverIndex === index ? '#F2A93B' : '#3A3A40',
+                      background: '#141417', cursor: 'grab',
+                    }}
+                  >
+                    <GripVertical size={15} color="#6B6862" style={{ flexShrink: 0 }} />
+                    <Megaphone size={14} color="#C4A24C" style={{ flexShrink: 0 }} />
+                    <input
+                      className="clx-input"
+                      value={it.text}
+                      onChange={(e) => updateNote(index, e.target.value)}
+                      onDragStart={(e) => e.preventDefault()}
+                      placeholder="Note de transition — ex. lancer sur l'intro batterie, remercier l'asso…"
+                      style={{ flex: 1, minWidth: 0, fontStyle: 'italic', fontSize: 13, padding: '5px 8px' }}
+                    />
+                    {moveButtons}
+                    <button
+                      onClick={() => removeItem(index)}
+                      className="clx-btn clx-btn-ghost"
+                      style={{ padding: '6px 7px', borderRadius: 4, display: 'flex', flexShrink: 0, color: '#C1454B' }}
+                      title="Supprimer la note"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                );
+              }
+
+              const song = songs.find((s) => s.id === it.song_id);
+              if (!song) return null;
+              songNo += 1;
+              return (
+                <div
+                  key={`song-${it.song_id}`}
+                  {...dragProps}
+                  className="clx-card"
+                  style={{
+                    padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
+                    borderColor: dragOverIndex === index ? '#F2A93B' : undefined,
+                    cursor: 'grab',
+                  }}
                 >
-                  <X size={13} />
-                </button>
-              </div>
-            );
-          })}
+                  <GripVertical size={15} color="#6B6862" style={{ flexShrink: 0 }} />
+                  <div className="clx-mono" style={{
+                    width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12, fontWeight: 700, flexShrink: 0, background: '#16161A', color: '#F2A93B', border: '1px solid #2A2A2E',
+                  }}>
+                    {songNo}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.title}</div>
+                    <div style={{ fontSize: 12, color: '#9A958C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.artist}</div>
+                  </div>
+                  <button
+                    onClick={() => addNoteBefore(index)}
+                    className="clx-btn clx-btn-ghost"
+                    style={{ padding: '6px 7px', borderRadius: 4, display: 'flex', flexShrink: 0, color: '#9A958C' }}
+                    title="Insérer une note de transition avant ce morceau"
+                  >
+                    <MessageSquarePlus size={14} />
+                  </button>
+                  <span
+                    className="clx-badge"
+                    style={{ background: `${STATUS[song.status].color}22`, color: STATUS[song.status].color, border: `1px solid ${STATUS[song.status].color}55`, flexShrink: 0 }}
+                  >
+                    {STATUS[song.status].badge}
+                  </span>
+                  <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', width: 40, textAlign: 'right', flexShrink: 0 }}>
+                    {formatSongDuration(song.duration_seconds)}
+                  </div>
+                  {moveButtons}
+                  <button
+                    onClick={() => removeItem(index)}
+                    className="clx-btn clx-btn-ghost"
+                    style={{ padding: '6px 7px', borderRadius: 4, display: 'flex', flexShrink: 0, color: '#C1454B' }}
+                    title="Retirer du set"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              );
+            });
+          })()}
         </div>
       )}
 

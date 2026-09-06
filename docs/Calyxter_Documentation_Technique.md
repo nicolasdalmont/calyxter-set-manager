@@ -4,9 +4,13 @@ SET MANAGER
 
 Documentation technique et fonctionnelle
 
-Version 1.8 — 6 septembre 2026
+Version 1.9 — 6 septembre 2026
 
-Statut : application déployée, en phase de test avec les 6 membres du groupe. Depuis la v1.7 : **migration du backend de Supabase vers Neon** (base PostgreSQL) avec une couche de fonctions serveur `/api/*` sur Vercel — le frontend ne se connecte plus jamais directement à la base, et plus aucun identifiant d'accès aux données n'est présent dans son code. Nouvelle section § 2.5 décrivant cette migration et le filet de retour arrière. Le projet Supabase est conservé intact quelques semaines comme filet de sécurité avant nettoyage.
+Statut : application déployée, en phase de test avec les 6 membres du groupe.
+
+Depuis la v1.8 : **notes de transition** dans les sets de concert (§ 7.2) — repères libres insérés entre les morceaux (lancements, enchaînements, remerciements), stockés dans la nouvelle colonne `concerts.set_items` (§ 3.5). Correction d'un bug de la couche `/api/db` : les écritures portant un tableau JSON (set d'un concert, participants d'un rendez-vous, vetos/votes d'une phase) échouaient en base (§ 16.9).
+
+Depuis la v1.7 : **migration du backend de Supabase vers Neon** (base PostgreSQL) avec une couche de fonctions serveur `/api/*` sur Vercel — le frontend ne se connecte plus jamais directement à la base, et plus aucun identifiant d'accès aux données n'est présent dans son code. Section § 2.5 décrivant cette migration et le filet de retour arrière. Le projet Supabase est conservé intact quelques semaines comme filet de sécurité avant nettoyage.
 
 # 1. Présentation du projet
 
@@ -196,7 +200,8 @@ Une phase menée à son terme (résultat validé) voit sa ligne conservée avec 
 | event_time | time | Heure de début (optionnelle) |
 | end_time | time | Heure de fin — calculée à partir de event_time + la durée saisie (défaut 1 h) ; NULL si aucune heure de début |
 | venue | text | Lieu (optionnel) |
-| song_ids | jsonb | Set du concert : tableau ordonné d'identifiants de morceaux |
+| song_ids | jsonb | Set du concert : tableau ordonné d'identifiants de morceaux. Reste le reflet des morceaux du set (compteur, durée, agenda en dépendent) |
+| set_items | jsonb | Set détaillé : tableau ordonné mêlant morceaux et **notes de transition** (§ 7.2). Éléments `{ type:'song', song_id }` ou `{ type:'note', id, text }`. Vide `[]` pour les concerts créés avant cette fonctionnalité — l'éditeur le reconstruit alors depuis song_ids |
 | created_by_user_id | uuid | Référence vers members.id |
 | created_at / updated_at | timestamptz | Horodatage de création / dernière modification |
 
@@ -426,6 +431,8 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 - Ordonnancement du set par glisser-déposer ou flèches haut/bas, avec défilement automatique de la liste pendant un glisser-déposer approchant le haut ou le bas de l'écran (même mécanique que le module Phase de choix).
 
+- **Notes de transition** : chaque ligne de morceau du set porte un bouton (icône bulle) qui insère une note **avant** ce morceau — pour préciser un lancement, un enchaînement, une intro, des remerciements, etc. La note s'affiche sur sa propre ligne, en italique, encadrée en pointillés, sans numéro ; elle se saisit sur une seule ligne, se réordonne comme un morceau (glisser-déposer / flèches) et se supprime par sa croix. Une note laissée vide est ignorée à l'enregistrement. Les notes **ne comptent pas** dans le nombre de morceaux ni dans la durée du set ; le compteur en rappelle le nombre à côté ("· N notes de transition"). Stockage : colonne `concerts.set_items` (§ 3.5), `song_ids` restant le reflet des seuls morceaux.
+
 - Durée théorique totale du set recalculée et affichée en continu, dans le même format que le compteur du répertoire.
 
 - Bouton "Ajouter à mon agenda" (dès que nom et date sont renseignés) : génère un fichier iCalendar (.ics) que l'appareil ouvre dans son application de calendrier par défaut (Agenda iOS, Google Agenda, etc.), pré-rempli avec le nom, la date, l'horaire (heure de début → heure de fin), le lieu et un résumé du set. Horaires en "heure locale flottante" (le groupe est sur un seul fuseau). Limite connue : en application installée sur l'écran d'accueil d'un iPhone, le téléchargement direct du .ics peut être ignoré par iOS — il faut alors ouvrir l'application depuis Safari.
@@ -434,7 +441,7 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 ## 7.3 Copie dans le presse-papier
 
-Un bouton "Copier le concert" génère et copie un texte prêt à coller dans une conversation (nom du concert, date, heure de début suivie de la durée entre parenthèses, lieu ; le set complet, un morceau par ligne avec sa durée ; puis la durée théorique totale du set). Une confirmation visuelle ("Copié !") s'affiche brièvement après la copie ; un message d'erreur explicite apparaît si le navigateur bloque l'accès au presse-papier.
+Un bouton "Copier le concert" génère et copie un texte prêt à coller dans une conversation (nom du concert, date, heure de début suivie de la durée entre parenthèses, lieu ; le set complet, un morceau par ligne avec sa durée, les **notes de transition** intercalées à leur place sur une ligne préfixée `→` et sans numéro ; puis la durée théorique totale du set). Une confirmation visuelle ("Copié !") s'affiche brièvement après la copie ; un message d'erreur explicite apparaît si le navigateur bloque l'accès au presse-papier.
 
 # 8. Fonctionnalités — Module Rendez-vous
 
@@ -813,6 +820,12 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Filet de sécurité (§ 2.5) : étiquette Git `pre-neon-migration`, Instant Rollback Vercel (~30 s), point de commutation `const BACKEND` dans `src/App.jsx` (les branches Supabase du code sont conservées), et **projet Supabase laissé intact au moins deux semaines** avant nettoyage. Plan complet dans `docs/Migration_Neon.md`.
 
 - Sections mises à jour : § 2 (architecture, flux, fonctions serveur), nouvelle § 2.4 (piège `preferred_platform`) et § 2.5 (migration), § 4 (authentification et contrôle d'accès), § 12, § 14 (infrastructure, variable `DATABASE_URL`), § 15, § 17, § 18 (première installation entièrement réécrite pour Neon).
+
+## 16.9 Depuis la v1.8 (→ v1.9)
+
+- **Notes de transition dans les sets de concert** (§ 7.2, § 3.5) : chaque ligne de morceau porte un bouton qui insère une note libre **avant** ce morceau (lancement, enchaînement, intro, remerciements…). Les notes s'affichent sur leur propre ligne (italique, pointillés, sans numéro), se réordonnent et se suppriment comme les morceaux, et **ne comptent ni dans le nombre de morceaux ni dans la durée du set**. Elles apparaissent dans le texte « Copier le concert » (§ 7.3), préfixées `→`. Nouvelle colonne `concerts.set_items` (`alter table concerts add column if not exists set_items jsonb not null default '[]'::jsonb;`) ; `song_ids` reste le reflet des seuls morceaux, donc tous les écrans qui en dépendent (liste, Accueil, agenda .ics) sont inchangés. Les concerts créés avant la fonctionnalité ont `set_items = []` : l'éditeur reconstruit alors la liste depuis `song_ids` au premier chargement.
+
+- **Correction — écritures `jsonb` via `api/db`** : le pilote `@neondatabase/serverless` encode un tableau JS comme un littéral tableau Postgres (`{a,b}`), rejeté par les colonnes `jsonb`. Toute écriture d'une ligne portant un tableau JSON échouait donc depuis la bascule Neon : enregistrer le set d'un concert (`song_ids`), les participants ou dates exclues d'un rendez-vous (`participant_ids`, `excluded_dates`), poser un veto ou voter (`phases.vetoes`, `votes`, `tie_break_votes`). Passé inaperçu à la recette (seuls des chemins sans tableau avaient été testés). `api/db.js` sérialise désormais tout objet/tableau en texte JSON avant paramétrage (`normValue`, même règle que `db/migrate.mjs`). Ajout d'un fichier de tests `api/db.test.mjs` (lancé par `npm test`, `node --test`) couvrant les constructeurs SQL et `normValue`.
 
 # 17. Références
 

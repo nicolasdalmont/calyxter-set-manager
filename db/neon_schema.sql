@@ -108,6 +108,7 @@ create table concerts (
   end_time time,
   venue text,
   song_ids jsonb not null default '[]'::jsonb,
+  set_items jsonb not null default '[]'::jsonb,   -- set détaillé : [{type:'song',song_id} | {type:'note',id,text}] ; song_ids en reste le reflet
   created_by_user_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
