@@ -3639,20 +3639,20 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
   .bar button { font: inherit; font-size: 14px; padding: 10px 18px; border: 1px solid #bbb; border-radius: 7px; background: #fff; cursor: pointer; }
   .bar button.save { background: #111; color: #fff; border-color: #111; font-weight: 600; }
   .bar .hint { flex-basis: 100%; font-size: 11px; color: #888; }
-  /* Aperçu compact sur petit écran ; le PDF/l'impression reste en grand
-     format (règle @media print ci-dessous), l'aperçu écran n'y touche pas. */
+  /* La taille de police du set est fixée au chargement (script) pour que le
+     set tienne sur une page à l'impression ; elle s'applique aussi à
+     l'aperçu écran, qui reflète donc la sortie. */
   @media screen and (max-width: 640px) {
     .sheet { padding: 10mm 6mm; }
     h1 { font-size: 22px; }
-    ol.set { font-size: 17px; }
   }
   @media print {
     html, body { background: #fff; }
     .sheet { box-shadow: none; margin: 0; max-width: none; padding: 0; }
     .bar { display: none; }
-    ol.set { font-size: 26px; }
+    ol.set li { padding: .2em 0; }
     ol.set li, li.note { break-inside: avoid; }
-    @page { size: A4; margin: 12mm; }
+    @page { size: A4; margin: 10mm; }
   }
 </style></head>
 <body>
@@ -3673,21 +3673,36 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
   (function () {
     var coarse = false;
     try { coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) {}
+
+    // Fixe la plus grande taille de police du set (26 -> 13 px) qui tient sur
+    // UNE page à l'impression. On mesure la feuille forcée à la largeur
+    // d'impression (190 mm) et on vise une hauteur volontairement prudente
+    // (~800 px) : les moteurs d'impression mobiles ajoutent des marges
+    // variables et, selon iOS/Android, le format Letter, plus court. La taille
+    // retenue est posée en style inline (écran + impression), l'aperçu reflète
+    // donc la sortie.
+    function fitSetFontSize() {
+      var sheet = document.getElementById('sheet');
+      var ol = document.querySelector('ol.set');
+      var s = sheet.style, o = ol.style;
+      var save = { w: s.width, mw: s.maxWidth, p: s.padding, m: s.margin, sh: s.boxShadow };
+      s.width = '190mm'; s.maxWidth = 'none'; s.padding = '0'; s.margin = '0'; s.boxShadow = 'none';
+      var fs = 26;
+      o.fontSize = fs + 'px';
+      while (fs > 13 && sheet.scrollHeight > 800) { fs -= 1; o.fontSize = fs + 'px'; }
+      s.width = save.w; s.maxWidth = save.mw; s.padding = save.p; s.margin = save.m; s.boxShadow = save.sh;
+      // o.fontSize reste posé.
+    }
+
     window.onload = function () {
+      try { fitSetFontSize(); } catch (e) {}
       if (coarse) {
         // Mobile : ne rien déclencher, afficher l'aide, laisser choisir
-        // « Enregistrer en PDF ». La mise à l'échelle du set est gérée par les
-        // règles @media (aperçu compact, impression en grand format).
+        // « Enregistrer en PDF » (le set est déjà dimensionné pour une page).
         var h = document.getElementById('hint'); if (h) h.hidden = false;
         return;
       }
-      // Ordinateur : viser une page (police du set réduite jusqu'à 16 px, encore
-      // lisible de loin), puis ouvrir la boîte d'impression.
-      try {
-        var sheet = document.getElementById('sheet');
-        var ol = document.querySelector('ol.set');
-        for (var fs = 26; fs >= 16 && sheet.scrollHeight > 1010; fs--) { ol.style.fontSize = fs + 'px'; }
-      } catch (e) {}
+      // Ordinateur : ouvrir directement la boîte d'impression.
       setTimeout(function () { try { window.print(); } catch (e) {} }, 250);
     };
     // Après la boîte d'enregistrement/impression sur mobile (qu'on ait
