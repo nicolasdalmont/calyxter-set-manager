@@ -1,20 +1,16 @@
--- CALYXTER SET MANAGER — Schéma pour Neon (Data API + rôle « anonymous »)
--- Version adaptée de supabase/recreate_full_schema.sql pour la migration
--- vers Neon (voir docs/Migration_Neon.md).
+-- CALYXTER SET MANAGER — Schéma pour Neon (chemin B : couche /api/db)
+-- Version adaptée de supabase/recreate_full_schema.sql (voir docs/Migration_Neon.md).
 --
 -- Différences avec la version Supabase :
---   - rôles : Supabase utilise « anon » / « authenticated » ; la Data API
---     de Neon utilise « anonymous » / « authenticated ». L'app Calyxter
---     n'émet aucun JWT → tout passe par le rôle « anonymous », auquel on
---     accorde un accès complet (équivalent de l'ancienne clé publishable ;
---     la sécurité repose sur la confidentialité du lien, § 4.3 de la doc
---     technique).
---   - member.password_hash / last_activity_at : écriture révoquée pour
---     « anonymous ». Seule la fonction api/member-auth, connectée en direct
---     via NEON_DATABASE_URL (propriétaire de la table), peut les écrire.
+--   - aucune RLS, aucune policy, aucun rôle applicatif : la base n'est
+--     jamais jointe depuis le frontend. Seules les Vercel Functions
+--     (api/db.js, api/member-auth.js) s'y connectent, avec le rôle
+--     propriétaire, via DATABASE_URL. La protection de
+--     members.password_hash / last_activity_at est faite dans api/db.js
+--     (jamais renvoyés au client, non écrivables par cet endpoint).
 --   - extension pgcrypto déclarée explicitement (gen_random_uuid()).
 --
--- À exécuter une fois sur la branche Neon (SQL Editor du dashboard, ou
+-- À exécuter une fois sur le projet Neon (SQL Editor du dashboard, ou
 -- `psql "$NEON_DIRECT_URL" -f db/neon_schema.sql`).
 --
 -- ⚠️ Les « drop ... cascade » ci-dessous suppriment tables et données si
