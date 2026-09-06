@@ -840,6 +840,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - **Filtre de statut du Répertoire en multi-sélection** (§ 5.2) : suppression du bouton "Tous" et du fonctionnement à choix unique ; les quatre statuts (Prêt, À préparer, Proposé, Sorti) sont désormais sélectionnables simultanément, comme dans l'éditeur de concert. Sélection par défaut : Prêt + En préparation.
 
+- **Correction — colonnes `date` renvoyées par Neon** : le driver `@neondatabase/serverless` renvoie une colonne `date` comme un objet `Date` JS, sérialisé ensuite en ISO datetime UTC (`2026-09-12T22:00:00.000Z` pour une date stockée le 13). Conséquences depuis la bascule Neon : les `<input type="date">` des éditeurs concert/rendez-vous recevaient un format invalide et **s'affichaient vides** (jusqu'à ce qu'on touche le champ), et `parseISODate` calculait **un jour trop tôt** partout où une date est affichée (listes, Accueil, prochain concert, logique passé/à venir) — masqué en France par le fuseau, mais bien présent. `lib/neon.js` force désormais le parseur des OID 1082 (`date`) et 1083 (`time`) en texte brut ; les `timestamptz` (1184) restent en ISO comme avant. *(Ce qui avait été d'abord pris pour un bug CSS des champs date sur iOS — plusieurs tentatives revertées, cf. § 13.)*
+
 - **Feuille "Imprimer le set" — mobile** (§ 7.4) : dimensionnement pour tenir sur une page appliqué aussi sur mobile ; sur mobile, plus d'impression automatique — un bouton "Enregistrer en PDF" et un "Retour au concert", avec fermeture automatique de l'onglet après enregistrement.
 
 # 17. Références
