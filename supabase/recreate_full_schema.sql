@@ -165,7 +165,8 @@ create table concerts (
   id uuid not null default gen_random_uuid(),
   name text not null,
   event_date date not null,
-  event_time time,                        -- optionnelle
+  event_time time,                        -- heure de début, optionnelle
+  end_time time,                          -- heure de fin, calculée à partir de event_time + durée saisie (défaut 1 h)
   venue text,                             -- optionnel
   song_ids jsonb not null default '[]'::jsonb,  -- ordre du set : [song_id, song_id, ...]
   created_by_user_id uuid,
@@ -194,8 +195,8 @@ create table events (
   kind event_kind not null default 'repetition',
   subject text not null,
   event_date date not null,
-  start_time time,                        -- optionnelle (vide si "toute la journée")
-  end_time time,                          -- optionnelle
+  start_time time,                        -- heure de début, vide si "toute la journée"
+  end_time time,                          -- heure de fin ; sur un seul jour, calculée depuis start_time + durée (défaut 1 h) ; sur du multi-jours, horaire quotidien saisi tel quel
   venue text,                             -- optionnel
   participant_ids jsonb not null default '[]'::jsonb,  -- [member_id, ...]
   created_by_user_id uuid,

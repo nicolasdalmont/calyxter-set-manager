@@ -4,7 +4,7 @@ import {
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
-  Home, ClipboardList, Drum, Guitar, Piano
+  Home, ClipboardList, Drum, Guitar, Piano, Hourglass
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -107,6 +107,45 @@ function parseDurationInput(str) {
   const s = parseInt(parts[1], 10);
   if (Number.isNaN(m) || Number.isNaN(s)) return null;
   return m * 60 + s;
+}
+
+// Horaires des rendez-vous et concerts : on saisit une heure de début + une
+// durée (défaut 1 h), l'heure de fin est calculée et stockée pour l'affichage
+// et le partage. Ces helpers font l'aller-retour heure <-> minutes.
+const DEFAULT_DURATION_MIN = 60;
+const DURATION_CHOICES_MIN = [15, 30, 45, 60, 90, 120, 150, 180, 210, 240, 300, 360, 420, 480, 600, 720];
+
+function timeStrToMinutes(t) {
+  if (!t) return null;
+  const [h, m] = String(t).split(':').map((n) => parseInt(n, 10));
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+function minutesToTimeStr(mins) {
+  const wrapped = ((Math.round(mins) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+}
+// Durée en minutes entre deux horaires d'une même journée. Une fin absente,
+// égale ou antérieure au début est traitée comme "durée non renseignée".
+function scheduleDurationMinutes(startTime, endTime) {
+  const s = timeStrToMinutes(startTime);
+  const e = timeStrToMinutes(endTime);
+  if (s === null || e === null || e <= s) return null;
+  return e - s;
+}
+// Heure de fin calculée à partir d'une heure de début et d'une durée (minutes).
+function endTimeFrom(startTime, durationMin) {
+  const s = timeStrToMinutes(startTime);
+  if (s === null || !durationMin) return null;
+  return minutesToTimeStr(s + durationMin);
+}
+function formatScheduleDuration(mins) {
+  if (!mins || mins <= 0) return null;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h && m) return `${h} h ${String(m).padStart(2, '0')}`;
+  if (h) return `${h} h`;
+  return `${m} min`;
 }
 
 function listenUrl(song) {
@@ -1537,6 +1576,7 @@ function HomeAgendaCard({ item, onOpen, members }) {
   const start = formatConcertTime(item.start_time);
   const end = formatConcertTime(item.end_time);
   const timeLabel = item.all_day ? 'Toute la journée' : (start ? (end ? `${start} – ${end}` : start) : null);
+  const durationLabel = item.all_day ? null : formatScheduleDuration(scheduleDurationMinutes(item.start_time, item.end_time));
 
   const participantNames = item.participant_ids === null
     ? 'Tout le groupe'
@@ -1575,7 +1615,7 @@ function HomeAgendaCard({ item, onOpen, members }) {
         {(timeLabel || item.venue) && (
           <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
             <Clock size={11} style={{ flexShrink: 0 }} />
-            {[timeLabel, item.venue].filter(Boolean).join(' · ')}
+            {[timeLabel, durationLabel, item.venue].filter(Boolean).join(' · ')}
           </div>
         )}
         <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
@@ -2192,6 +2232,22 @@ function Field({ label, children, style }) {
       {label}
       {children}
     </label>
+  );
+}
+
+// Sélecteur de durée partagé par les éditeurs de concert et de rendez-vous.
+// Si la valeur courante ne figure pas dans les choix (durée héritée d'une
+// saisie manuelle antérieure de l'heure de fin), on l'ajoute à la liste.
+function DurationSelect({ value, onChange }) {
+  const choices = DURATION_CHOICES_MIN.includes(value)
+    ? DURATION_CHOICES_MIN
+    : [...DURATION_CHOICES_MIN, value].sort((a, b) => a - b);
+  return (
+    <select className="clx-input" value={value} onChange={(e) => onChange(parseInt(e.target.value, 10))}>
+      {choices.map((m) => (
+        <option key={m} value={m}>{formatScheduleDuration(m)}</option>
+      ))}
+    </select>
   );
 }
 
@@ -3174,7 +3230,9 @@ function isPastConcert(concert) {
 function buildConcertShareText(concert, setSongs, totalSeconds) {
   const dateLabel = formatConcertDate(concert.event_date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const time = formatConcertTime(concert.event_time);
-  const header = `${concert.name} - ${dateLabel}${time ? ' ' + time : ''} - ${concert.venue || 'Lieu à confirmer'}`;
+  const durationLabel = formatScheduleDuration(scheduleDurationMinutes(concert.event_time, concert.end_time));
+  const timePart = time ? ` ${time}${durationLabel ? ` (${durationLabel})` : ''}` : '';
+  const header = `${concert.name} - ${dateLabel}${timePart} - ${concert.venue || 'Lieu à confirmer'}`;
   const setLines = setSongs.length > 0
     ? setSongs.map((s, i) => `${i + 1}. ${s.title} — ${s.artist} (${formatSongDuration(s.duration_seconds)})`).join('\n')
     : '(set vide)';
@@ -3412,6 +3470,7 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
   const totalSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
   const past = isPastConcert(concert);
   const time = formatConcertTime(concert.event_time);
+  const durationLabel = formatScheduleDuration(scheduleDurationMinutes(concert.event_time, concert.end_time));
 
   return (
     <div
@@ -3455,6 +3514,7 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
               <Calendar size={11} /> {formatConcertDate(concert.event_date)}
             </span>
             {time && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {time}</span>}
+            {durationLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Hourglass size={11} /> {durationLabel}</span>}
             {concert.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {concert.venue}</span>}
           </div>
           <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
@@ -3489,6 +3549,9 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   const [name, setName] = useState(concert?.name || '');
   const [eventDate, setEventDate] = useState(concert?.event_date || '');
   const [eventTime, setEventTime] = useState(formatConcertTime(concert?.event_time) || '');
+  const [durationMin, setDurationMin] = useState(
+    scheduleDurationMinutes(formatConcertTime(concert?.event_time), formatConcertTime(concert?.end_time)) ?? DEFAULT_DURATION_MIN
+  );
   const [venue, setVenue] = useState(concert?.venue || '');
   const [selectedIds, setSelectedIds] = useState((concert?.song_ids || []).filter((id) => songs.some((s) => s.id === id)));
   const [statusFilter, setStatusFilter] = useState(new Set(['ready'])); // Prêt sélectionné par défaut ; multi-sélection libre
@@ -3507,7 +3570,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 
   const handleCopy = async () => {
     const text = buildConcertShareText(
-      { name: name.trim() || 'Concert', event_date: eventDate, event_time: eventTime || null, venue: venue.trim() },
+      { name: name.trim() || 'Concert', event_date: eventDate, event_time: eventTime || null, end_time: endTimeFrom(eventTime, durationMin), venue: venue.trim() },
       selectedSongs,
       totalSeconds
     );
@@ -3599,6 +3662,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
       name: name.trim(),
       event_date: eventDate,
       event_time: eventTime || null,
+      end_time: endTimeFrom(eventTime, durationMin),
       venue: venue.trim() || null,
       song_ids: selectedIds,
       created_by_user_id: concert?.created_by_user_id || currentUser.id,
@@ -3655,6 +3719,9 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
           </Field>
           <Field label="Heure" style={{ flex: '1 1 110px' }}>
             <input type="time" className="clx-input" value={eventTime} onChange={(e) => setEventTime(e.target.value)} />
+          </Field>
+          <Field label="Durée" style={{ flex: '1 1 110px' }}>
+            <DurationSelect value={durationMin} onChange={setDurationMin} />
           </Field>
         </div>
         <Field label="Lieu">
@@ -3868,7 +3935,7 @@ function mergeEventsAndConcerts(events, concerts) {
     end_date: c.event_date, // un concert reste ponctuel, sur un seul jour
     all_day: false,
     start_time: c.event_time,
-    end_time: null,
+    end_time: c.end_time || null,
     venue: c.venue,
     participant_ids: null, // un concert engage tout le groupe
     raw: c,
@@ -4046,6 +4113,7 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
   const start = formatConcertTime(item.start_time);
   const end = formatConcertTime(item.end_time);
   const timeLabel = item.all_day ? 'Toute la journée' : (start ? (end ? `${start} – ${end}` : start) : null);
+  const durationLabel = item.all_day ? null : formatScheduleDuration(scheduleDurationMinutes(item.start_time, item.end_time));
 
   const recurrenceLabel = item.isRecurring
     ? (() => {
@@ -4104,6 +4172,7 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
               <Calendar size={11} /> {dateLabel}
             </span>
             {timeLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock size={11} /> {timeLabel}</span>}
+            {durationLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Hourglass size={11} /> {durationLabel}</span>}
             {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
           </div>
           <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
@@ -4150,6 +4219,12 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
   const [endDate, setEndDate] = useState(event?.end_date || event?.event_date || '');
   const [allDay, setAllDay] = useState(!!event?.all_day);
   const [startTime, setStartTime] = useState(formatConcertTime(event?.start_time) || '');
+  // Rendez-vous sur un seul jour : on saisit une durée, l'heure de fin est
+  // dérivée. Rendez-vous multi-jours : début et fin sont des horaires
+  // quotidiens indépendants, saisis tels quels (endTime).
+  const [durationMin, setDurationMin] = useState(
+    scheduleDurationMinutes(formatConcertTime(event?.start_time), formatConcertTime(event?.end_time)) ?? DEFAULT_DURATION_MIN
+  );
   const [endTime, setEndTime] = useState(formatConcertTime(event?.end_time) || '');
   const [venue, setVenue] = useState(event?.venue || '');
   const [participantIds, setParticipantIds] = useState(event?.participant_ids || []);
@@ -4161,17 +4236,17 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
   const [saving, setSaving] = useState(false);
 
   // Règles de saisie assistée :
-  // - la date de fin recopie la date de début à chaque saisie de celle-ci ;
-  // - l'horaire de fin recopie l'horaire de début à chaque saisie de
-  //   celui-ci, SAUF : (a) sur un rendez-vous multi-jours, où début/fin
-  //   représentent des horaires quotidiens indépendants, ou (b) si la
-  //   nouvelle heure de début reste antérieure à l'heure de fin déjà
-  //   saisie (la plage reste valide, on ne touche donc pas à la fin) ;
+  // - la date de fin recopie la date de début à chaque saisie de celle-ci
+  //   (modifiable ensuite pour un rendez-vous sur plusieurs jours) ;
+  // - sur un seul jour, on saisit heure de début + durée (défaut 1 h) et
+  //   l'heure de fin est calculée à l'enregistrement ; sur du multi-jours,
+  //   début et fin sont des horaires quotidiens indépendants saisis tels
+  //   quels ;
   // - à l'activation de la récurrence (et à chaque changement de date de
   //   début tant qu'elle est active), la date "Jusqu'au" est recalculée à
   //   date de début + 1 an.
-  // Dans les trois cas, le champ concerné reste modifiable manuellement par
-  // la suite ; il n'est réécrasé que lorsque son champ déclencheur change.
+  // Chaque champ reste modifiable manuellement ; il n'est réécrasé que
+  // lorsque son champ déclencheur change.
   const isMultiDay = !!(eventDate && endDate && endDate !== eventDate);
 
   const handleEventDateChange = (v) => {
@@ -4182,9 +4257,9 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
 
   const handleStartTimeChange = (v) => {
     setStartTime(v);
-    if (isMultiDay) return; // règle multi-jours : pas de recopie automatique
-    if (endTime && v < endTime) return; // la plage reste valide, on laisse la fin telle quelle
-    setEndTime(v);
+    // Sur un seul jour, l'heure de fin est dérivée de début + durée à
+    // l'enregistrement : rien à faire ici. Sur du multi-jours, la fin est
+    // un horaire quotidien saisi à part, on ne le touche pas.
   };
 
   const handleRecurringToggle = (checked) => {
@@ -4217,7 +4292,7 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
       end_date: endDate || eventDate,
       all_day: allDay,
       start_time: allDay ? null : (startTime || null),
-      end_time: allDay ? null : (endTime || null),
+      end_time: allDay ? null : (isMultiDay ? (endTime || null) : endTimeFrom(startTime, durationMin)),
       venue: venue.trim() || null,
       participant_ids: participantIds,
       recurrence_unit: isRecurring ? recurrenceUnit : null,
@@ -4304,12 +4379,18 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
 
         {!allDay && (
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
-            <Field label="Début" style={{ flex: '1 1 110px' }}>
+            <Field label="Heure de début" style={{ flex: '1 1 110px' }}>
               <input type="time" className="clx-input" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} />
             </Field>
-            <Field label="Fin" style={{ flex: '1 1 110px' }}>
-              <input type="time" className="clx-input" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-            </Field>
+            {isMultiDay ? (
+              <Field label="Heure de fin (chaque jour)" style={{ flex: '1 1 110px' }}>
+                <input type="time" className="clx-input" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              </Field>
+            ) : (
+              <Field label="Durée" style={{ flex: '1 1 110px' }}>
+                <DurationSelect value={durationMin} onChange={setDurationMin} />
+              </Field>
+            )}
           </div>
         )}
 

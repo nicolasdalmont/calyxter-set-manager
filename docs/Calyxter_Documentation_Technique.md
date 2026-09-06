@@ -112,7 +112,8 @@ Une phase menée à son terme (résultat validé) voit sa ligne conservée avec 
 | id | uuid | Identifiant unique |
 | name | text | Nom du concert |
 | event_date | date | Date du concert |
-| event_time | time | Heure (optionnelle) |
+| event_time | time | Heure de début (optionnelle) |
+| end_time | time | Heure de fin — calculée à partir de event_time + la durée saisie (défaut 1 h) ; NULL si aucune heure de début |
 | venue | text | Lieu (optionnel) |
 | song_ids | jsonb | Set du concert : tableau ordonné d'identifiants de morceaux |
 | created_by_user_id | uuid | Référence vers members.id |
@@ -127,7 +128,8 @@ Une phase menée à son terme (résultat validé) voit sa ligne conservée avec 
 | subject | text | Objet du rendez-vous |
 | event_date / end_date | date | Date de début / de fin (identiques par défaut) |
 | all_day | boolean | Rendez-vous sur toute la journée (masque les horaires) |
-| start_time / end_time | time | Horaires (optionnels) |
+| start_time | time | Heure de début (optionnelle, vide si "toute la journée") |
+| end_time | time | Heure de fin — sur un seul jour, calculée depuis start_time + la durée saisie (défaut 1 h) ; sur du multi-jours, horaire quotidien saisi tel quel |
 | venue | text | Lieu (optionnel) |
 | participant_ids | jsonb | Tableau d'identifiants de membres participants |
 | recurrence_unit | enum | day │ week │ month │ year — vide si non récurrent |
@@ -319,11 +321,11 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 - Ouverture automatique de la liste positionnée sur le prochain concert à venir, placé en haut de la zone défilante (les concerts passés restent accessibles en remontant), mis en évidence par un badge "PROCHAIN" et une bordure accentuée — même mécanique que l'agenda des rendez-vous (§ 8.3). Si aucun concert n'est à venir, la liste se cale sur le dernier concert passé (le plus récent) plutôt que sur le plus ancien : à la différence des rendez-vous, alimentés par des répétitions récurrentes, les concerts n'ont pas toujours une prochaine occurrence programmée. La zone défilante a une hauteur fixe et se prolonge par une cale vide sous la dernière carte, pour qu'un défilement reste toujours possible même quand les concerts tiennent tous dans la zone visible (sans quoi les concerts passés resteraient affichés en tête) ; le revers assumé est un espace vide sous la liste lorsqu'elle est courte.
 
-- Chaque carte affiche, sur trois lignes sous la pastille de date : le nom du concert ; la date, l'heure et le lieu ; le nombre de morceaux du set et sa durée totale. Le badge "PROCHAIN" et l'icône crayon sont regroupés en bout de ligne, à l'emplacement occupé par les badges de statut et de langue du Répertoire (§ 13.3) — présentation désormais identique à celle des cartes Rendez-vous (§ 8.3), le concert n'ayant pas de catégorie propre à afficher en plus. Une bulle affiche par ailleurs le nombre de commentaires laissés sur le concert (§ 8.5). La pastille de date d'un concert à venir utilise la couleur du type "Concert" (§ 8.3) plutôt que l'ambre, y compris pour le prochain concert.
+- Chaque carte affiche, sur trois lignes sous la pastille de date : le nom du concert ; la date, l'heure de début, la durée puis le lieu ; le nombre de morceaux du set et sa durée totale. Le badge "PROCHAIN" et l'icône crayon sont regroupés en bout de ligne, à l'emplacement occupé par les badges de statut et de langue du Répertoire (§ 13.3) — présentation désormais identique à celle des cartes Rendez-vous (§ 8.3), le concert n'ayant pas de catégorie propre à afficher en plus. Une bulle affiche par ailleurs le nombre de commentaires laissés sur le concert (§ 8.5). La pastille de date d'un concert à venir utilise la couleur du type "Concert" (§ 8.3) plutôt que l'ambre, y compris pour le prochain concert.
 
 ## 7.2 Création et édition d'un concert
 
-- Champs : nom et date obligatoires ; heure et lieu facultatifs.
+- Champs : nom et date obligatoires ; heure de début, durée et lieu facultatifs. La durée se choisit dans une liste de valeurs courantes (de 15 min à 12 h), pré-remplie à 1 h ; l'heure de fin du concert est déduite de l'heure de début + la durée et stockée (concerts.end_time), sans champ "heure de fin" à saisir. Si aucune heure de début n'est renseignée, aucune heure de fin n'est calculée.
 
 - Sélection des morceaux du set via trois filtres de statut indépendants et combinables librement — "Prêt" (activé par défaut, seul), "À préparer" et "Sorti" — chacun s'active ou se désactive séparément selon que l'on souhaite élargir ou restreindre la liste des morceaux proposés à l'ajout ; recherche texte parmi les morceaux disponibles.
 
@@ -335,7 +337,7 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 ## 7.3 Copie dans le presse-papier
 
-Un bouton "Copier le concert" génère et copie un texte prêt à coller dans une conversation (nom du concert, date, heure et lieu ; le set complet, un morceau par ligne avec sa durée ; puis la durée théorique totale du set). Une confirmation visuelle ("Copié !") s'affiche brièvement après la copie ; un message d'erreur explicite apparaît si le navigateur bloque l'accès au presse-papier.
+Un bouton "Copier le concert" génère et copie un texte prêt à coller dans une conversation (nom du concert, date, heure de début suivie de la durée entre parenthèses, lieu ; le set complet, un morceau par ligne avec sa durée ; puis la durée théorique totale du set). Une confirmation visuelle ("Copié !") s'affiche brièvement après la copie ; un message d'erreur explicite apparaît si le navigateur bloque l'accès au presse-papier.
 
 # 8. Fonctionnalités — Module Rendez-vous
 
@@ -343,15 +345,17 @@ Agenda partagé du groupe, distinct des concerts mais les intégrant automatique
 
 ## 8.1 Définition d'un rendez-vous
 
-Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résidence ou Autre), un objet, une date de début, une date de fin, un statut "toute la journée", des horaires de début/fin, un lieu et une liste de participants choisis parmi les membres du groupe.
+Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résidence ou Autre), un objet, une date de début, une date de fin, un statut "toute la journée", une heure de début, une durée (sur un seul jour) ou une heure de fin quotidienne (sur plusieurs jours), un lieu et une liste de participants choisis parmi les membres du groupe.
 
 ## 8.2 Saisie assistée
 
 - La date de fin recopie automatiquement la date de début à chaque saisie de celle-ci (modifiable ensuite librement, pour un rendez-vous sur plusieurs jours comme une résidence).
 
-- L'horaire de fin recopie automatiquement l'horaire de début à chaque saisie de celui-ci, sauf sur un rendez-vous multi-jours, ou si la nouvelle heure de début reste antérieure à l'heure de fin déjà saisie (la plage reste alors valide et n'est pas modifiée).
+- Rendez-vous sur un seul jour : on saisit une heure de début et une durée (liste de valeurs courantes, pré-remplie à 1 h) ; l'heure de fin (events.end_time) est calculée à l'enregistrement à partir de ces deux valeurs, il n'y a pas de champ "heure de fin" à saisir.
 
-- La case "Toute la journée" masque et vide les champs d'horaires.
+- Rendez-vous sur plusieurs jours : le champ "durée" laisse place à un champ "heure de fin (chaque jour)" ; début et fin représentent alors des horaires quotidiens indépendants, saisis tels quels.
+
+- La case "Toute la journée" masque et vide les champs d'horaires (l'heure de fin enregistrée est alors NULL).
 
 ## 8.3 Écran liste et filtre
 
@@ -366,6 +370,8 @@ Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résid
 - Les libellés de la ligne (indication "récurrent" le cas échéant, badge "PROCHAIN" le cas échéant, puis catégorie du rendez-vous) sont regroupés en bout de ligne dans cet ordre, au même endroit et selon la même logique de repli sur mobile que les badges de statut et de langue du Répertoire (§ 13.2) — le titre du rendez-vous occupe désormais la première ligne de la carte.
 
 - Les concerts apparaissent dans cette liste au même titre que les autres rendez-vous : cliquer dessus bascule vers le module Concerts et ouvre directement le concert concerné en édition (la mention "non modifiable ici", auparavant affichée sur ces lignes, a été retirée — elle entrait en contradiction avec ce comportement au clic et n'apportait qu'une confusion). Les données affichées proviennent en direct de la table concerts — toute modification faite depuis le module Concerts se répercute donc immédiatement dans l'agenda.
+
+- Sur la ligne date/horaire de la carte, la durée du rendez-vous (heure de fin − heure de début) est affichée juste après l'horaire, avec une icône de sablier. Même affichage sur les cartes Concerts (§ 7.1) et sur les cartes "Prochain rendez-vous"/"Prochain concert" de l'écran d'accueil (§ 11.2). Rien n'est affiché pour un rendez-vous "toute la journée" ou sans heure de fin connue.
 
 - Chaque carte affiche une bulle avec le nombre de commentaires laissés sur le rendez-vous (§ 8.5).
 
@@ -673,6 +679,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Correction du zoom d'iOS Safari (§ 13) : la police des champs de saisie passe à 16 px sur appareil tactile (le seuil sous lequel iOS zoome au focus et ne dézoome pas toujours) ; après connexion, on force en plus un retour en haut de page. Résout le fait d'arriver sur l'application zoomée et décalée après avoir saisi le mot de passe.
 
 - Type de rendez-vous "Résidence" (§ 8.3) : ambre éclairci de `#E8B04B` à `#F0CE8A` (blé doré) pour ne plus se confondre avec l'ambre d'accent `#F2A93B`.
+
+- Durée des rendez-vous et des concerts (§ 3.5, § 3.6, § 7.2, § 8.1, § 8.2) : la saisie passe de "heure de début + heure de fin" à "heure de début + durée" (liste de valeurs, pré-remplie à 1 h) sur les rendez-vous d'un seul jour comme sur les concerts ; l'heure de fin est calculée puis stockée. Les rendez-vous multi-jours conservent une heure de fin quotidienne saisie à la main. Nouvelle colonne `concerts.end_time` (migration requise : `alter table public.concerts add column if not exists end_time time;`) ; `events.end_time` existait déjà. La durée est affichée dans les listes juste après l'horaire (§ 8.3), avec une icône de sablier, sur les écrans Concerts, Rendez-vous et Accueil.
 
 # 17. Références
 
