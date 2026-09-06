@@ -94,15 +94,15 @@ function formatTotalDuration(totalSeconds) {
 }
 
 // Chaque note de transition d'un set de concert (§ set_items) est comptée
-// pour 3 min dans la durée théorique du set (temps de parole / d'enchaînement).
-const NOTE_SECONDS = 180;
+// pour 1 min dans la durée théorique du set (temps de parole / d'enchaînement).
+const NOTE_SECONDS = 60;
 
 function countSetNotes(setItems) {
   if (!Array.isArray(setItems)) return 0;
   return setItems.filter((it) => it && it.type === 'note' && String(it.text ?? '').trim()).length;
 }
 
-// Durée théorique d'un set = somme des morceaux + 3 min par note de transition.
+// Durée théorique d'un set = somme des morceaux + 1 min par note de transition.
 function concertSetSeconds(setSongs, setItems) {
   const songSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
   return songSeconds + countSetNotes(setItems) * NOTE_SECONDS;
@@ -4317,7 +4317,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
         <div style={{ fontSize: 14 }}>
           <span style={{ fontWeight: 700 }}>{selectedSongs.length}</span> morceau{selectedSongs.length > 1 ? 'x' : ''} dans le set
           {noteCount > 0 && (
-            <span style={{ color: '#9A958C' }}> · {noteCount} note{noteCount > 1 ? 's' : ''} de transition (+{noteCount * 3} min)</span>
+            <span style={{ color: '#9A958C' }}> · {noteCount} note{noteCount > 1 ? 's' : ''} de transition (+{noteCount} min)</span>
           )}
         </div>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Durée du set : {formatTotalDuration(totalSeconds)}</div>
