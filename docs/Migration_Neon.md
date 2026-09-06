@@ -1,6 +1,6 @@
 # Migration Supabase → Neon — plan détaillé
 
-Statut : **Phase 0 en cours** (branche `migration-neon`). Kit de test prêt (`db/neon_schema.sql`, `db/phase0_dataapi_test.sh`) — reste à créer le projet Neon pilote et lancer le test décisif (§ 4). Cocher les cases au fur et à mesure.
+Statut : **Phase 0 faite → chemin B retenu** (branche `migration-neon`). Le test décisif (§ 4) a montré que la Data API Neon exige un JWT et n'offre pas d'accès ouvert simple → on n'utilise pas la Data API : une couche `/api/db` sur Vercel Functions parle à Neon en direct. Suite : Phase 1.
 
 Motivation : le plan gratuit Supabase plafonne à 2 projets actifs ; le plan gratuit Neon en autorise ~100. L'objectif est d'avoir un socle unique (Neon + Vercel) réutilisable pour les autres projets à venir. Ce document ne concerne que `calyxter-set-manager`.
 
@@ -158,14 +158,24 @@ Objectif : lever les incertitudes **avant** de toucher à la prod. Sur un projet
 3. [ ] Activer la **Data API** sur le projet (dashboard → Postgres database → Data API). Si le rôle `anonymous` est créé à ce moment-là, ré-exécuter le bloc « 10. » de `neon_schema.sql`. Copier l'**URL de la Data API**.
 4. [ ] Lancer le test : `export NEON_DATA_API_URL='https://…' && bash db/phase0_dataapi_test.sh`. Me transmettre la sortie.
 
-Selon le verdict, j'enchaîne :
+### Résultat du test décisif (2026-09-06)
 
-- [ ] Si besoin de A1 vs A2 : essayer le client `@neondatabase/postgrest-js` (`NeonPostgrestClient`) contre la Data API du pilote.
-- [ ] Créer une Vercel Function minimale (`api/ping-neon`) : `SELECT now()` sur Neon via `@neondatabase/serverless` avec `NEON_DATABASE_URL` (chaîne pooled). Mesurer la latence à froid (autosuspend Neon) — attendu ~300-800 ms sur la 1re requête.
-- [ ] Porter `search-deezer` en Vercel Function (sans base) et valider le proxy Deezer + CORS.
-- [ ] Porter `member-auth` en Vercel Function, connexion Neon par `NEON_DATABASE_URL` (propriétaire de la table, hors Data API — patron `scripts/db/run-import.mjs` de mabedetheque). **Réutiliser à l'identique** le hachage PBKDF2 (100 000 itérations, sel 16 octets, SHA-256, format `saltHex:hashHex`) via Web Crypto. Test croisé : `verify` d'un hash généré par l'ancienne fonction Supabase → **doit renvoyer OK** (compatibilité des mots de passe migrés).
-- [ ] Vérifier les quotas Neon free : 0,5 Go stockage / projet (la base fait quelques Mo — large), 100 CU-h compute / mois (usage occasionnel à 6 — large), autosuspend après inactivité (accepter le cold start).
-- [ ] **Trancher A (A1 ou A2) vs B** et figer la suite du plan.
+- **La Data API rejette toute requête sans JWT** : `HTTP 400 {"message":"missing authentication credentials: required authorization bearer token in JWT format"}`. Le rejet est en amont des `grant`/RLS — le rôle `anonymous` de `neon_schema.sql` n'entre jamais en jeu tant qu'aucun JWT n'est présenté.
+- Un **accès sans en-tête** existe en théorie (réglage « anonymous role » / `db_anon_role`), mais :
+  - la doc ne l'expose pas dans la console (à faire en SQL, comportement flou en beta), et notre projet ne l'a pas activé par défaut ;
+  - avec Managed Better Auth, « anonymous » passe en réalité par un **JWT anonyme** que le SDK va chercher à chaque requête (patron mabedetheque `set-auth-jwt`) — pas un vrai appel sans en-tête.
+- Un **fournisseur JWT custom** est possible (Data API → onglet *Configuration* → *Other Provider* + URL JWKS), donc un **JWT statique maison** serait faisable — mais c'est de l'infra à héberger et maintenir (paire de clés, endpoint JWKS, rotation), et on reste dans le volet auth beta de la Data API.
+
+**Conclusion : chemin B.** La Data API ajoute une dépendance (JWT + auth beta) sans bénéfice pour Calyxter, dont le modèle est « pas de vraie auth, sécurité par confidentialité du lien ». On l'écarte.
+
+### Suite (chemin B) — voir Phase 1
+
+- [ ] Créer une Vercel Function `api/ping-neon` : `SELECT now()` via `@neondatabase/serverless` + `NEON_DATABASE_URL` (chaîne pooled). Mesurer la latence à froid (autosuspend) — ~300-800 ms sur la 1re requête.
+- [ ] Porter `search-deezer` en Vercel Function (sans base), valider proxy Deezer + CORS.
+- [ ] Porter `member-auth` en Vercel Function, connexion Neon directe (`@neondatabase/serverless`, rôle propriétaire). **Hachage PBKDF2 réutilisé à l'identique** (100 000 itérations, sel 16 octets, SHA-256, `saltHex:hashHex`). Test croisé : `verify` d'un hash produit par l'ancienne fonction Supabase → **doit renvoyer OK**.
+- [ ] Concevoir `api/db` : endpoint unique `{ op, table, ... }` couvrant les ~6 formes du § 2 (liste blanche des 8 tables, aucun SQL arbitraire).
+- [ ] `db/neon_schema.sql` : les blocs « rôle anonymous / RLS / grants » (section 10) deviennent inutiles avec le chemin B — le garder en commentaire ou le retirer.
+- [ ] Vérifier les quotas Neon free (0,5 Go / projet, 100 CU-h / mois — la base est minuscule, large marge).
 
 ---
 
