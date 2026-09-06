@@ -1,6 +1,4 @@
--- =====================================================================
 -- CALYXTER SET MANAGER — Schéma pour Neon (Data API + rôle « anonymous »)
--- =====================================================================
 -- Version adaptée de supabase/recreate_full_schema.sql pour la migration
 -- vers Neon (voir docs/Migration_Neon.md).
 --
@@ -21,13 +19,10 @@
 --
 -- ⚠️ Les « drop ... cascade » ci-dessous suppriment tables et données si
 -- elles existent. Sur un projet neuf : sans effet.
--- =====================================================================
 
 create extension if not exists pgcrypto;
 
--- =====================================================================
 -- 0. Nettoyage préalable (ordre inverse des dépendances)
--- =====================================================================
 drop table if exists comments cascade;
 drop table if exists ideas cascade;
 drop table if exists events cascade;
@@ -44,9 +39,7 @@ drop type if exists phase_step cascade;
 drop type if exists song_language cascade;
 drop type if exists song_status cascade;
 
--- =====================================================================
 -- 1. Types énumérés
--- =====================================================================
 create type song_status as enum ('proposed', 'rejected', 'to_prepare', 'ready');
 create type song_language as enum ('FR', 'EN', 'INSTRUMENTAL', 'OTHER');
 create type phase_step as enum ('proposal', 'veto', 'vote', 'result', 'closed');
@@ -54,9 +47,7 @@ create type event_kind as enum ('repetition', 'atelier', 'residence', 'autre');
 create type recurrence_unit as enum ('day', 'week', 'month', 'year');
 create type idea_status as enum ('created', 'processed', 'done');
 
--- =====================================================================
 -- 2. Membres du groupe (comptes gérés au niveau de l'appli)
--- =====================================================================
 create table members (
   id uuid not null default gen_random_uuid(),
   name text not null,
@@ -67,9 +58,7 @@ create table members (
   constraint members_pkey primary key (id)
 );
 
--- =====================================================================
 -- 3. Morceaux du répertoire
--- =====================================================================
 create table songs (
   id uuid not null default gen_random_uuid(),
   title text not null,
@@ -88,9 +77,7 @@ create table songs (
 create index songs_status_idx on songs(status);
 create index songs_language_idx on songs(language);
 
--- =====================================================================
 -- 4. Phases de choix (vetos / votes / brouillons / départages en JSON)
--- =====================================================================
 create table phases (
   id uuid not null default gen_random_uuid(),
   initiated_by_user_id uuid not null,
@@ -107,9 +94,7 @@ create table phases (
   constraint phases_initiated_by_fkey foreign key (initiated_by_user_id) references members(id)
 );
 
--- =====================================================================
 -- 5. Journal d'activité (notifications internes)
--- =====================================================================
 create table notifications (
   id uuid not null default gen_random_uuid(),
   text text not null,
@@ -118,9 +103,7 @@ create table notifications (
   constraint notifications_pkey primary key (id)
 );
 
--- =====================================================================
 -- 6. Concerts (sets de concert)
--- =====================================================================
 create table concerts (
   id uuid not null default gen_random_uuid(),
   name text not null,
@@ -137,9 +120,7 @@ create table concerts (
 );
 create index concerts_event_date_idx on concerts(event_date);
 
--- =====================================================================
 -- 7. Rendez-vous / agenda
--- =====================================================================
 create table events (
   id uuid not null default gen_random_uuid(),
   kind event_kind not null default 'repetition',
@@ -163,9 +144,7 @@ create table events (
 );
 create index events_event_date_idx on events(event_date);
 
--- =====================================================================
 -- 8. Boîte à idées
--- =====================================================================
 create table ideas (
   id uuid not null default gen_random_uuid(),
   content text not null,
@@ -178,9 +157,7 @@ create table ideas (
 );
 create index ideas_status_idx on ideas(status);
 
--- =====================================================================
 -- 9. Commentaires sur les rendez-vous et les concerts
--- =====================================================================
 create table comments (
   id uuid not null default gen_random_uuid(),
   event_id uuid,
@@ -196,9 +173,8 @@ create table comments (
 create index comments_event_id_idx on comments(event_id);
 create index comments_concert_id_idx on comments(concert_id);
 
--- =====================================================================
 -- 10. Accès Data API — rôle « anonymous »
--- ---------------------------------------------------------------------
+--
 -- L'app n'émet aucun JWT : toute requête de la Data API tombe sur le rôle
 -- « anonymous ». On lui donne un accès complet aux 8 tables — c'est le
 -- pendant Neon de l'ancienne clé publishable + RLS ouverte de Supabase.
@@ -206,7 +182,6 @@ create index comments_concert_id_idx on comments(concert_id);
 -- Si le rôle « anonymous » n'existe pas encore : il est créé en activant
 -- la Data API sur le projet (dashboard Neon → Data API). Rejouer ce bloc
 -- après activation le cas échéant.
--- =====================================================================
 
 -- RLS activée + policy permissive (comme Supabase). Si la Data API de Neon
 -- refuse l'accès sans policy, ces lignes sont nécessaires ; si elle
