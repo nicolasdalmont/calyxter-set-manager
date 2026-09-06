@@ -4,7 +4,7 @@ import {
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
-  Home, ClipboardList, Drum, Guitar, Piano, Hourglass
+  Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -3265,6 +3265,101 @@ function toISODate(date) {
   return `${y}-${m}-${d}`;
 }
 
+/* ------------------------------------------------------------------ */
+/*  EXPORT ICS — "Ajouter à mon agenda"                                */
+/* ------------------------------------------------------------------ */
+// Génère un fichier iCalendar (.ics) que l'appareil ouvre dans son
+// application de calendrier par défaut (Agenda iOS, Google Agenda…).
+// Horaires en "heure flottante" (pas de fuseau) : le groupe est sur un
+// seul fuseau et les événements sont locaux, ce qui évite tout décalage.
+
+const ICS_FREQ = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY', year: 'YEARLY' };
+
+function icsEscapeText(s) {
+  return String(s == null ? '' : s)
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n');
+}
+// RFC 5545 : replier les lignes de plus de 75 caractères (CRLF + espace).
+function icsFold(line) {
+  if (line.length <= 75) return line;
+  const parts = [];
+  let rest = line;
+  while (rest.length > 75) { parts.push(rest.slice(0, 75)); rest = ' ' + rest.slice(75); }
+  parts.push(rest);
+  return parts.join('\r\n');
+}
+function icsUtcStamp() {
+  return new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+function icsDateOnly(dateStr) {
+  return String(dateStr).replace(/-/g, '');
+}
+function icsLocalDateTime(dateStr, timeStr) {
+  return `${icsDateOnly(dateStr)}T${(timeStr || '00:00').slice(0, 5).replace(':', '')}00`;
+}
+
+// descriptor : { uid, title, description, location, dateStr, endDateStr,
+//   allDay, startTime, endTime, recurrence?: { unit, interval, until, excludedDates } }
+function buildCalendarICS(d) {
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Calyxter Set Manager//FR', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT'];
+  L.push(`UID:${d.uid}@calyxter`);
+  L.push(`DTSTAMP:${icsUtcStamp()}`);
+
+  const multiDay = d.endDateStr && d.endDateStr !== d.dateStr;
+  const allDay = d.allDay || multiDay || !d.startTime;
+
+  if (allDay) {
+    L.push(`DTSTART;VALUE=DATE:${icsDateOnly(d.dateStr)}`);
+    // DTEND est exclusif pour un événement "journée entière" : +1 jour.
+    L.push(`DTEND;VALUE=DATE:${icsDateOnly(addRecurrenceUnit(d.endDateStr || d.dateStr, 'day', 1))}`);
+  } else {
+    L.push(`DTSTART:${icsLocalDateTime(d.dateStr, d.startTime)}`);
+    const end = d.endTime || minutesToTimeStr((timeStrToMinutes(d.startTime) || 0) + DEFAULT_DURATION_MIN);
+    L.push(`DTEND:${icsLocalDateTime(d.dateStr, end)}`);
+  }
+
+  const r = d.recurrence;
+  if (r && ICS_FREQ[r.unit] && r.interval && r.until) {
+    let rule = `RRULE:FREQ=${ICS_FREQ[r.unit]};INTERVAL=${r.interval}`;
+    rule += allDay ? `;UNTIL=${icsDateOnly(r.until)}` : `;UNTIL=${icsDateOnly(r.until)}T235959Z`;
+    L.push(rule);
+    (r.excludedDates || []).forEach((ex) => {
+      L.push(allDay ? `EXDATE;VALUE=DATE:${icsDateOnly(ex)}` : `EXDATE:${icsLocalDateTime(ex, d.startTime)}`);
+    });
+  }
+
+  L.push(`SUMMARY:${icsEscapeText(d.title)}`);
+  if (d.location) L.push(`LOCATION:${icsEscapeText(d.location)}`);
+  if (d.description) L.push(`DESCRIPTION:${icsEscapeText(d.description)}`);
+  L.push('END:VEVENT', 'END:VCALENDAR');
+  return L.map(icsFold).join('\r\n');
+}
+
+function slugForFilename(s) {
+  return (String(s || 'evenement')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'evenement').slice(0, 60);
+}
+
+// Déclenche l'ouverture du .ics par l'appareil (téléchargement qui s'ouvre
+// dans l'app calendrier). Limite connue : en PWA installée sur iOS, le
+// téléchargement direct peut être ignoré — ouvrir alors l'app depuis Safari.
+function downloadICS(filename, ics) {
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
 // Ajoute `interval` unités (jour/semaine/mois/an) à une date 'YYYY-MM-DD'
 // et renvoie la nouvelle date au même format.
 function addRecurrenceUnit(dateStr, unit, interval) {
@@ -3584,6 +3679,24 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
     }
   };
 
+  const handleAddToCalendar = () => {
+    const ics = buildCalendarICS({
+      uid: concert?.id || 'draft',
+      title: name.trim() || 'Concert',
+      description: [
+        'Concert',
+        `${selectedSongs.length} morceau${selectedSongs.length > 1 ? 'x' : ''} · durée du set ${formatTotalDuration(totalSeconds)}`,
+        'Ajouté depuis Calyxter Set Manager.',
+      ].join('\n'),
+      location: venue.trim(),
+      dateStr: eventDate,
+      allDay: !eventTime,
+      startTime: eventTime || null,
+      endTime: endTimeFrom(eventTime, durationMin),
+    });
+    downloadICS(`concert-${slugForFilename(name.trim() || eventDate)}.ics`, ics);
+  };
+
   const toggleStatusFilter = (status) => {
     setStatusFilter((prev) => {
       const next = new Set(prev);
@@ -3692,16 +3805,28 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
           <ArrowLeft size={14} /> Retour aux concerts
         </button>
 
-        {isEdit && (
-          <button
-            onClick={handleCopy}
-            className="clx-btn clx-btn-ghost"
-            style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: copied ? '#6FA287' : undefined }}
-            title="Copier le nom, la date, le lieu, le set complet et sa durée dans le presse-papier"
-          >
-            {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copié !' : 'Copier le concert'}
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {name.trim() && eventDate && (
+            <button
+              onClick={handleAddToCalendar}
+              className="clx-btn clx-btn-ghost"
+              style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+              title="Ouvrir ce concert dans l'application de calendrier de l'appareil"
+            >
+              <CalendarPlus size={14} /> Ajouter à mon agenda
+            </button>
+          )}
+          {isEdit && (
+            <button
+              onClick={handleCopy}
+              className="clx-btn clx-btn-ghost"
+              style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: copied ? '#6FA287' : undefined }}
+              title="Copier le nom, la date, le lieu, le set complet et sa durée dans le presse-papier"
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copié !' : 'Copier le concert'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="clx-display" style={{ fontSize: 24, marginBottom: 18 }}>
@@ -4327,15 +4452,54 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
     }
   };
 
+  const handleAddToCalendar = () => {
+    const participantsLabel = allSelected
+      ? 'Tout le groupe'
+      : participantIds.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', ');
+    const ics = buildCalendarICS({
+      uid: event?.id || 'draft',
+      title: subject.trim() || 'Rendez-vous',
+      description: [
+        EVENT_KIND[kind]?.label || 'Rendez-vous',
+        participantsLabel && `Participants : ${participantsLabel}`,
+        isRecurring && 'Série récurrente.',
+        'Ajouté depuis Calyxter Set Manager.',
+      ].filter(Boolean).join('\n'),
+      location: venue.trim(),
+      dateStr: eventDate,
+      endDateStr: endDate,
+      allDay,
+      startTime: allDay ? null : (startTime || null),
+      endTime: allDay ? null : (isMultiDay ? (endTime || null) : endTimeFrom(startTime, durationMin)),
+      recurrence: isRecurring
+        ? { unit: recurrenceUnit, interval: Math.max(1, parseInt(recurrenceInterval, 10) || 1), until: recurrenceUntil, excludedDates: event?.excluded_dates || [] }
+        : null,
+    });
+    downloadICS(`rdv-${slugForFilename(subject.trim() || eventDate)}.ics`, ics);
+  };
+
   return (
     <div>
-      <button
-        onClick={onCancel}
-        className="clx-btn clx-btn-ghost"
-        style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, marginBottom: 16 }}
-      >
-        <ArrowLeft size={14} /> Retour aux rendez-vous
-      </button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <button
+          onClick={onCancel}
+          className="clx-btn clx-btn-ghost"
+          style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+        >
+          <ArrowLeft size={14} /> Retour aux rendez-vous
+        </button>
+
+        {subject.trim() && eventDate && (
+          <button
+            onClick={handleAddToCalendar}
+            className="clx-btn clx-btn-ghost"
+            style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+            title="Ouvrir ce rendez-vous dans l'application de calendrier de l'appareil"
+          >
+            <CalendarPlus size={14} /> Ajouter à mon agenda
+          </button>
+        )}
+      </div>
 
       <div className="clx-display" style={{ fontSize: 24, marginBottom: 18 }}>
         {isEdit ? `Modifier « ${event.subject} »` : 'Nouveau rendez-vous'}

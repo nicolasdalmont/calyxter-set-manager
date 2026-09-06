@@ -333,6 +333,8 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 - Durée théorique totale du set recalculée et affichée en continu, dans le même format que le compteur du répertoire.
 
+- Bouton "Ajouter à mon agenda" (dès que nom et date sont renseignés) : génère un fichier iCalendar (.ics) que l'appareil ouvre dans son application de calendrier par défaut (Agenda iOS, Google Agenda, etc.), pré-rempli avec le nom, la date, l'horaire (heure de début → heure de fin), le lieu et un résumé du set. Horaires en "heure locale flottante" (le groupe est sur un seul fuseau). Limite connue : en application installée sur l'écran d'accueil d'un iPhone, le téléchargement direct du .ics peut être ignoré par iOS — il faut alors ouvrir l'application depuis Safari.
+
 - Suppression du concert possible depuis l'écran d'édition, avec confirmation explicite.
 
 ## 7.3 Copie dans le presse-papier
@@ -356,6 +358,8 @@ Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résid
 - Rendez-vous sur plusieurs jours : le champ "durée" laisse place à un champ "heure de fin (chaque jour)" ; début et fin représentent alors des horaires quotidiens indépendants, saisis tels quels.
 
 - La case "Toute la journée" masque et vide les champs d'horaires (l'heure de fin enregistrée est alors NULL).
+
+- Bouton "Ajouter à mon agenda" (dès que l'objet et la date sont renseignés) : même mécanique que pour les concerts (§ 7.2) — un fichier iCalendar (.ics) ouvert par l'application de calendrier par défaut de l'appareil, pré-rempli avec l'objet, le type, la date, l'horaire, le lieu et la liste des participants. Pour un rendez-vous récurrent, le .ics décrit toute la série (règle de récurrence + dates d'occurrences supprimées), pas seulement l'occurrence ouverte.
 
 ## 8.3 Écran liste et filtre
 
@@ -685,6 +689,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Durée des rendez-vous et des concerts (§ 3.5, § 3.6, § 7.2, § 8.1, § 8.2) : la saisie passe de "heure de début + heure de fin" à "heure de début + durée" (liste de valeurs, pré-remplie à 1 h) sur les rendez-vous d'un seul jour comme sur les concerts ; l'heure de fin est calculée puis stockée. Les rendez-vous multi-jours conservent une heure de fin quotidienne saisie à la main. Nouvelle colonne `concerts.end_time` (migration requise : `alter table public.concerts add column if not exists end_time time;`) ; `events.end_time` existait déjà. La durée est affichée dans les listes juste après l'horaire (§ 8.3), avec une icône de sablier, sur les écrans Concerts, Rendez-vous et Accueil.
 
 - Écran de connexion (§ 13) : les vignettes "scotch" en haut des cartes de profil et de l'écran mot de passe reprennent la couleur d'avatar de chaque membre au lieu de l'ambre.
+
+- Bouton "Ajouter à mon agenda" sur les éditeurs de concert (§ 7.2) et de rendez-vous (§ 8.2) : génère un fichier iCalendar (.ics) ouvert par l'application de calendrier par défaut de l'appareil (heure locale flottante ; règle de récurrence incluse pour une série). Aucun serveur ni compte tiers, aucune donnée envoyée à l'extérieur.
 
 # 17. Références
 
