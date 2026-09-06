@@ -3360,6 +3360,60 @@ function downloadICS(filename, ics) {
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
+// Export .ics d'un concert enregistré (depuis une liste). `songs` est
+// optionnel : sans lui, la ligne de résumé du set est simplement omise.
+function exportConcertToCalendar(concert, songs) {
+  const setSongs = songs
+    ? (concert.song_ids || []).map((id) => songs.find((s) => s.id === id)).filter(Boolean)
+    : [];
+  const totalSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+  const ics = buildCalendarICS({
+    uid: concert.id,
+    title: concert.name || 'Concert',
+    description: [
+      'Concert',
+      setSongs.length && `${setSongs.length} morceau${setSongs.length > 1 ? 'x' : ''} · durée du set ${formatTotalDuration(totalSeconds)}`,
+      'Ajouté depuis Calyxter Set Manager.',
+    ].filter(Boolean).join('\n'),
+    location: concert.venue || '',
+    dateStr: concert.event_date,
+    allDay: !concert.event_time,
+    startTime: formatConcertTime(concert.event_time),
+    endTime: formatConcertTime(concert.end_time),
+  });
+  downloadICS(`concert-${slugForFilename(concert.name || concert.event_date)}.ics`, ics);
+}
+
+// Export .ics d'un rendez-vous enregistré (depuis une liste). Pour une
+// série récurrente, décrit toute la série (RRULE + EXDATE).
+function exportEventToCalendar(ev, members) {
+  const isRecurring = !!(ev.recurrence_unit && ev.recurrence_interval && ev.recurrence_until);
+  const ids = ev.participant_ids || [];
+  const participantsLabel = members.length > 0 && ids.length === members.length
+    ? 'Tout le groupe'
+    : ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', ');
+  const ics = buildCalendarICS({
+    uid: ev.id,
+    title: ev.subject || 'Rendez-vous',
+    description: [
+      EVENT_KIND[ev.kind]?.label || 'Rendez-vous',
+      participantsLabel && `Participants : ${participantsLabel}`,
+      isRecurring && 'Série récurrente.',
+      'Ajouté depuis Calyxter Set Manager.',
+    ].filter(Boolean).join('\n'),
+    location: ev.venue || '',
+    dateStr: ev.event_date,
+    endDateStr: ev.end_date,
+    allDay: !!ev.all_day,
+    startTime: ev.all_day ? null : formatConcertTime(ev.start_time),
+    endTime: ev.all_day ? null : formatConcertTime(ev.end_time),
+    recurrence: isRecurring
+      ? { unit: ev.recurrence_unit, interval: ev.recurrence_interval, until: ev.recurrence_until, excludedDates: ev.excluded_dates || [] }
+      : null,
+  });
+  downloadICS(`rdv-${slugForFilename(ev.subject || ev.event_date)}.ics`, ics);
+}
+
 // Ajoute `interval` unités (jour/semaine/mois/an) à une date 'YYYY-MM-DD'
 // et renvoie la nouvelle date au même format.
 function addRecurrenceUnit(dateStr, unit, interval) {
@@ -3625,6 +3679,14 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
           </div>
           <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
         </div>
+      </button>
+
+      <button
+        onClick={() => exportConcertToCalendar(concert, songs)}
+        className="clx-row-action"
+        title="Ajouter à mon agenda"
+      >
+        <CalendarPlus size={16} />
       </button>
 
       <button
@@ -4322,6 +4384,14 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
           </div>
           <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
         </div>
+      </button>
+
+      <button
+        onClick={() => (item.source === 'concert' ? exportConcertToCalendar(item.raw) : exportEventToCalendar(item.raw, members))}
+        className="clx-row-action"
+        title="Ajouter à mon agenda"
+      >
+        <CalendarPlus size={16} />
       </button>
 
       <button

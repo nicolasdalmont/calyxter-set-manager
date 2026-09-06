@@ -321,7 +321,7 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 - Ouverture automatique de la liste positionnée sur le prochain concert à venir, placé en haut de la zone défilante (les concerts passés restent accessibles en remontant), mis en évidence par un badge "PROCHAIN" et une bordure accentuée — même mécanique que l'agenda des rendez-vous (§ 8.3). Si aucun concert n'est à venir, la liste se cale sur le dernier concert passé (le plus récent) plutôt que sur le plus ancien : à la différence des rendez-vous, alimentés par des répétitions récurrentes, les concerts n'ont pas toujours une prochaine occurrence programmée. La zone défilante a une hauteur fixe et se prolonge par une cale vide sous la dernière carte, pour qu'un défilement reste toujours possible même quand les concerts tiennent tous dans la zone visible (sans quoi les concerts passés resteraient affichés en tête) ; le revers assumé est un espace vide sous la liste lorsqu'elle est courte.
 
-- Chaque carte affiche, sur trois lignes sous la pastille de date : le nom du concert ; la date, l'heure de début, la durée puis le lieu ; le nombre de morceaux du set et sa durée totale. Le badge "PROCHAIN" et l'icône crayon sont regroupés en bout de ligne, à l'emplacement occupé par les badges de statut et de langue du Répertoire (§ 13.3) — présentation désormais identique à celle des cartes Rendez-vous (§ 8.3), le concert n'ayant pas de catégorie propre à afficher en plus. Une bulle affiche par ailleurs le nombre de commentaires laissés sur le concert (§ 8.5). La pastille de date d'un concert à venir utilise la couleur du type "Concert" (§ 8.3) plutôt que l'ambre, y compris pour le prochain concert.
+- Chaque carte affiche, sur trois lignes sous la pastille de date : le nom du concert ; la date, l'heure de début, la durée puis le lieu ; le nombre de morceaux du set et sa durée totale. Le badge "PROCHAIN" et l'icône crayon sont regroupés en bout de ligne, à l'emplacement occupé par les badges de statut et de langue du Répertoire (§ 13.3) — présentation désormais identique à celle des cartes Rendez-vous (§ 8.3), le concert n'ayant pas de catégorie propre à afficher en plus. En bout de ligne, deux actions séparées par un filet vertical : une icône agenda pour ajouter le concert au calendrier de l'appareil (§ 7.2), sans ouvrir la fiche, et une bulle indiquant le nombre de commentaires (§ 8.5). La pastille de date d'un concert à venir utilise la couleur du type "Concert" (§ 8.3) plutôt que l'ambre, y compris pour le prochain concert.
 
 ## 7.2 Création et édition d'un concert
 
@@ -377,7 +377,7 @@ Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résid
 
 - Sur la ligne date/horaire de la carte, la durée du rendez-vous (heure de fin − heure de début) est affichée juste après l'horaire, avec une icône de sablier. Même affichage sur les cartes Concerts (§ 7.1) et sur les cartes "Prochain rendez-vous"/"Prochain concert" de l'écran d'accueil (§ 11.2). Rien n'est affiché pour un rendez-vous "toute la journée" ou sans heure de fin connue.
 
-- Chaque carte affiche une bulle avec le nombre de commentaires laissés sur le rendez-vous (§ 8.5).
+- En bout de ligne, comme sur les cartes Concerts (§ 7.1) : une icône agenda pour ajouter le rendez-vous (ou le concert intégré) au calendrier de l'appareil sans ouvrir la fiche, puis une bulle avec le nombre de commentaires laissés sur le rendez-vous (§ 8.5). Pour une série récurrente, l'icône agenda exporte toute la série (§ 8.2).
 
 ## 8.4 Récurrence
 
@@ -690,7 +690,7 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - Écran de connexion (§ 13) : les vignettes "scotch" en haut des cartes de profil et de l'écran mot de passe reprennent la couleur d'avatar de chaque membre au lieu de l'ambre.
 
-- Bouton "Ajouter à mon agenda" sur les éditeurs de concert (§ 7.2) et de rendez-vous (§ 8.2) : génère un fichier iCalendar (.ics) ouvert par l'application de calendrier par défaut de l'appareil (heure locale flottante ; règle de récurrence incluse pour une série). Aucun serveur ni compte tiers, aucune donnée envoyée à l'extérieur.
+- Bouton "Ajouter à mon agenda" sur les éditeurs de concert (§ 7.2) et de rendez-vous (§ 8.2), et icône agenda en bout de ligne dans les listes Concerts (§ 7.1) et Rendez-vous (§ 8.3) : génère un fichier iCalendar (.ics) ouvert par l'application de calendrier par défaut de l'appareil (heure locale flottante ; règle de récurrence incluse pour une série). Aucun serveur ni compte tiers, aucune donnée envoyée à l'extérieur.
 
 # 17. Références
 
