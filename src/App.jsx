@@ -179,15 +179,21 @@ function withTimeout(promise, ms, fallback) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  SUPABASE — connexion (pas de SDK, appels fetch directs :          */
-/*  les artefacts ne peuvent importer que les librairies autorisées)   */
-/*  Gestion des utilisateurs au niveau de l'appli, pas de Supabase     */
-/*  Auth : la clé publishable suffit pour tous les appels.             */
+/*  ACCÈS AUX DONNÉES                                                  */
+/*                                                                    */
+/*  Point de commutation unique (docs/Migration_Neon.md § 3.1) :       */
+/*  BACKEND = 'supabase' → PostgREST direct, clé publishable.          */
+/*  BACKEND = 'neon'     → couche /api/* sur Vercel Functions,         */
+/*                         aucun identifiant côté frontend.            */
+/*  Revenir en arrière = repasser cette constante à 'supabase'.        */
 /* ------------------------------------------------------------------ */
+
+const BACKEND = 'supabase'; // 'supabase' | 'neon'
 
 const SUPABASE_URL = 'https://hhtjuwmlllgglnxtnjtx.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_78oxJJanE3jzXYs8xbrMxg_sjgwBaB2';
 
+// --- Backend Supabase : appel PostgREST brut ------------------------
 async function supabaseTable(path, options = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
@@ -218,8 +224,78 @@ async function supabaseTable(path, options = {}) {
   }
 }
 
+// --- Backend Neon : endpoint générique /api/db ---------------------
+async function neonDb(body) {
+  const res = await fetch('/api/db', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Erreur API (${res.status}) : ${text}`);
+  return text ? JSON.parse(text) : null;
+}
+
+// Traduit une clause where générique ([[col, op, val]]) en fragment
+// PostgREST (col=eq.val / col=is.null / col=not.is.null).
+function supabaseWhereFragment(where) {
+  return (where || [])
+    .map(([col, op, val]) => {
+      if (op === 'eq') return `${col}=eq.${val}`;
+      if (op === 'isNull') return `${col}=is.null`;
+      if (op === 'notNull') return `${col}=not.is.null`;
+      return '';
+    })
+    .filter(Boolean)
+    .join('&');
+}
+
+// --- Opérations, agnostiques du backend ---------------------------
+async function dbSelect(table, { columns, where, order, limit } = {}) {
+  if (BACKEND === 'neon') {
+    return (await neonDb({ op: 'select', table, columns, where, order, limit })) || [];
+  }
+  let path = `${table}?select=${columns ? columns.join(',') : '*'}`;
+  const w = supabaseWhereFragment(where);
+  if (w) path += `&${w}`;
+  if (order) {
+    path += `&order=${order.map(([c, d, nl]) => `${c}.${d}${nl ? '.nullslast' : ''}`).join(',')}`;
+  }
+  if (limit) path += `&limit=${limit}`;
+  return (await supabaseTable(path)) || [];
+}
+
+async function dbInsert(table, rows) {
+  if (BACKEND === 'neon') return neonDb({ op: 'insert', table, rows });
+  return supabaseTable(table, {
+    method: 'POST',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify(rows),
+  });
+}
+
+async function dbUpdateById(table, id, set) {
+  if (BACKEND === 'neon') return neonDb({ op: 'update', table, where: [['id', 'eq', id]], set });
+  return supabaseTable(`${table}?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=minimal' },
+    body: JSON.stringify(set),
+  });
+}
+
+async function dbDelete(table, where) {
+  if (BACKEND === 'neon') return neonDb({ op: 'delete', table, where });
+  return supabaseTable(`${table}?${supabaseWhereFragment(where)}`, {
+    method: 'DELETE',
+    headers: { Prefer: 'return=minimal' },
+  });
+}
+
 async function fetchMembersFromSupabase() {
-  return supabaseTable('members?select=id,name,instrument,created_at,last_activity_at&order=name.asc');
+  return dbSelect('members', {
+    columns: ['id', 'name', 'instrument', 'created_at', 'last_activity_at'],
+    order: [['name', 'asc']],
+  });
 }
 
 // Signale une activité de l'utilisateur·rice courant·e (tamponnage serveur
@@ -236,6 +312,11 @@ async function touchMemberActivity(memberId) {
 
 async function upsertRows(table, rows) {
   if (!rows || rows.length === 0) return null;
+  if (BACKEND === 'neon') {
+    // /api/db construit un INSERT ... ON CONFLICT (id) DO UPDATE par ligne,
+    // à partir des seules clés présentes : pas de contrainte d'homogénéité.
+    return neonDb({ op: 'upsert', table, rows });
+  }
   // PostgREST (POST en lot) exige que tous les objets du tableau aient exactement
   // les mêmes clés ("All object keys must match" / PGRST102). Un objet construit
   // côté client (ex. un nouveau morceau) peut ne pas porter toutes les colonnes
@@ -260,52 +341,53 @@ async function upsertRows(table, rows) {
   });
 }
 
-// Le catalogue de démonstration (DEFAULT_SONGS) a été retiré : il n'a plus
-// d'utilité une fois le répertoire réel alimenté dans Supabase. On se
-// contente donc de charger les morceaux existants, sans jamais réensemencer
-// la table ni proposer de contenu de secours si elle est vide.
+// On charge les morceaux existants sans jamais réensemencer la table ni
+// proposer de contenu de secours si elle est vide.
 async function loadSongs() {
-  const existing = await supabaseTable('songs?select=*');
-  return existing || [];
+  return dbSelect('songs');
 }
 
 async function fetchActivePhase() {
-  const rows = await supabaseTable('phases?closed_at=is.null&select=*&order=created_at.desc&limit=1');
+  const rows = await dbSelect('phases', {
+    where: [['closed_at', 'isNull']],
+    order: [['created_at', 'desc']],
+    limit: 1,
+  });
   return rows && rows[0] ? rows[0] : null;
 }
 
 async function fetchPhaseHistory() {
-  const rows = await supabaseTable('phases?closed_at=not.is.null&select=*&order=closed_at.desc');
-  return rows || [];
+  return dbSelect('phases', {
+    where: [['closed_at', 'notNull']],
+    order: [['closed_at', 'desc']],
+  });
 }
 
 async function fetchNotifications() {
-  const rows = await supabaseTable('notifications?select=*&order=created_at.desc&limit=40');
-  return rows || [];
+  return dbSelect('notifications', { order: [['created_at', 'desc']], limit: 40 });
 }
 
 async function fetchConcerts() {
-  const rows = await supabaseTable('concerts?select=*&order=event_date.desc,event_time.desc.nullslast');
-  return rows || [];
+  return dbSelect('concerts', {
+    order: [['event_date', 'desc'], ['event_time', 'desc', true]],
+  });
 }
 
 async function fetchEvents() {
-  const rows = await supabaseTable('events?select=*&order=event_date.desc,start_time.desc.nullslast');
-  return rows || [];
+  return dbSelect('events', {
+    order: [['event_date', 'desc'], ['start_time', 'desc', true]],
+  });
 }
 
 async function fetchIdeas() {
-  const rows = await supabaseTable('ideas?select=*&order=created_at.desc');
-  return rows || [];
+  return dbSelect('ideas', { order: [['created_at', 'desc']] });
 }
 
-// Commentaires sur les rendez-vous et concerts (table partagée, voir
-// migration_comments.sql) : chargés en une fois comme le reste des
-// données, filtrés côté client par event_id/concert_id (voir
-// commentsForTarget ci-dessous).
+// Commentaires sur les rendez-vous et concerts (table partagée) : chargés
+// en une fois comme le reste des données, filtrés côté client par
+// event_id/concert_id (voir commentsForTarget ci-dessous).
 async function fetchComments() {
-  const rows = await supabaseTable('comments?select=*&order=created_at.asc');
-  return rows || [];
+  return dbSelect('comments', { order: [['created_at', 'asc']] });
 }
 
 function commentsForTarget(comments, targetType, targetId) {
@@ -313,18 +395,30 @@ function commentsForTarget(comments, targetType, targetId) {
 }
 
 async function callMemberAuth(action, memberId, password) {
+  const body = JSON.stringify({ action, member_id: memberId, password });
+  if (BACKEND === 'neon') {
+    const res = await fetch('/api/member-auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    return res.json();
+  }
   const res = await fetch(`${SUPABASE_URL}/functions/v1/member-auth`, {
     method: 'POST',
     headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, member_id: memberId, password }),
+    body,
   });
   return res.json();
 }
 
 async function searchDeezer(query) {
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/search-deezer?q=${encodeURIComponent(query)}`, {
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-  });
+  const q = encodeURIComponent(query);
+  const res = BACKEND === 'neon'
+    ? await fetch(`/api/search-deezer?q=${q}`)
+    : await fetch(`${SUPABASE_URL}/functions/v1/search-deezer?q=${q}`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'La recherche Deezer a échoué.');
   return data.results || [];
@@ -543,11 +637,7 @@ export default function App() {
     const entry = { id: uid(), text, kind: kind || 'info', created_at: new Date().toISOString() };
     setNotifications((prev) => [entry, ...prev].slice(0, 40));
     try {
-      await supabaseTable('notifications', {
-        method: 'POST',
-        headers: { Prefer: 'return=minimal' },
-        body: JSON.stringify([{ text: entry.text, kind: entry.kind }]),
-      });
+      await dbInsert('notifications', [{ text: entry.text, kind: entry.kind }]);
     } catch (e) {
       console.error('Erreur en enregistrant la notification', e);
     }
@@ -580,7 +670,7 @@ export default function App() {
   const deleteSong = useCallback(async (songId) => {
     setSongs((prev) => prev.filter((s) => s.id !== songId));
     try {
-      await supabaseTable(`songs?id=eq.${songId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+      await dbDelete('songs', [['id', 'eq', songId]]);
     } catch (e) {
       console.error('Erreur en supprimant le morceau', e);
     }
@@ -603,11 +693,11 @@ export default function App() {
     setComments((prev) => prev.filter((c) => c.concert_id !== concertId));
     try {
       // Les clés étrangères de la table comments n'ont aucune clause
-      // ON DELETE côté base (voir recreate_full_schema.sql) : il faut donc
-      // supprimer d'abord les commentaires liés, sinon la suppression du
-      // concert échoue sur une violation de contrainte de clé étrangère.
-      await supabaseTable(`comments?concert_id=eq.${concertId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
-      await supabaseTable(`concerts?id=eq.${concertId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+      // ON DELETE côté base : il faut donc supprimer d'abord les
+      // commentaires liés, sinon la suppression du concert échoue sur une
+      // violation de contrainte de clé étrangère.
+      await dbDelete('comments', [['concert_id', 'eq', concertId]]);
+      await dbDelete('concerts', [['id', 'eq', concertId]]);
     } catch (e) {
       console.error('Erreur en supprimant le concert', e);
     }
@@ -630,11 +720,11 @@ export default function App() {
     setComments((prev) => prev.filter((c) => c.event_id !== eventId));
     try {
       // Les clés étrangères de la table comments n'ont aucune clause
-      // ON DELETE côté base (voir recreate_full_schema.sql) : il faut donc
-      // supprimer d'abord les commentaires liés, sinon la suppression du
-      // rendez-vous échoue sur une violation de contrainte de clé étrangère.
-      await supabaseTable(`comments?event_id=eq.${eventId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
-      await supabaseTable(`events?id=eq.${eventId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+      // ON DELETE côté base : il faut donc supprimer d'abord les
+      // commentaires liés, sinon la suppression du rendez-vous échoue sur
+      // une violation de contrainte de clé étrangère.
+      await dbDelete('comments', [['event_id', 'eq', eventId]]);
+      await dbDelete('events', [['id', 'eq', eventId]]);
     } catch (e) {
       console.error('Erreur en supprimant le rendez-vous', e);
     }
@@ -655,7 +745,7 @@ export default function App() {
   const deleteIdea = useCallback(async (ideaId) => {
     setIdeas((prev) => prev.filter((i) => i.id !== ideaId));
     try {
-      await supabaseTable(`ideas?id=eq.${ideaId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+      await dbDelete('ideas', [['id', 'eq', ideaId]]);
     } catch (e) {
       console.error("Erreur en supprimant l'idée", e);
     }
@@ -673,7 +763,7 @@ export default function App() {
   const deleteComment = useCallback(async (commentId) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
     try {
-      await supabaseTable(`comments?id=eq.${commentId}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+      await dbDelete('comments', [['id', 'eq', commentId]]);
     } catch (e) {
       console.error('Erreur en supprimant le commentaire', e);
     }
@@ -698,11 +788,7 @@ export default function App() {
         // précis de la clôture, avant que le statut des morceaux gagnants
         // ne change et ne rende ces informations impossibles à recalculer.
         const closingFields = { current_step: 'closed', closed_at: closedAt, ...(closingExtra || {}) };
-        await supabaseTable(`phases?id=eq.${prevPhase.id}`, {
-          method: 'PATCH',
-          headers: { Prefer: 'return=minimal' },
-          body: JSON.stringify(closingFields),
-        });
+        await dbUpdateById('phases', prevPhase.id, closingFields);
         // La phase clôturée normalement (résultat validé) rejoint
         // l'historique consultable dans l'onglet Phase de choix.
         setPhaseHistory((prev) => [{ ...prevPhase, ...closingFields }, ...prev]);
@@ -729,7 +815,7 @@ export default function App() {
       )));
     }
     try {
-      await supabaseTable(`phases?id=eq.${currentPhase.id}`, { method: 'DELETE', headers: { Prefer: 'return=minimal' } });
+      await dbDelete('phases', [['id', 'eq', currentPhase.id]]);
     } catch (e) {
       console.error('Erreur en annulant la phase', e);
     }
