@@ -1,6 +1,6 @@
 # Migration Supabase → Neon — plan détaillé
 
-Statut : **plan, non commencé.** Décision d'architecture à trancher lors de la Phase 0 (projet pilote). Cocher les cases au fur et à mesure.
+Statut : **Phase 0 en cours** (branche `migration-neon`). Kit de test prêt (`db/neon_schema.sql`, `db/phase0_dataapi_test.sh`) — reste à créer le projet Neon pilote et lancer le test décisif (§ 4). Cocher les cases au fur et à mesure.
 
 Motivation : le plan gratuit Supabase plafonne à 2 projets actifs ; le plan gratuit Neon en autorise ~100. L'objectif est d'avoir un socle unique (Neon + Vercel) réutilisable pour les autres projets à venir. Ce document ne concerne que `calyxter-set-manager`.
 
@@ -146,11 +146,21 @@ La version Supabase n'ayant jamais été modifiée, **le niveau 1 seul suffit à
 
 Objectif : lever les incertitudes **avant** de toucher à la prod. Sur un projet Neon jetable, avec un jeu de données bidon.
 
-- [ ] Relire d'abord `~/Documents/git/mabedetheque` : `SETUP.md`, `db/migrations/0001_init.sql`, `lib/neon-client.ts`, `.env.example`, `scripts/db/README.md` (import direct en base) — beaucoup de choix sont déjà tranchés là (§ 2.5).
-- [ ] Créer un compte Neon + un projet pilote (région `eu-central` / Frankfurt).
-- [ ] Créer le schéma sur le pilote (voir § 6.2 pour la version adaptée du script).
-- [ ] **[A] — test décisif** : activer la Data API. `grant select, insert, update, delete on <table> to anonymous;` sur une table de test. Depuis un `curl` **sans en-tête `Authorization`**, reproduire : un `select` filtré, un `upsert` « merge on id » (`Prefer: resolution=merge-duplicates`), un `patch` par `id`, un `delete` par filtre. → **Le rôle `anonymous` + grants ouverts suffit-il, sans JWT ?** Si oui → chemin A confirmé, pas de RLS ni de token à gérer. Si non (JWT obligatoire) → évaluer un JWT statique signé par secret/JWKS, sinon repli chemin B.
-- [ ] Essayer aussi le client `@neondatabase/postgrest-js` (`NeonPostgrestClient`) en pointant sur la Data API du pilote, pour juger A1 vs A2.
+**Kit préparé dans le dépôt (branche `migration-neon`)** :
+
+- `db/neon_schema.sql` — schéma adapté pour Neon (rôle `anonymous` + grants ouverts, révocations de colonnes sur `members`, `pgcrypto`). Prêt à coller dans le SQL Editor Neon.
+- `db/phase0_dataapi_test.sh` — le **test décisif** en `curl` (select / insert / upsert merge / patch / delete **sans `Authorization`**, + vérif de la protection de `password_hash`). Verdict automatique « chemin A confirmé » ou non.
+
+**À faire côté dashboards (seul toi peux) :**
+
+1. [ ] Créer un compte Neon, un **projet pilote** (région `aws eu-central-1` / Frankfurt), noter la chaîne de connexion **directe**.
+2. [ ] SQL Editor du pilote → coller/exécuter `db/neon_schema.sql`.
+3. [ ] Activer la **Data API** sur le projet (dashboard → Postgres database → Data API). Si le rôle `anonymous` est créé à ce moment-là, ré-exécuter le bloc « 10. » de `neon_schema.sql`. Copier l'**URL de la Data API**.
+4. [ ] Lancer le test : `export NEON_DATA_API_URL='https://…' && bash db/phase0_dataapi_test.sh`. Me transmettre la sortie.
+
+Selon le verdict, j'enchaîne :
+
+- [ ] Si besoin de A1 vs A2 : essayer le client `@neondatabase/postgrest-js` (`NeonPostgrestClient`) contre la Data API du pilote.
 - [ ] Créer une Vercel Function minimale (`api/ping-neon`) : `SELECT now()` sur Neon via `@neondatabase/serverless` avec `NEON_DATABASE_URL` (chaîne pooled). Mesurer la latence à froid (autosuspend Neon) — attendu ~300-800 ms sur la 1re requête.
 - [ ] Porter `search-deezer` en Vercel Function (sans base) et valider le proxy Deezer + CORS.
 - [ ] Porter `member-auth` en Vercel Function, connexion Neon par `NEON_DATABASE_URL` (propriétaire de la table, hors Data API — patron `scripts/db/run-import.mjs` de mabedetheque). **Réutiliser à l'identique** le hachage PBKDF2 (100 000 itérations, sel 16 octets, SHA-256, format `saltHex:hashHex`) via Web Crypto. Test croisé : `verify` d'un hash généré par l'ancienne fonction Supabase → **doit renvoyer OK** (compatibilité des mots de passe migrés).
