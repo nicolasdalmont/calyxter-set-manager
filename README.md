@@ -4,6 +4,7 @@ Application de gestion du répertoire et des phases de choix du groupe Calyxter.
 
 Documentation technique et fonctionnelle complète : [`docs/Calyxter_Documentation_Technique.md`](docs/Calyxter_Documentation_Technique.md).
 Schéma de base de données : [`supabase/recreate_full_schema.sql`](supabase/recreate_full_schema.sql).
+Plan de migration Supabase → Neon (à venir) : [`docs/Migration_Neon.md`](docs/Migration_Neon.md).
 
 ## Développement local (optionnel)
 
