@@ -510,7 +510,7 @@ Deezer est l'unique plateforme d'écoute intégrée à l'application, et le rest
 
 - Le bouton "Réinitialiser les données de démo", susceptible de provoquer des erreurs ou des pertes de données accidentelles, a été retiré de la barre supérieure.
 
-- Corrections de mise en page sur mobile : les lignes de boutons d'action (Supprimer / Annuler / Enregistrer) des écrans d'édition acceptent désormais le retour à la ligne plutôt que de se comprimer les unes contre les autres sur un écran étroit ; le bandeau de lancement d'une phase de choix, dans le Répertoire, ne déborde plus de l'écran sur smartphone ; la carte d'un rendez-vous dans sa liste ne force plus de largeur minimale susceptible de repousser son bouton d'édition hors de l'écran visible.
+- Corrections de mise en page sur mobile : les lignes de boutons d'action (Supprimer / Annuler / Enregistrer) des écrans d'édition acceptent désormais le retour à la ligne plutôt que de se comprimer les unes contre les autres sur un écran étroit ; le bandeau de lancement d'une phase de choix, dans le Répertoire, ne déborde plus de l'écran sur smartphone ; la carte d'un rendez-vous dans sa liste ne force plus de largeur minimale susceptible de repousser son bouton d'édition hors de l'écran visible ; les champs `date` et `heure` des éditeurs de concert et de rendez-vous (notamment "Date de fin") ne débordent plus sur la droite sur iOS, où ils conservaient une largeur intrinsèque incompressible — neutralisée par `min-width: 0` sur le champ et sur son conteneur.
 
 ## 13.1 Icône d'écran d'accueil (PWA)
 

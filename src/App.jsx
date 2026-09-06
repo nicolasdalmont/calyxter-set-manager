@@ -1049,6 +1049,16 @@ function GlobalStyle() {
         font-size: 14px;
         outline: none;
         width: 100%;
+        min-width: 0;
+      }
+      /* type=date / type=time gardent une largeur intrinsèque large (surtout
+         sur iOS) : on neutralise la largeur mini du champ et de la valeur
+         interne pour qu'ils suivent la largeur de leur conteneur flex. */
+      .clx-input[type="date"], .clx-input[type="time"] { min-width: 0; }
+      .clx-input[type="date"]::-webkit-date-and-time-value,
+      .clx-input[type="time"]::-webkit-date-and-time-value {
+        min-width: 0;
+        text-align: left;
       }
       .clx-input:focus { border-color: #F2A93B; box-shadow: 0 0 0 3px #F2A93B22; }
       .clx-input::placeholder { color: #6B6862; }
@@ -2271,7 +2281,10 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
 
 function Field({ label, children, style }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: '#9A958C', ...style }}>
+    // minWidth: 0 : sans lui, un Field posé en flex (ex. les dates début/fin
+    // côte à côte) ne peut pas descendre sous la largeur intrinsèque de son
+    // <input type="date">, qui déborde alors du conteneur sur mobile.
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: '#9A958C', minWidth: 0, ...style }}>
       {label}
       {children}
     </label>
