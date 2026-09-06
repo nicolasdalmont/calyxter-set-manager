@@ -573,7 +573,9 @@ export default function App() {
 
   const [tab, setTab] = useState('accueil');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  // Filtre par statut : multi-sélection libre parmi les 4 statuts. Par défaut
+  // « Prêt » + « En préparation » (le répertoire actif). Aucun sélectionné = aucun filtre.
+  const [statusFilter, setStatusFilter] = useState(() => new Set(['ready', 'to_prepare']));
   const [langFilter, setLangFilter] = useState('all');
   const [artistFilter, setArtistFilter] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
@@ -864,7 +866,7 @@ export default function App() {
   }, [currentUser, updatePhase, pushNotification]);
 
   const matchesNonArtistFilters = (s) => {
-    if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+    if (statusFilter.size > 0 && !statusFilter.has(s.status)) return false;
     if (langFilter !== 'all' && s.language !== langFilter) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -2017,6 +2019,14 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
 function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, statusFilter, setStatusFilter, langFilter, setLangFilter, artistFilter, setArtistFilter, artistOptions, members, currentUser, phase, launchPhase, onAddClick, onEditClick, onShowPhaseHistory }) {
   const [launching, setLaunching] = useState(false);
 
+  const toggleStatus = (status) => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status); else next.add(status);
+      return next;
+    });
+  };
+
   const handleLaunch = async () => {
     setLaunching(true);
     try {
@@ -2096,9 +2106,8 @@ function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, sta
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
-        <Chip active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>Tous</Chip>
         {Object.entries(STATUS).map(([key, v]) => (
-          <Chip key={key} active={statusFilter === key} onClick={() => setStatusFilter(key)}>{v.badge}</Chip>
+          <Chip key={key} active={statusFilter.has(key)} onClick={() => toggleStatus(key)}>{v.badge}</Chip>
         ))}
       </div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>

@@ -305,7 +305,7 @@ La table comments (§ 3.8) suit le régime commun : tout membre peut y ajouter o
 
 - Recherche texte libre (titre / artiste) et filtres combinables : statut, langue (Francophone / Anglophone / Instrumental / Inconnu), artiste (liste dynamique, cohérente avec les autres filtres actifs).
 
-- Le filtre de statut est à choix unique : "Tous" ou exactement une catégorie à la fois (jamais aucune, jamais plusieurs simultanément). Ce même comportement a été repris pour le filtre par type de l'agenda des rendez-vous (voir § 8.3).
+- Le filtre de statut est à **multi-sélection libre** : les quatre statuts (Prêt, À préparer, Proposé, Sorti) s'activent et se désactivent indépendamment, comme les filtres de statut de l'éditeur de concert (§ 7.2). Sélection par défaut : **Prêt + En préparation** (le répertoire actif). Aucun statut sélectionné équivaut à aucun filtre (tous les morceaux). Il n'y a plus de bouton "Tous". Le filtre par type de l'agenda des rendez-vous (§ 8.3), lui, reste à choix unique.
 
 - Tri alphabétique par titre appliqué par défaut sur l'ensemble de la liste.
 
@@ -478,7 +478,7 @@ Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résid
 
 - Compteur en tête de liste : nombre de rendez-vous **à venir** ("X rendez-vous à venir"), les rendez-vous passés étant exclus du décompte (un rendez-vous en cours, dont la date de fin n'est pas dépassée, compte comme à venir). Le décompte porte sur les rendez-vous que le filtre par type actif laisse afficher, concerts intégrés compris. Les rendez-vous passés restent affichés dans la liste.
 
-- Filtre par type à choix unique (Tous, ou exactement un type à la fois), identique dans son fonctionnement au filtre de statut du Répertoire (§ 5.2).
+- Filtre par type à choix unique : "Tous", ou exactement un type à la fois (jamais aucun, jamais plusieurs simultanément).
 
 - Code couleur par type, repris sur la pastille de date, le badge de catégorie et (écran Accueil) la bande d'angle : Répétition bleu ardoise, Atelier de travail sauge, Résidence ambre clair (blé doré), Autre violet, Concert turquoise. Le turquoise du concert le distingue nettement des autres rendez-vous dans la liste ; il a remplacé un rouge qui se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti"). Le violet du type "Autre" a de même remplacé un taupe qui, étant le gris neutre d'interface de l'application, faisait lire ces rendez-vous comme passés ou désactivés. L'ambre de la Résidence a été éclairci (`#F0CE8A`) pour ne plus se confondre avec l'ambre d'accent de l'application (`#F2A93B` : badge "PROCHAIN", surbrillance, bandeau de phase). Un rendez-vous passé, lui, perd bien sa couleur au profit d'un gris neutre.
 
@@ -524,7 +524,7 @@ Nouvel onglet permettant à chaque membre de consigner librement des idées d'am
 
 - Ajout rapide en un seul champ, sans écran dédié : un simple encart en haut de la liste.
 
-- Liste triée des plus récentes aux plus anciennes, avec filtre par statut à choix unique (Tous, ou exactement un statut à la fois), identique dans son fonctionnement au filtre de statut du Répertoire (§ 5.2).
+- Liste triée des plus récentes aux plus anciennes, avec filtre par statut à choix unique : "Tous", ou exactement un statut à la fois.
 
 - Le statut d'une idée peut être changé par n'importe quel membre directement depuis la liste ; sa suppression est également ouverte à tous.
 
@@ -837,6 +837,10 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - **Export imprimable du set** (§ 7.4) : bouton "Imprimer le set" dans l'éditeur de concert → document HTML autonome sur une page A4 (nom, date, set complet transitions comprises), impression ou "Enregistrer en PDF". Fabriqué côté navigateur, sans bibliothèque tierce.
 
 - **Correction — écritures `jsonb` via `api/db`** : le pilote `@neondatabase/serverless` encode un tableau JS comme un littéral tableau Postgres (`{a,b}`), rejeté par les colonnes `jsonb`. Toute écriture d'une ligne portant un tableau JSON échouait donc depuis la bascule Neon : enregistrer le set d'un concert (`song_ids`), les participants ou dates exclues d'un rendez-vous (`participant_ids`, `excluded_dates`), poser un veto ou voter (`phases.vetoes`, `votes`, `tie_break_votes`). Passé inaperçu à la recette (seuls des chemins sans tableau avaient été testés). `api/db.js` sérialise désormais tout objet/tableau en texte JSON avant paramétrage (`normValue`, même règle que `db/migrate.mjs`). Ajout d'un fichier de tests `api/db.test.mjs` (lancé par `npm test`, `node --test`) couvrant les constructeurs SQL et `normValue`.
+
+- **Filtre de statut du Répertoire en multi-sélection** (§ 5.2) : suppression du bouton "Tous" et du fonctionnement à choix unique ; les quatre statuts (Prêt, À préparer, Proposé, Sorti) sont désormais sélectionnables simultanément, comme dans l'éditeur de concert. Sélection par défaut : Prêt + En préparation.
+
+- **Corrections d'affichage mobile** : rangées de champs des éditeurs concert/rendez-vous en colonne pleine largeur sous 560 px (`.clx-field-row`) ; champs `date`/`heure` sur iOS — `-webkit-appearance: none` + hauteur explicite (ciblé tactile) et couleur forcée sur les fragments internes (`::-webkit-datetime-edit-*`) pour que la valeur reste visible sur fond sombre (§ 13). Feuille "Imprimer le set" : dimensionnement pour tenir sur une page appliqué aussi sur mobile, et sur mobile plus d'impression automatique — un bouton "Enregistrer en PDF" et un retour au concert (§ 7.4).
 
 # 17. Références
 
