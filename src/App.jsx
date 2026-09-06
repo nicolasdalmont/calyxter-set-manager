@@ -43,7 +43,10 @@ const STEP_LABEL = {
 const EVENT_KIND = {
   repetition: { label: 'Répétition',         badge: 'RÉPÉT',     color: '#7C8BA8' },
   atelier:    { label: 'Atelier de travail', badge: 'ATELIER',   color: '#6FA287' },
-  residence:  { label: 'Résidence',          badge: 'RÉSIDENCE', color: '#E8B04B' },
+  // Ambre clair (blé doré) : reste dans la famille ambre mais assez pâle
+  // pour ne pas se confondre avec l'ambre d'accent #F2A93B (badge "PROCHAIN",
+  // surbrillance, bandeau de phase) — l'ancien #E8B04B en était trop proche.
+  residence:  { label: 'Résidence',          badge: 'RÉSIDENCE', color: '#F0CE8A' },
   // Violet doux : couleur à part entière (l'ancien taupe #6B6862, qui est le
   // gris neutre d'UI de l'app, faisait lire un rendez-vous "Autre" comme un
   // événement passé ou désactivé), non spécifique — adapté à une catégorie

@@ -361,7 +361,7 @@ Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résid
 
 - Filtre par type à choix unique (Tous, ou exactement un type à la fois), identique dans son fonctionnement au filtre de statut du Répertoire (§ 5.2).
 
-- Code couleur par type, repris sur la pastille de date, le badge de catégorie et (écran Accueil) la bande d'angle : Répétition bleu ardoise, Atelier de travail sauge, Résidence or, Autre violet, Concert turquoise. Le turquoise du concert le distingue nettement des autres rendez-vous dans la liste ; il a remplacé un rouge qui se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti"). Le violet du type "Autre" a de même remplacé un taupe qui, étant le gris neutre d'interface de l'application, faisait lire ces rendez-vous comme passés ou désactivés. Un rendez-vous passé, lui, perd bien sa couleur au profit d'un gris neutre.
+- Code couleur par type, repris sur la pastille de date, le badge de catégorie et (écran Accueil) la bande d'angle : Répétition bleu ardoise, Atelier de travail sauge, Résidence ambre clair (blé doré), Autre violet, Concert turquoise. Le turquoise du concert le distingue nettement des autres rendez-vous dans la liste ; il a remplacé un rouge qui se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti"). Le violet du type "Autre" a de même remplacé un taupe qui, étant le gris neutre d'interface de l'application, faisait lire ces rendez-vous comme passés ou désactivés. L'ambre de la Résidence a été éclairci (`#F0CE8A`) pour ne plus se confondre avec l'ambre d'accent de l'application (`#F2A93B` : badge "PROCHAIN", surbrillance, bandeau de phase). Un rendez-vous passé, lui, perd bien sa couleur au profit d'un gris neutre.
 
 - Les libellés de la ligne (indication "récurrent" le cas échéant, badge "PROCHAIN" le cas échéant, puis catégorie du rendez-vous) sont regroupés en bout de ligne dans cet ordre, au même endroit et selon la même logique de repli sur mobile que les badges de statut et de langue du Répertoire (§ 13.2) — le titre du rendez-vous occupe désormais la première ligne de la carte.
 
@@ -671,6 +671,10 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Ajout du logo du groupe (§ 13) : il remplace le point ambre à gauche de "CALYXTER" dans la barre supérieure, et coiffe le nom du groupe sur l'écran de connexion (largeur `min(44vw, 180px)`, contenu centré verticalement). Fichier `public/logo.png` dérivé de l'illustration source "X négatif" (fond noir détouré par la luminance).
 
 - Correction du zoom d'iOS Safari (§ 13) : la police des champs de saisie passe à 16 px sur appareil tactile (le seuil sous lequel iOS zoome au focus et ne dézoome pas toujours) ; après connexion, on force en plus un retour en haut de page. Résout le fait d'arriver sur l'application zoomée et décalée après avoir saisi le mot de passe.
+
+- Type de rendez-vous "Résidence" (§ 8.3) : ambre éclairci de `#E8B04B` à `#F0CE8A` (blé doré) pour ne plus se confondre avec l'ambre d'accent `#F2A93B`.
+
+# 17. Références
 
 Application déployée : https://calyxter-set-manager-8xe2nnee2-ndalmont.vercel.app (URL de déploiement la plus récente testée — vérifier l'URL de production stable dans le tableau de bord Vercel).
 
