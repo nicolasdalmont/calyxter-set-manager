@@ -188,7 +188,7 @@ function withTimeout(promise, ms, fallback) {
 /*  Revenir en arrière = repasser cette constante à 'supabase'.        */
 /* ------------------------------------------------------------------ */
 
-const BACKEND = 'supabase'; // 'supabase' | 'neon'
+const BACKEND = 'neon'; // 'supabase' | 'neon'
 
 const SUPABASE_URL = 'https://hhtjuwmlllgglnxtnjtx.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_78oxJJanE3jzXYs8xbrMxg_sjgwBaB2';
