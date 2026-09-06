@@ -1,6 +1,6 @@
 # Migration Supabase → Neon — plan détaillé
 
-Statut : **Phase 0 faite → chemin B retenu** (branche `migration-neon`). Le test décisif (§ 4) a montré que la Data API Neon exige un JWT et n'offre pas d'accès ouvert simple → on n'utilise pas la Data API : une couche `/api/db` sur Vercel Functions parle à Neon en direct. Suite : Phase 1.
+Statut : **Phase 1 en cours** (branche `migration-neon`, `main`/prod intacts). Chemin B retenu (§ 4). Code fait : `api/db.js`, `api/member-auth.js`, `api/search-deezer.js`, `lib/neon.js`, `src/App.jsx` derrière `const BACKEND` (reste sur `'supabase'`), scripts de migration/rollback. Reste : projet Neon définitif + `DATABASE_URL` sur Vercel + test du chemin B (§ 5.1), puis Phases 2→6.
 
 Motivation : le plan gratuit Supabase plafonne à 2 projets actifs ; le plan gratuit Neon en autorise ~100. L'objectif est d'avoir un socle unique (Neon + Vercel) réutilisable pour les autres projets à venir. Ce document ne concerne que `calyxter-set-manager`.
 
@@ -181,20 +181,37 @@ Objectif : lever les incertitudes **avant** de toucher à la prod. Sur un projet
 
 ## 5. Phase 1 — Préparation (sans impact prod)
 
-- [ ] Créer le projet Neon définitif (nom explicite, région proche : `eu-central` ou `eu-west`).
-- [ ] Récupérer les chaînes de connexion : **pooled** (pour les fonctions serverless) et **direct** (pour `pg_dump`/`pg_restore`).
-- [ ] Créer une branche Git `migration-neon` pour tout le travail de code.
-- [ ] Ajouter les dépendances : `@neondatabase/serverless` (chemin B), éventuellement `pg` pour les scripts de migration.
-- [ ] Introduire le **point de commutation unique** dans `src/App.jsx` (`BACKEND` / `VITE_BACKEND`, § 3.1) : le code Supabase actuel reste actif par défaut, le code Neon vit à côté.
-- [ ] Créer le dossier `api/` (Vercel Functions) :
-  - [ ] `api/search-deezer.*` (portage direct de `supabase/functions/search-deezer/index.ts`).
-  - [ ] `api/member-auth.*` (portage, hachage inchangé, connexion Neon via chaîne pooled).
-  - [ ] **[B]** `api/db.*` — endpoint générique `{ op, table, select?, where?, order?, limit?, rows? }` couvrant les 6 formes du § 2. Valider `table` contre une liste blanche (les 8 tables), interdire tout SQL arbitraire.
-- [ ] Écrire `db/rollback_neon_to_supabase.sh` (§ 3.4).
-- [ ] Variables d'environnement Vercel (Preview + Production) : `DATABASE_URL` (pooled Neon), et pour `member-auth` la même chaîne (il lui faut les droits d'écriture sur `members`). **[A]** ajouter `NEON_DATA_API_URL` + le token.
-- [ ] Adapter `src/App.jsx` (bloc connexion + fetchers + `callMemberAuth` + `searchDeezer`) derrière le point de commutation — **sur la branche, non déployé en prod**.
-- [ ] Adapter la **doc technique** (`Calyxter_Documentation_Technique.md`) : sections 2 (architecture), 2.2 (fonctions → Vercel), 4 (accès), 14 (déploiement), 18 (première installation).
-- [ ] Mettre à jour `supabase/` → renommer ou dupliquer en `db/` : garder `recreate_full_schema.sql` (adapté § 6.2) comme source de vérité du schéma, déplacer les fonctions sous `api/`.
+Branche `migration-neon`. Code Neon derrière `const BACKEND` dans `src/App.jsx` — reste sur `'supabase'` jusqu'à la Phase 5.
+
+**Fait :**
+
+- [x] Branche `migration-neon`, dépendance `@neondatabase/serverless`.
+- [x] `lib/neon.js` — client Neon partagé (DATABASE_URL côté serveur).
+- [x] `api/search-deezer.js` — portage (same-origin, sans CORS).
+- [x] `api/member-auth.js` — portage, hachage PBKDF2 inchangé, connexion Neon directe.
+- [x] `api/db.js` — endpoint générique `{ op, table, columns?, where?, order?, limit?, set?, rows? }` : select / insert / upsert (on conflict id) / update / delete. Liste blanche des 8 tables, identifiants validés, valeurs paramétrées, `password_hash` masqué et `password_hash`/`last_activity_at` non écrivables. Builders testés unitairement (25 cas).
+- [x] `src/App.jsx` — `BACKEND` + dispatchers `dbSelect`/`dbInsert`/`dbUpdateById`/`dbDelete`/`neonDb` ; 10 fetchers + tous les writes réécrits. `BACKEND='supabase'` = comportement identique bit à bit (vérifié : build + dev OK).
+- [x] `db/neon_schema.sql` — schéma adapté (section 10 « rôle anonymous » devenue inutile avec le chemin B, à retirer ou laisser en commentaire).
+- [x] `db/migrate_supabase_to_neon.sh` — dump Supabase → restore Neon + comparaison des volumes.
+- [x] `db/rollback_neon_to_supabase.sh` — retour Neon → Supabase (§ 3.4), avec garde-fou de confirmation.
+- [x] `.env.example` — `DATABASE_URL`.
+
+**Reste à faire (nécessite comptes / dashboards) :**
+
+- [ ] Projet Neon **définitif** (distinct du pilote), région `aws eu-central-1`. Chaînes **pooled** (runtime) et **directe** (`pg_dump`).
+- [ ] Y exécuter `db/neon_schema.sql` (sans la section 10).
+- [ ] Vercel : le repo est-il connecté ? Sinon connecter. Variable d'env **`DATABASE_URL`** (chaîne pooled Neon) pour les environnements **Preview** *et* **Production**.
+- [ ] Tester le chemin B (§ 5.1 ci-dessous).
+- [ ] Adapter la **doc technique** (`Calyxter_Documentation_Technique.md`) : sections 2, 2.2, 4, 14, 18 — à faire en Phase 6 une fois la bascule acquise.
+
+### 5.1 Tester le chemin B avant la prod
+
+Deux options :
+
+- **`vercel dev` en local** : `npx vercel link` (une fois), `.env.local` avec `DATABASE_URL` (pooled Neon), puis `npx vercel dev`. Sert le frontend **et** les fonctions `api/*` sur `http://localhost:3000`. Basculer `BACKEND` sur `'neon'` en local pour tester.
+- **Preview Vercel** : pousser la branche `migration-neon` (déploiement Preview automatique si le repo est connecté), avec `DATABASE_URL` défini pour l'environnement Preview. Basculer `BACKEND` sur `'neon'` dans un commit sur la branche.
+
+Prérequis dans les deux cas : le projet Neon doit contenir une **copie des données** (lancer `db/migrate_supabase_to_neon.sh` vers le projet Neon de test).
 
 ---
 
