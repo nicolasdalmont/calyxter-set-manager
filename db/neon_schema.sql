@@ -173,59 +173,8 @@ create table comments (
 create index comments_event_id_idx on comments(event_id);
 create index comments_concert_id_idx on comments(concert_id);
 
--- 10. Accès Data API — rôle « anonymous »
---
--- L'app n'émet aucun JWT : toute requête de la Data API tombe sur le rôle
--- « anonymous ». On lui donne un accès complet aux 8 tables — c'est le
--- pendant Neon de l'ancienne clé publishable + RLS ouverte de Supabase.
---
--- Si le rôle « anonymous » n'existe pas encore : il est créé en activant
--- la Data API sur le projet (dashboard Neon → Data API). Rejouer ce bloc
--- après activation le cas échéant.
-
--- RLS activée + policy permissive (comme Supabase). Si la Data API de Neon
--- refuse l'accès sans policy, ces lignes sont nécessaires ; si elle
--- s'appuie uniquement sur les GRANT, elles sont neutres.
-alter table members       enable row level security;
-alter table songs         enable row level security;
-alter table phases        enable row level security;
-alter table notifications enable row level security;
-alter table concerts      enable row level security;
-alter table events        enable row level security;
-alter table ideas         enable row level security;
-alter table comments      enable row level security;
-
-drop policy if exists "app access" on members;
-drop policy if exists "app access" on songs;
-drop policy if exists "app access" on phases;
-drop policy if exists "app access" on notifications;
-drop policy if exists "app access" on concerts;
-drop policy if exists "app access" on events;
-drop policy if exists "app access" on ideas;
-drop policy if exists "app access" on comments;
-
-create policy "app access" on members       for all using (true) with check (true);
-create policy "app access" on songs         for all using (true) with check (true);
-create policy "app access" on phases        for all using (true) with check (true);
-create policy "app access" on notifications for all using (true) with check (true);
-create policy "app access" on concerts      for all using (true) with check (true);
-create policy "app access" on events        for all using (true) with check (true);
-create policy "app access" on ideas         for all using (true) with check (true);
-create policy "app access" on comments      for all using (true) with check (true);
-
--- Droits table complets pour « anonymous » sur les 8 tables.
-grant select, insert, update, delete on
-  members, songs, phases, notifications, concerts, events, ideas, comments
-  to anonymous;
-
--- « anonymous » ne peut jamais lire ni écrire le mot de passe, ni écrire
--- la dernière activité : seule api/member-auth (connexion directe
--- NEON_DATABASE_URL, propriétaire de la table) le peut.
-revoke select (password_hash), insert (password_hash), update (password_hash)
-  on members from anonymous;
-revoke insert (last_activity_at), update (last_activity_at)
-  on members from anonymous;
-
--- Objets créés ensuite (peu probable ici, mais par sécurité) :
-alter default privileges in schema public
-  grant select, insert, update, delete on tables to anonymous;
+-- (Chemin B retenu — voir docs/Migration_Neon.md § 4 : la couche /api/db
+-- sur Vercel Functions parle a Neon en direct, sans Data API. Aucun role
+-- "anonymous", aucune policy RLS a poser ici : la protection de
+-- password_hash / last_activity_at est assuree cote code, /api/db ne les
+-- renvoyant jamais et n'acceptant pas de les ecrire.)
