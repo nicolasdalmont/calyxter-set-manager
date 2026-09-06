@@ -1160,12 +1160,7 @@ function GlobalStyle() {
         width: 100%;
         min-width: 0;
       }
-      /* type=date / type=time gardent une largeur intrinsèque large (surtout
-         sur iOS) : on neutralise la largeur mini du champ et de la valeur
-         interne pour qu'ils suivent la largeur de leur conteneur. On NE touche
-         PAS à -webkit-appearance : sur iOS Safari cela écrase la hauteur
-         native du champ, qui s'affiche alors écrasé tant qu'on ne l'a pas
-         sélectionné. */
+      /* type=date / type=time : la valeur interne suit la largeur du conteneur. */
       .clx-input[type="date"], .clx-input[type="time"] { min-width: 0; }
       .clx-input[type="date"]::-webkit-date-and-time-value,
       .clx-input[type="time"]::-webkit-date-and-time-value {
@@ -1186,6 +1181,18 @@ function GlobalStyle() {
          force 16px sur les appareils tactiles, en gardant 14px ailleurs. */
       @media (hover: none) and (pointer: coarse) {
         .clx-input { font-size: 16px; }
+        /* iOS Safari donne aux input date/time une largeur intrinsèque fixe
+           (ils débordent du conteneur) tant qu'on ne retire pas l'apparence
+           native ; mais -webkit-appearance: none leur retire alors leur
+           hauteur -> on la rétablit explicitement, valeur alignée sur celle
+           d'un champ texte tactile (16px, padding 9px, bordure 1px). Ciblé
+           tactile uniquement : sur ordinateur on garde le sélecteur natif. */
+        .clx-input[type="date"], .clx-input[type="time"] {
+          -webkit-appearance: none;
+          appearance: none;
+          height: 40px;
+          line-height: 20px;
+        }
       }
 
       .clx-chip {
