@@ -1162,16 +1162,17 @@ function GlobalStyle() {
         width: 100%;
         min-width: 0;
       }
-      /* type=date / type=time : la valeur interne suit la largeur du conteneur. */
-      .clx-input[type="date"], .clx-input[type="time"] { min-width: 0; }
-      .clx-input[type="date"]::-webkit-date-and-time-value,
-      .clx-input[type="time"]::-webkit-date-and-time-value {
+      /* type=date / type=time : on garde l'APPARENCE NATIVE (sur iOS,
+         -webkit-appearance: none rend la valeur invisible), on l'aligne à
+         gauche et on force sa couleur — sinon iOS la rend en sombre sur
+         sombre. Le champ garde sa largeur intrinsèque iOS (plus large qu'un
+         champ texte) ; la rangée passe en pleine largeur sous 560 px pour
+         qu'il ne déborde pas (voir .clx-field-row). */
+      .clx-input[type="date"], .clx-input[type="time"] {
         min-width: 0;
-        text-align: left;
+        color: #F5F1E8;
+        -webkit-text-fill-color: #F5F1E8;
       }
-      /* Sur fond sombre, iOS/WebKit rendent la valeur (et les sous-champs de
-         l'éditeur) dans une couleur système sombre -> le champ paraît vide.
-         On force la couleur du texte de tous les fragments internes. */
       .clx-input::-webkit-date-and-time-value,
       .clx-input::-webkit-datetime-edit,
       .clx-input::-webkit-datetime-edit-text,
@@ -1185,6 +1186,11 @@ function GlobalStyle() {
         color: #F5F1E8;
         -webkit-text-fill-color: #F5F1E8;
         opacity: 1;
+      }
+      .clx-input[type="date"]::-webkit-date-and-time-value,
+      .clx-input[type="time"]::-webkit-date-and-time-value {
+        min-width: 0;
+        text-align: left;
       }
       .clx-input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .55; }
       /* Rangée de champs côte à côte : passe en colonne pleine largeur sous
@@ -1201,30 +1207,6 @@ function GlobalStyle() {
          force 16px sur les appareils tactiles, en gardant 14px ailleurs. */
       @media (hover: none) and (pointer: coarse) {
         .clx-input { font-size: 16px; }
-        /* iOS Safari donne aux input date/time une largeur intrinsèque fixe
-           (débordement) tant qu'on ne retire pas l'apparence native. Mais
-           -webkit-appearance: none leur retire aussi leur hauteur ET fait
-           s'effondrer la zone de valeur (champ visuellement vide). On
-           rétablit donc explicitement la hauteur du champ ET celle de sa
-           valeur interne. Ciblé tactile : sur ordinateur, sélecteur natif. */
-        .clx-input[type="date"], .clx-input[type="time"] {
-          -webkit-appearance: none;
-          appearance: none;
-          height: 40px;
-          line-height: 20px;
-        }
-        .clx-input[type="date"]::-webkit-date-and-time-value,
-        .clx-input[type="time"]::-webkit-date-and-time-value {
-          display: inline-block;
-          min-height: 20px;
-          line-height: 20px;
-          padding: 0;
-        }
-        .clx-input[type="date"]::-webkit-datetime-edit,
-        .clx-input[type="time"]::-webkit-datetime-edit {
-          line-height: 20px;
-          padding: 0;
-        }
       }
 
       .clx-chip {
