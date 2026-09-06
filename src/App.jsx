@@ -93,6 +93,21 @@ function formatTotalDuration(totalSeconds) {
   return `${m} min`;
 }
 
+// Chaque note de transition d'un set de concert (§ set_items) est comptée
+// pour 3 min dans la durée théorique du set (temps de parole / d'enchaînement).
+const NOTE_SECONDS = 180;
+
+function countSetNotes(setItems) {
+  if (!Array.isArray(setItems)) return 0;
+  return setItems.filter((it) => it && it.type === 'note' && String(it.text ?? '').trim()).length;
+}
+
+// Durée théorique d'un set = somme des morceaux + 3 min par note de transition.
+function concertSetSeconds(setSongs, setItems) {
+  const songSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+  return songSeconds + countSetNotes(setItems) * NOTE_SECONDS;
+}
+
 function formatSongDuration(seconds) {
   if (!seconds && seconds !== 0) return '--:--';
   const m = Math.floor(seconds / 60);
@@ -3523,7 +3538,7 @@ function exportConcertToCalendar(concert, songs) {
   const setSongs = songs
     ? (concert.song_ids || []).map((id) => songs.find((s) => s.id === id)).filter(Boolean)
     : [];
-  const totalSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+  const totalSeconds = concertSetSeconds(setSongs, concert.set_items);
   const ics = buildCalendarICS({
     uid: concert.id,
     title: concert.name || 'Concert',
@@ -3773,7 +3788,7 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
 
 function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComments }) {
   const setSongs = (concert.song_ids || []).map((id) => songs.find((s) => s.id === id)).filter(Boolean);
-  const totalSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+  const totalSeconds = concertSetSeconds(setSongs, concert.set_items);
   const past = isPastConcert(concert);
   const time = formatConcertTime(concert.event_time);
   const durationLabel = formatScheduleDuration(scheduleDurationMinutes(concert.event_time, concert.end_time));
@@ -3897,8 +3912,8 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 
   const songItems = items.filter((it) => it.type === 'song');
   const selectedSongs = songItems.map((it) => songs.find((s) => s.id === it.song_id)).filter(Boolean);
-  const totalSeconds = selectedSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
   const noteCount = items.filter((it) => it.type === 'note' && it.text.trim()).length;
+  const totalSeconds = concertSetSeconds(selectedSongs, items);
 
   const handleCopy = async () => {
     const text = buildConcertShareText(
@@ -4121,7 +4136,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
         <div style={{ fontSize: 14 }}>
           <span style={{ fontWeight: 700 }}>{selectedSongs.length}</span> morceau{selectedSongs.length > 1 ? 'x' : ''} dans le set
           {noteCount > 0 && (
-            <span style={{ color: '#9A958C' }}> · {noteCount} note{noteCount > 1 ? 's' : ''} de transition</span>
+            <span style={{ color: '#9A958C' }}> · {noteCount} note{noteCount > 1 ? 's' : ''} de transition (+{noteCount * 3} min)</span>
           )}
         </div>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Durée du set : {formatTotalDuration(totalSeconds)}</div>
