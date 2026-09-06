@@ -1169,14 +1169,13 @@ function MemberPicker({ members, onAuthenticated, error }) {
   };
 
   // En-tête de marque, partagé par les deux écrans (choix du profil et
-  // mot de passe) : le logo du groupe occupe le haut de l'écran, large sur
-  // mobile (min(88vw, 360px)), au-dessus du nom du groupe.
+  // mot de passe) : le logo du groupe au-dessus du nom du groupe.
   const brandHeader = (
     <>
       <img
         src="/logo.png"
         alt="Calyxter"
-        style={{ width: 'min(88vw, 360px)', height: 'auto', display: 'block', marginBottom: 10 }}
+        style={{ width: 'min(44vw, 180px)', height: 'auto', display: 'block', marginBottom: 10 }}
       />
       <div className="clx-display" style={{ fontSize: 52, lineHeight: 1, marginBottom: 4 }}>CALYXTER</div>
       <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', marginBottom: 32 }}>SET MANAGER</div>
@@ -1185,7 +1184,7 @@ function MemberPicker({ members, onAuthenticated, error }) {
 
   if (mode === 'login' || mode === 'create') {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '32px 24px 48px', position: 'relative', zIndex: 1 }}>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative', zIndex: 1 }}>
         {brandHeader}
 
         <form onSubmit={mode === 'login' ? submitLogin : submitCreate} className="clx-card" style={{ padding: 24, width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1238,7 +1237,7 @@ function MemberPicker({ members, onAuthenticated, error }) {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start', padding: '32px 24px 48px', position: 'relative', zIndex: 1 }}>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative', zIndex: 1 }}>
       {brandHeader}
 
       <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginBottom: 14, textAlign: 'center', maxWidth: 380 }}>
