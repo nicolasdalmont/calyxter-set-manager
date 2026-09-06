@@ -1162,37 +1162,18 @@ function GlobalStyle() {
         width: 100%;
         min-width: 0;
       }
-      /* type=date / type=time : on garde l'APPARENCE NATIVE (sur iOS,
-         -webkit-appearance: none rend la valeur invisible), on l'aligne à
-         gauche et on force sa couleur — sinon iOS la rend en sombre sur
-         sombre. Le champ garde sa largeur intrinsèque iOS (plus large qu'un
-         champ texte) ; la rangée passe en pleine largeur sous 560 px pour
-         qu'il ne déborde pas (voir .clx-field-row). */
+      /* type=date / type=time : APPARENCE NATIVE conservée. Styliser
+         ::-webkit-date-and-time-value ou passer -webkit-appearance: none fait
+         que iOS ne peint la valeur qu'après avoir touché le champ. On se
+         limite donc à forcer la couleur du texte sur le champ lui-même
+         (sinon iOS rend la valeur en sombre sur notre fond sombre) et à
+         permettre au champ de rétrécir. La largeur intrinsèque iOS (plus
+         large qu'un champ texte) est absorbée par la mise en colonne pleine
+         largeur des rangées sous 560 px (voir .clx-field-row). */
       .clx-input[type="date"], .clx-input[type="time"] {
         min-width: 0;
-        color: #F5F1E8;
         -webkit-text-fill-color: #F5F1E8;
       }
-      .clx-input::-webkit-date-and-time-value,
-      .clx-input::-webkit-datetime-edit,
-      .clx-input::-webkit-datetime-edit-text,
-      .clx-input::-webkit-datetime-edit-year-field,
-      .clx-input::-webkit-datetime-edit-month-field,
-      .clx-input::-webkit-datetime-edit-day-field,
-      .clx-input::-webkit-datetime-edit-hour-field,
-      .clx-input::-webkit-datetime-edit-minute-field,
-      .clx-input::-webkit-datetime-edit-second-field,
-      .clx-input::-webkit-datetime-edit-meridiem-field {
-        color: #F5F1E8;
-        -webkit-text-fill-color: #F5F1E8;
-        opacity: 1;
-      }
-      .clx-input[type="date"]::-webkit-date-and-time-value,
-      .clx-input[type="time"]::-webkit-date-and-time-value {
-        min-width: 0;
-        text-align: left;
-      }
-      .clx-input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .55; }
       /* Rangée de champs côte à côte : passe en colonne pleine largeur sous
          560 px pour qu'aucun champ (date/heure en tête) ne déborde. */
       .clx-field-row { display: flex; gap: 10px; flex-wrap: wrap; }
