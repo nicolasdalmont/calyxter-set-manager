@@ -1161,13 +1161,27 @@ function GlobalStyle() {
         min-width: 0;
       }
       /* type=date / type=time gardent une largeur intrinsèque large (surtout
-         sur iOS) : on neutralise la largeur mini du champ et de la valeur
-         interne pour qu'ils suivent la largeur de leur conteneur flex. */
-      .clx-input[type="date"], .clx-input[type="time"] { min-width: 0; }
+         sur iOS) : on retire l'apparence native et on neutralise la largeur
+         mini du champ, de sa valeur et de son éditeur internes pour qu'ils
+         suivent la largeur de leur conteneur flex. */
+      .clx-input[type="date"], .clx-input[type="time"] {
+        -webkit-appearance: none;
+        appearance: none;
+        min-width: 0;
+      }
       .clx-input[type="date"]::-webkit-date-and-time-value,
       .clx-input[type="time"]::-webkit-date-and-time-value {
         min-width: 0;
+        margin: 0;
         text-align: left;
+      }
+      .clx-input::-webkit-datetime-edit { padding: 0; }
+      .clx-input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
+      /* Rangée de champs côte à côte : passe en colonne pleine largeur sous
+         560 px pour qu'aucun champ (date/heure en tête) ne déborde. */
+      .clx-field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+      @media (max-width: 560px) {
+        .clx-field-row > * { flex: 1 1 100% !important; }
       }
       .clx-input:focus { border-color: #F2A93B; box-shadow: 0 0 0 3px #F2A93B22; }
       .clx-input::placeholder { color: #6B6862; }
@@ -4293,7 +4307,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 
       <div className="clx-card" style={{ padding: 18, marginBottom: 20 }}>
         <div className="clx-tape" />
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div className="clx-field-row" style={{ marginBottom: 10 }}>
           <Field label="Nom du concert *" style={{ flex: '2 1 220px' }}>
             <input className="clx-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Festival des Docks" />
           </Field>
@@ -5047,7 +5061,7 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
           </Field>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div className="clx-field-row" style={{ marginBottom: 10 }}>
           <Field label="Date de début *" style={{ flex: '1 1 140px' }}>
             <input type="date" className="clx-input" value={eventDate} onChange={(e) => handleEventDateChange(e.target.value)} />
           </Field>
@@ -5067,7 +5081,7 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
         </label>
 
         {!allDay && (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div className="clx-field-row" style={{ marginBottom: 10 }}>
             <Field label="Heure de début" style={{ flex: '1 1 110px' }}>
               <input type="time" className="clx-input" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} />
             </Field>
