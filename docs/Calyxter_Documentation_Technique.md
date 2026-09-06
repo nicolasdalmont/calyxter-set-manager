@@ -488,6 +488,8 @@ Deezer est l'unique plateforme d'écoute intégrée à l'application, et le rest
 
 - Nouvel onglet "Accueil" (icône maison), en première position dans la barre de navigation et affiché par défaut à l'ouverture de l'application (§ 11).
 
+- Champs de saisie : police portée à 16 px sur les appareils tactiles (14 px ailleurs). En dessous de 16 px, iOS Safari zoome automatiquement la page au focus d'un champ et ne dézoome pas toujours ensuite — on arrivait alors sur l'application zoomée et décalée après avoir tapé le mot de passe. Après connexion (ou changement de compte), un retour explicite en haut de page est également déclenché.
+
 - Icônes d'onglets distinctes et évocatrices : "Concerts" (microphone) et "Rendez-vous" (calendrier) utilisent des pictogrammes différents pour éviter toute confusion, auparavant tous deux représentés par un calendrier.
 
 - Le bouton "Réinitialiser les données de démo", susceptible de provoquer des erreurs ou des pertes de données accidentelles, a été retiré de la barre supérieure.
@@ -668,7 +670,7 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - Ajout du logo du groupe (§ 13) : il remplace le point ambre à gauche de "CALYXTER" dans la barre supérieure, et coiffe le nom du groupe sur l'écran de connexion (largeur `min(44vw, 180px)`, contenu centré verticalement). Fichier `public/logo.png` dérivé de l'illustration source "X négatif" (fond noir détouré par la luminance).
 
-# 17. Références
+- Correction du zoom d'iOS Safari (§ 13) : la police des champs de saisie passe à 16 px sur appareil tactile (le seuil sous lequel iOS zoome au focus et ne dézoome pas toujours) ; après connexion, on force en plus un retour en haut de page. Résout le fait d'arriver sur l'application zoomée et décalée après avoir saisi le mot de passe.
 
 Application déployée : https://calyxter-set-manager-8xe2nnee2-ndalmont.vercel.app (URL de déploiement la plus récente testée — vérifier l'URL de production stable dans le tableau de bord Vercel).
 

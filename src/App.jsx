@@ -464,6 +464,10 @@ export default function App() {
   // passent par un changement de currentUserId.
   useEffect(() => {
     if (!currentUserId) return;
+    // Après connexion (ou changement de compte), on repart en haut de page :
+    // l'écran de connexion a pu être défilé, et ce décalage se conserverait
+    // sinon en arrivant sur l'application.
+    window.scrollTo(0, 0);
     const nowIso = new Date().toISOString();
     setMembers((prev) => prev.map((m) => (m.id === currentUserId ? { ...m, last_activity_at: nowIso } : m)));
     touchMemberActivity(currentUserId);
@@ -987,6 +991,13 @@ function GlobalStyle() {
       }
       .clx-input:focus { border-color: #F2A93B; box-shadow: 0 0 0 3px #F2A93B22; }
       .clx-input::placeholder { color: #6B6862; }
+      /* iOS Safari zoome la page au focus d'un champ dont la police fait
+         moins de 16px et ne dézoome pas toujours ensuite (on arrive alors
+         sur l'app zoomé et décalé après avoir tapé le mot de passe). On
+         force 16px sur les appareils tactiles, en gardant 14px ailleurs. */
+      @media (hover: none) and (pointer: coarse) {
+        .clx-input { font-size: 16px; }
+      }
 
       .clx-chip {
         font-family: 'Space Mono', monospace;
