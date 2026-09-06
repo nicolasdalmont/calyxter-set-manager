@@ -445,10 +445,10 @@ Un bouton "Copier le concert" génère et copie un texte prêt à coller dans un
 
 ## 7.4 Export imprimable du set
 
-Un bouton "Imprimer le set" (dès que le nom est renseigné) ouvre, dans un nouvel onglet, un document HTML autonome pensé pour tenir **sur une seule page A4** : en-tête (nom du concert, horaire et lieu, date en toutes lettres) puis le set complet — morceaux numérotés avec artiste et durée, **notes de transition** intercalées à leur place (en italique, préfixées `→`, sans numéro) — et un pied de page récapitulatif (nombre de morceaux, nombre de transitions, durée estimée). Fond blanc, mise en page sobre (économe en encre).
+Un bouton "Imprimer le set" (dès que le nom est renseigné) ouvre, dans un nouvel onglet, un document HTML autonome — une **feuille de set pensée pour être lue depuis le sol pendant le concert** : gros titres de morceaux en gras, numéros marqués, forte lisibilité. En-tête (nom du concert, horaire et lieu, date en toutes lettres) puis le set complet — morceaux numérotés (artiste en petit à côté, à titre indicatif), **notes de transition** intercalées à leur place sous forme de bandeaux gris préfixés `→`, sans numéro — et un pied de page récapitulatif (nombre de morceaux, nombre de transitions, durée estimée). Fond blanc.
 
 - Le document déclenche l'impression automatiquement ; il porte aussi un bouton "Imprimer / Enregistrer en PDF" (masqué à l'impression). Depuis la boîte d'impression du système, on peut imprimer ou choisir "Enregistrer en PDF".
-- Si le set est long, la taille de police de la liste est réduite automatiquement (jusqu'à 9 px) pour rester sur une page.
+- Cible une page A4 : la police de la liste part de 26 px et se réduit automatiquement **jusqu'à 16 px** (plancher encore lisible de loin) pour tenir sur une page. Au-delà (set très long), le contenu déborde sur une seconde page plutôt que de devenir illisible, sans couper une ligne en deux.
 - Aucun serveur ni bibliothèque tierce : le document est fabriqué côté navigateur (`buildConcertSetHTML`) et ouvert via `window.open`. Limite connue, comme pour le .ics : en application installée sur l'écran d'accueil d'un iPhone, l'ouverture de la fenêtre peut être bloquée — un message invite alors à autoriser les fenêtres surgissantes (ou ouvrir l'application depuis Safari).
 
 # 8. Fonctionnalités — Module Rendez-vous

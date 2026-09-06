@@ -3568,8 +3568,10 @@ function exportConcertToCalendar(concert, songs) {
 /*  EXPORT IMPRIMABLE — "Imprimer le set"                              */
 /* ------------------------------------------------------------------ */
 
-// Document HTML autonome, pensé pour tenir sur une page A4 (fond blanc,
-// encre économe) : nom du concert, date, set complet transitions comprises.
+// Feuille de set imprimable, pensée pour être LUE DEPUIS LE SOL pendant le
+// concert : gros titres, forte lisibilité. Vise une page A4 (la police de la
+// liste se réduit si besoin, avec un plancher lisible ; au-delà, le set
+// déborde sur une 2e page plutôt que de devenir illisible).
 // `meta` = { name, event_date, event_time, end_time, venue }.
 function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -3593,8 +3595,8 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
     const s = it && songs.find((x) => x.id === it.song_id);
     if (!s) return '';
     songNo += 1;
-    return `<li class="song"><span class="n">${songNo}</span><span class="ti">${esc(s.title)}</span>`
-      + `<span class="ar">${esc(s.artist)}</span><span class="du">${esc(formatSongDuration(s.duration_seconds))}</span></li>`;
+    return `<li class="song"><span class="n">${songNo}</span><span class="ti">${esc(s.title)}`
+      + `<span class="ar">${esc(s.artist)}</span></span></li>`;
   }).filter(Boolean).join('');
 
   const songCount = songNo;
@@ -3609,29 +3611,34 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
 <title>${esc(meta.name || 'Concert')} — set</title>
 <style>
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #f2f2ef; color: #111; }
+  html, body { margin: 0; padding: 0; background: #f2f2ef; color: #000; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  .sheet { background: #fff; max-width: 190mm; margin: 12px auto; padding: 15mm 18mm; box-shadow: 0 1px 6px rgba(0,0,0,.15); }
-  .brand { font-size: 10px; letter-spacing: .34em; color: #9a9a9a; margin-bottom: 6px; }
-  h1 { font-size: 25px; line-height: 1.15; margin: 0 0 3px; }
-  .sub { font-size: 12px; color: #555; margin-bottom: 4px; }
-  .date { font-size: 13px; color: #333; margin-bottom: 14px; }
-  ol.set { list-style: none; margin: 0; padding: 0; border-top: 1.5px solid #222; font-size: 13px; }
-  ol.set li { display: flex; align-items: baseline; gap: 9px; padding: 4px 0; border-bottom: 1px solid #e6e6e6; }
-  li.song .n { flex: none; width: 20px; text-align: right; color: #999; font-variant-numeric: tabular-nums; }
-  li.song .ti { font-weight: 600; }
-  li.song .ar { color: #888; font-size: .82em; white-space: nowrap; }
-  li.song .du { margin-left: auto; flex: none; color: #999; font-variant-numeric: tabular-nums; font-size: .82em; }
-  li.note { padding-left: 29px; font-style: italic; color: #555; border-bottom: 1px dashed #dcdcdc; }
-  li.note::before { content: "\\2192\\00a0"; color: #aaa; font-style: normal; }
-  .foot { margin-top: 12px; font-size: 11px; color: #666; }
-  .bar { max-width: 190mm; margin: 0 auto 24px; padding: 0 18mm; }
-  .bar button { font: inherit; font-size: 13px; padding: 8px 16px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; }
+  .sheet { background: #fff; max-width: 190mm; margin: 12px auto; padding: 13mm 15mm; box-shadow: 0 1px 6px rgba(0,0,0,.15); }
+  .brand { font-size: 10px; letter-spacing: .34em; color: #9a9a9a; margin-bottom: 4px; }
+  h1 { font-size: 27px; line-height: 1.1; margin: 0 0 3px; }
+  .sub { font-size: 12px; color: #555; }
+  .date { font-size: 12px; color: #555; margin-bottom: 10px; }
+  ol.set { list-style: none; margin: 0; padding: 0; border-top: 3px solid #000; font-size: 26px; }
+  ol.set li { display: flex; align-items: baseline; gap: .4em; padding: .26em 0; border-bottom: 1px solid #d6d6d6; }
+  li.song .n { flex: none; min-width: 1.35em; text-align: right; font-weight: 700; color: #b3b3b3; font-variant-numeric: tabular-nums; }
+  li.song .ti { font-weight: 700; letter-spacing: -.01em; }
+  li.song .ar { color: #9a9a9a; font-size: .5em; font-weight: 400; margin-left: .7em; white-space: nowrap; }
+  li.note {
+    margin: .12em 0; padding: .3em .6em; gap: .4em;
+    font-size: .66em; font-weight: 600; color: #000;
+    background: #e9e9e9; border-top: 1px solid #000; border-bottom: 1px solid #000;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  li.note::before { content: "\\2192"; flex: none; color: #777; font-weight: 700; }
+  .foot { margin-top: 10px; font-size: 11px; color: #666; }
+  .bar { max-width: 190mm; margin: 0 auto 24px; padding: 0 15mm; }
+  .bar button { font: inherit; font-size: 13px; padding: 9px 18px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; }
   @media print {
     html, body { background: #fff; }
     .sheet { box-shadow: none; margin: 0; max-width: none; padding: 0; }
     .bar { display: none; }
-    @page { size: A4; margin: 14mm; }
+    ol.set li, li.note { break-inside: avoid; }
+    @page { size: A4; margin: 12mm; }
   }
 </style></head>
 <body>
@@ -3649,7 +3656,9 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
     try {
       var sheet = document.getElementById('sheet');
       var ol = document.querySelector('ol.set');
-      for (var fs = 13; fs >= 9 && sheet.scrollHeight > 1000; fs--) { ol.style.fontSize = fs + 'px'; }
+      // Réduit la police du set pour viser une page, sans descendre sous une
+      // taille encore lisible depuis le sol (16 px).
+      for (var fs = 26; fs >= 16 && sheet.scrollHeight > 1010; fs--) { ol.style.fontSize = fs + 'px'; }
     } catch (e) {}
     setTimeout(function () { try { window.print(); } catch (e) {} }, 250);
   };
