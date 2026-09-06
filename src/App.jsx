@@ -4,7 +4,7 @@ import {
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
-  Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus
+  Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -106,6 +106,14 @@ function countSetNotes(setItems) {
 function concertSetSeconds(setSongs, setItems) {
   const songSeconds = setSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
   return songSeconds + countSetNotes(setItems) * NOTE_SECONDS;
+}
+
+// Liste ordonnée du set (morceaux + notes). Pour les concerts créés avant
+// l'introduction de set_items, on la reconstruit depuis song_ids.
+function concertSetItems(concert) {
+  const raw = Array.isArray(concert?.set_items) ? concert.set_items : [];
+  if (raw.length > 0) return raw;
+  return (concert?.song_ids || []).map((id) => ({ type: 'song', song_id: id }));
 }
 
 function formatSongDuration(seconds) {
@@ -3556,6 +3564,110 @@ function exportConcertToCalendar(concert, songs) {
   downloadICS(`concert-${slugForFilename(concert.name || concert.event_date)}.ics`, ics);
 }
 
+/* ------------------------------------------------------------------ */
+/*  EXPORT IMPRIMABLE — "Imprimer le set"                              */
+/* ------------------------------------------------------------------ */
+
+// Document HTML autonome, pensé pour tenir sur une page A4 (fond blanc,
+// encre économe) : nom du concert, date, set complet transitions comprises.
+// `meta` = { name, event_date, event_time, end_time, venue }.
+function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+  const rawDate = formatConcertDate(meta.event_date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const dateLabel = rawDate ? rawDate.charAt(0).toUpperCase() + rawDate.slice(1) : '';
+  const time = formatConcertTime(meta.event_time);
+  const durationLabel = formatScheduleDuration(scheduleDurationMinutes(meta.event_time, meta.end_time));
+  const sub = [
+    time && `${esc(time)}${durationLabel ? ` – ${esc(durationLabel)}` : ''}`,
+    meta.venue && esc(meta.venue),
+  ].filter(Boolean).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
+
+  let songNo = 0;
+  const lines = (setItems || []).map((it) => {
+    if (it && it.type === 'note') {
+      const t = (it.text || '').trim();
+      return t ? `<li class="note">${esc(t)}</li>` : '';
+    }
+    const s = it && songs.find((x) => x.id === it.song_id);
+    if (!s) return '';
+    songNo += 1;
+    return `<li class="song"><span class="n">${songNo}</span><span class="ti">${esc(s.title)}</span>`
+      + `<span class="ar">${esc(s.artist)}</span><span class="du">${esc(formatSongDuration(s.duration_seconds))}</span></li>`;
+  }).filter(Boolean).join('');
+
+  const songCount = songNo;
+  const noteN = countSetNotes(setItems);
+  const foot = `${songCount} morceau${songCount > 1 ? 'x' : ''}`
+    + (noteN ? ` · ${noteN} transition${noteN > 1 ? 's' : ''}` : '')
+    + ` · durée estimée ${esc(formatTotalDuration(totalSeconds))}`;
+
+  return `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(meta.name || 'Concert')} — set</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #f2f2ef; color: #111; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .sheet { background: #fff; max-width: 190mm; margin: 12px auto; padding: 15mm 18mm; box-shadow: 0 1px 6px rgba(0,0,0,.15); }
+  .brand { font-size: 10px; letter-spacing: .34em; color: #9a9a9a; margin-bottom: 6px; }
+  h1 { font-size: 25px; line-height: 1.15; margin: 0 0 3px; }
+  .sub { font-size: 12px; color: #555; margin-bottom: 4px; }
+  .date { font-size: 13px; color: #333; margin-bottom: 14px; }
+  ol.set { list-style: none; margin: 0; padding: 0; border-top: 1.5px solid #222; font-size: 13px; }
+  ol.set li { display: flex; align-items: baseline; gap: 9px; padding: 4px 0; border-bottom: 1px solid #e6e6e6; }
+  li.song .n { flex: none; width: 20px; text-align: right; color: #999; font-variant-numeric: tabular-nums; }
+  li.song .ti { font-weight: 600; }
+  li.song .ar { color: #888; font-size: .82em; white-space: nowrap; }
+  li.song .du { margin-left: auto; flex: none; color: #999; font-variant-numeric: tabular-nums; font-size: .82em; }
+  li.note { padding-left: 29px; font-style: italic; color: #555; border-bottom: 1px dashed #dcdcdc; }
+  li.note::before { content: "\\2192\\00a0"; color: #aaa; font-style: normal; }
+  .foot { margin-top: 12px; font-size: 11px; color: #666; }
+  .bar { max-width: 190mm; margin: 0 auto 24px; padding: 0 18mm; }
+  .bar button { font: inherit; font-size: 13px; padding: 8px 16px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; }
+  @media print {
+    html, body { background: #fff; }
+    .sheet { box-shadow: none; margin: 0; max-width: none; padding: 0; }
+    .bar { display: none; }
+    @page { size: A4; margin: 14mm; }
+  }
+</style></head>
+<body>
+<div class="sheet" id="sheet">
+  <div class="brand">CALYXTER</div>
+  <h1>${esc(meta.name || 'Concert')}</h1>
+  ${sub ? `<div class="sub">${sub}</div>` : ''}
+  <div class="date">${esc(dateLabel)}</div>
+  <ol class="set">${lines || '<li class="note">Set vide</li>'}</ol>
+  <div class="foot">${foot}</div>
+</div>
+<div class="bar"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
+<script>
+  window.onload = function () {
+    try {
+      var sheet = document.getElementById('sheet');
+      var ol = document.querySelector('ol.set');
+      for (var fs = 13; fs >= 9 && sheet.scrollHeight > 1000; fs--) { ol.style.fontSize = fs + 'px'; }
+    } catch (e) {}
+    setTimeout(function () { try { window.print(); } catch (e) {} }, 250);
+  };
+</script>
+</body></html>`;
+}
+
+function openPrintableConcertSet(meta, setItems, songs, totalSeconds) {
+  const w = window.open('', '_blank');
+  if (!w) {
+    window.alert("Pour imprimer le set, autorise l'ouverture des fenêtres (pop-up) pour cette application, puis réessaie.");
+    return;
+  }
+  w.document.open();
+  w.document.write(buildConcertSetHTML(meta, setItems, songs, totalSeconds));
+  w.document.close();
+}
+
 // Export .ics d'un rendez-vous enregistré (depuis une liste). Pour une
 // série récurrente, décrit toute la série (RRULE + EXDATE).
 function exportEventToCalendar(ev, members) {
@@ -4091,6 +4203,19 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
               title="Ouvrir ce concert dans l'application de calendrier de l'appareil"
             >
               <CalendarPlus size={14} /> Ajouter à mon agenda
+            </button>
+          )}
+          {name.trim() && (
+            <button
+              onClick={() => openPrintableConcertSet(
+                { name: name.trim(), event_date: eventDate, event_time: eventTime || null, end_time: endTimeFrom(eventTime, durationMin), venue: venue.trim() },
+                items, songs, totalSeconds,
+              )}
+              className="clx-btn clx-btn-ghost"
+              style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+              title="Ouvrir une version imprimable du set sur une page (transitions comprises)"
+            >
+              <Printer size={14} /> Imprimer le set
             </button>
           )}
           {isEdit && (

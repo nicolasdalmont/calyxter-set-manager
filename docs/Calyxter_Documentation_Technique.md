@@ -8,7 +8,7 @@ Version 1.9 — 6 septembre 2026
 
 Statut : application déployée, en phase de test avec les 6 membres du groupe.
 
-Depuis la v1.8 : **notes de transition** dans les sets de concert (§ 7.2) — repères libres insérés entre les morceaux (lancements, enchaînements, remerciements), stockés dans la nouvelle colonne `concerts.set_items` (§ 3.5). Correction d'un bug de la couche `/api/db` : les écritures portant un tableau JSON (set d'un concert, participants d'un rendez-vous, vetos/votes d'une phase) échouaient en base (§ 16.9).
+Depuis la v1.8 : **notes de transition** dans les sets de concert (§ 7.2) — repères libres insérés entre les morceaux (lancements, enchaînements, remerciements), comptés pour 3 min chacun dans la durée du set, stockés dans la nouvelle colonne `concerts.set_items` (§ 3.5) ; **export imprimable du set sur une page** (§ 7.4). Correction d'un bug de la couche `/api/db` : les écritures portant un tableau JSON (set d'un concert, participants d'un rendez-vous, vetos/votes d'une phase) échouaient en base (§ 16.9).
 
 Depuis la v1.7 : **migration du backend de Supabase vers Neon** (base PostgreSQL) avec une couche de fonctions serveur `/api/*` sur Vercel — le frontend ne se connecte plus jamais directement à la base, et plus aucun identifiant d'accès aux données n'est présent dans son code. Section § 2.5 décrivant cette migration et le filet de retour arrière. Le projet Supabase est conservé intact quelques semaines comme filet de sécurité avant nettoyage.
 
@@ -443,6 +443,14 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 Un bouton "Copier le concert" génère et copie un texte prêt à coller dans une conversation (nom du concert, date, heure de début suivie de la durée entre parenthèses, lieu ; le set complet, un morceau par ligne avec sa durée, les **notes de transition** intercalées à leur place sur une ligne préfixée `→` et sans numéro ; puis la durée théorique totale du set). Une confirmation visuelle ("Copié !") s'affiche brièvement après la copie ; un message d'erreur explicite apparaît si le navigateur bloque l'accès au presse-papier.
 
+## 7.4 Export imprimable du set
+
+Un bouton "Imprimer le set" (dès que le nom est renseigné) ouvre, dans un nouvel onglet, un document HTML autonome pensé pour tenir **sur une seule page A4** : en-tête (nom du concert, horaire et lieu, date en toutes lettres) puis le set complet — morceaux numérotés avec artiste et durée, **notes de transition** intercalées à leur place (en italique, préfixées `→`, sans numéro) — et un pied de page récapitulatif (nombre de morceaux, nombre de transitions, durée estimée). Fond blanc, mise en page sobre (économe en encre).
+
+- Le document déclenche l'impression automatiquement ; il porte aussi un bouton "Imprimer / Enregistrer en PDF" (masqué à l'impression). Depuis la boîte d'impression du système, on peut imprimer ou choisir "Enregistrer en PDF".
+- Si le set est long, la taille de police de la liste est réduite automatiquement (jusqu'à 9 px) pour rester sur une page.
+- Aucun serveur ni bibliothèque tierce : le document est fabriqué côté navigateur (`buildConcertSetHTML`) et ouvert via `window.open`. Limite connue, comme pour le .ics : en application installée sur l'écran d'accueil d'un iPhone, l'ouverture de la fenêtre peut être bloquée — un message invite alors à autoriser les fenêtres surgissantes (ou ouvrir l'application depuis Safari).
+
 # 8. Fonctionnalités — Module Rendez-vous
 
 Agenda partagé du groupe, distinct des concerts mais les intégrant automatiquement en lecture seule.
@@ -824,6 +832,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 ## 16.9 Depuis la v1.8 (→ v1.9)
 
 - **Notes de transition dans les sets de concert** (§ 7.2, § 3.5) : chaque ligne de morceau porte un bouton qui insère une note libre **avant** ce morceau (lancement, enchaînement, intro, remerciements…). Les notes s'affichent sur leur propre ligne (italique, pointillés, sans numéro), se réordonnent et se suppriment comme les morceaux. Elles **ne comptent pas dans le nombre de morceaux**, mais **chacune ajoute 3 min à la durée théorique du set** (constante `NOTE_SECONDS`, appliquée partout où cette durée est affichée : éditeur, carte de la liste, résumé du .ics, texte copié). Elles apparaissent dans le texte « Copier le concert » (§ 7.3), préfixées `→`. Nouvelle colonne `concerts.set_items` (`alter table concerts add column if not exists set_items jsonb not null default '[]'::jsonb;`) ; `song_ids` reste le reflet des seuls morceaux, donc tous les écrans qui en dépendent (liste, Accueil, agenda .ics) sont inchangés. Les concerts créés avant la fonctionnalité ont `set_items = []` : l'éditeur reconstruit alors la liste depuis `song_ids` au premier chargement.
+
+- **Export imprimable du set** (§ 7.4) : bouton "Imprimer le set" dans l'éditeur de concert → document HTML autonome sur une page A4 (nom, date, set complet transitions comprises), impression ou "Enregistrer en PDF". Fabriqué côté navigateur, sans bibliothèque tierce.
 
 - **Correction — écritures `jsonb` via `api/db`** : le pilote `@neondatabase/serverless` encode un tableau JS comme un littéral tableau Postgres (`{a,b}`), rejeté par les colonnes `jsonb`. Toute écriture d'une ligne portant un tableau JSON échouait donc depuis la bascule Neon : enregistrer le set d'un concert (`song_ids`), les participants ou dates exclues d'un rendez-vous (`participant_ids`, `excluded_dates`), poser un veto ou voter (`phases.vetoes`, `votes`, `tie_break_votes`). Passé inaperçu à la recette (seuls des chemins sans tableau avaient été testés). `api/db.js` sérialise désormais tout objet/tableau en texte JSON avant paramétrage (`normValue`, même règle que `db/migrate.mjs`). Ajout d'un fichier de tests `api/db.test.mjs` (lancé par `npm test`, `node --test`) couvrant les constructeurs SQL et `normValue`.
 
