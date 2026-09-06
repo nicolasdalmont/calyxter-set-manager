@@ -1241,7 +1241,7 @@ function MemberPicker({ members, onAuthenticated, error }) {
         {brandHeader}
 
         <form onSubmit={mode === 'login' ? submitLogin : submitCreate} className="clx-card" style={{ padding: 24, width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div className="clx-tape" />
+          <div className="clx-tape" style={{ background: `${avatarColorFor(selected.name)}D9` }} />
           <div className="clx-display" style={{ fontSize: 24 }}>{selected.name}</div>
           <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginTop: -8, marginBottom: 4 }}>{selected.instrument}</div>
 
@@ -1313,7 +1313,7 @@ function MemberPicker({ members, onAuthenticated, error }) {
             className="clx-card clx-btn"
             style={{ padding: '18px 14px', textAlign: 'left', color: '#F5F1E8' }}
           >
-            <div className="clx-tape" />
+            <div className="clx-tape" style={{ background: `${avatarColorFor(m.name)}D9` }} />
             <div className="clx-display" style={{ fontSize: 24 }}>{m.name}</div>
             <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginTop: 2 }}>{m.instrument}</div>
           </button>

@@ -490,6 +490,8 @@ Deezer est l'unique plateforme d'écoute intégrée à l'application, et le rest
 
 - Logo du groupe : dans la barre supérieure, il remplace le point ambre à gauche du nom "CALYXTER", à la hauteur des caractères du titre. Sur l'écran de connexion (choix du profil puis saisie du mot de passe), il est placé au-dessus du nom du groupe (largeur `min(44vw, 180px)`), le contenu restant centré verticalement. Le fichier `public/logo.png` est dérivé de l'illustration source du groupe (motif en "X" au pinceau, "X négatif") : fond noir détouré par la luminance (le motif devient un aplat blanc cassé `#F5F1E8` à opacité variable), pour un rendu propre sur n'importe quel fond sombre sans recourir à un mode de fusion.
 
+- Écran de connexion : la vignette "scotch" en haut de chaque carte (grille des profils et écran du mot de passe) reprend la couleur d'avatar du membre concerné (§ 11.5) au lieu de l'ambre générique.
+
 - Barre d'onglets responsive : en dessous de 640 px de largeur d'écran, les onglets passent en icônes seules (texte conservé pour les lecteurs d'écran et en info-bulle) et occupent toute la largeur disponible ; un défilement horizontal reste disponible en filet de sécurité dans tous les cas, pour qu'aucun onglet ne soit jamais tronqué ou inaccessible sur smartphone.
 
 - Nouvel onglet "Accueil" (icône maison), en première position dans la barre de navigation et affiché par défaut à l'ouverture de l'application (§ 11).
@@ -681,6 +683,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Type de rendez-vous "Résidence" (§ 8.3) : ambre éclairci de `#E8B04B` à `#F0CE8A` (blé doré) pour ne plus se confondre avec l'ambre d'accent `#F2A93B`.
 
 - Durée des rendez-vous et des concerts (§ 3.5, § 3.6, § 7.2, § 8.1, § 8.2) : la saisie passe de "heure de début + heure de fin" à "heure de début + durée" (liste de valeurs, pré-remplie à 1 h) sur les rendez-vous d'un seul jour comme sur les concerts ; l'heure de fin est calculée puis stockée. Les rendez-vous multi-jours conservent une heure de fin quotidienne saisie à la main. Nouvelle colonne `concerts.end_time` (migration requise : `alter table public.concerts add column if not exists end_time time;`) ; `events.end_time` existait déjà. La durée est affichée dans les listes juste après l'horaire (§ 8.3), avec une icône de sablier, sur les écrans Concerts, Rendez-vous et Accueil.
+
+- Écran de connexion (§ 13) : les vignettes "scotch" en haut des cartes de profil et de l'écran mot de passe reprennent la couleur d'avatar de chaque membre au lieu de l'ambre.
 
 # 17. Références
 
