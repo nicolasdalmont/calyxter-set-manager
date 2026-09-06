@@ -1,6 +1,10 @@
 # Migration Supabase → Neon — plan détaillé
 
-Statut : **Phase 1 en cours** (branche `migration-neon`, `main`/prod intacts). Chemin B retenu (§ 4). Code fait : `api/db.js`, `api/member-auth.js`, `api/search-deezer.js`, `lib/neon.js`, `src/App.jsx` derrière `const BACKEND` (reste sur `'supabase'`), scripts de migration/rollback. Reste : projet Neon définitif + `DATABASE_URL` sur Vercel + test du chemin B (§ 5.1), puis Phases 2→6.
+Statut : **Bascule en production faite le 6 septembre 2026** (Phases 0→5). `main` tourne sur Neon (`const BACKEND = 'neon'`), branche `migration-neon` mergée en fast-forward, tag `pre-neon-migration` = dernier état Supabase. Recette Preview puis smoke test prod concluants (login, lecture, écriture, aucune requête vers `supabase.co`). Migration des données faite avec `db/migrate.mjs` (volumes + `password_hash` + JSON vérifiés). Doc technique passée en v1.8 (§ 2.5).
+
+**Reste — Phase 6 (nettoyage), à faire après ~2 semaines sans incident (≈ 20 septembre 2026)** : supprimer le dossier `supabase/`, les branches Supabase de `src/App.jsx` et le point de commutation `const BACKEND`, les scripts/fichiers de migration devenus inutiles, puis le projet Supabase lui-même ; retirer `pg` des dépendances ; finaliser la doc technique (retirer les rappels « ère Supabase »).
+
+Chemin B retenu (§ 4). Historique d'exécution ci-dessous conservé pour référence.
 
 Motivation : le plan gratuit Supabase plafonne à 2 projets actifs ; le plan gratuit Neon en autorise ~100. L'objectif est d'avoir un socle unique (Neon + Vercel) réutilisable pour les autres projets à venir. Ce document ne concerne que `calyxter-set-manager`.
 
