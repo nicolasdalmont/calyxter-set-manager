@@ -3631,12 +3631,26 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
   }
   li.note::before { content: "\\2192"; flex: none; color: #777; font-weight: 700; }
   .foot { margin-top: 10px; font-size: 11px; color: #666; }
-  .bar { max-width: 190mm; margin: 0 auto 24px; padding: 0 15mm; }
-  .bar button { font: inherit; font-size: 13px; padding: 9px 18px; border: 1px solid #bbb; border-radius: 6px; background: #fff; cursor: pointer; }
+  .bar {
+    position: sticky; bottom: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 12px 16px; background: #fff; border-top: 1px solid #ddd;
+  }
+  .bar button { font: inherit; font-size: 14px; padding: 10px 18px; border: 1px solid #bbb; border-radius: 7px; background: #fff; cursor: pointer; }
+  .bar button.save { background: #111; color: #fff; border-color: #111; font-weight: 600; }
+  .bar .hint { flex-basis: 100%; font-size: 11px; color: #888; }
+  /* Aperçu compact sur petit écran ; le PDF/l'impression reste en grand
+     format (règle @media print ci-dessous), l'aperçu écran n'y touche pas. */
+  @media screen and (max-width: 640px) {
+    .sheet { padding: 10mm 6mm; }
+    h1 { font-size: 22px; }
+    ol.set { font-size: 17px; }
+  }
   @media print {
     html, body { background: #fff; }
     .sheet { box-shadow: none; margin: 0; max-width: none; padding: 0; }
     .bar { display: none; }
+    ol.set { font-size: 26px; }
     ol.set li, li.note { break-inside: avoid; }
     @page { size: A4; margin: 12mm; }
   }
@@ -3650,18 +3664,36 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
   <ol class="set">${lines || '<li class="note">Set vide</li>'}</ol>
   <div class="foot">${foot}</div>
 </div>
-<div class="bar"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button></div>
+<div class="bar">
+  <button class="save" onclick="window.print()">Enregistrer en PDF / Imprimer</button>
+  <button class="back" onclick="window.close()">Retour au concert</button>
+  <span class="hint" id="hint" hidden>Dans la fenêtre suivante, choisis « Enregistrer en PDF » (ou « Enregistrer dans Fichiers »).</span>
+</div>
 <script>
-  window.onload = function () {
-    try {
-      var sheet = document.getElementById('sheet');
-      var ol = document.querySelector('ol.set');
-      // Réduit la police du set pour viser une page, sans descendre sous une
-      // taille encore lisible depuis le sol (16 px).
-      for (var fs = 26; fs >= 16 && sheet.scrollHeight > 1010; fs--) { ol.style.fontSize = fs + 'px'; }
-    } catch (e) {}
-    setTimeout(function () { try { window.print(); } catch (e) {} }, 250);
-  };
+  (function () {
+    var coarse = false;
+    try { coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches); } catch (e) {}
+    window.onload = function () {
+      if (coarse) {
+        // Mobile : ne rien déclencher, afficher l'aide, laisser choisir
+        // « Enregistrer en PDF ». La mise à l'échelle du set est gérée par les
+        // règles @media (aperçu compact, impression en grand format).
+        var h = document.getElementById('hint'); if (h) h.hidden = false;
+        return;
+      }
+      // Ordinateur : viser une page (police du set réduite jusqu'à 16 px, encore
+      // lisible de loin), puis ouvrir la boîte d'impression.
+      try {
+        var sheet = document.getElementById('sheet');
+        var ol = document.querySelector('ol.set');
+        for (var fs = 26; fs >= 16 && sheet.scrollHeight > 1010; fs--) { ol.style.fontSize = fs + 'px'; }
+      } catch (e) {}
+      setTimeout(function () { try { window.print(); } catch (e) {} }, 250);
+    };
+    // Après la boîte d'enregistrement/impression sur mobile (qu'on ait
+    // enregistré ou annulé), refermer l'onglet pour revenir au concert.
+    window.onafterprint = function () { if (coarse) { try { window.close(); } catch (e) {} } };
+  })();
 </script>
 </body></html>`;
 }
