@@ -4,9 +4,9 @@ SET MANAGER
 
 Documentation technique et fonctionnelle
 
-Version 1.7 — 6 septembre 2026
+Version 1.8 — 6 septembre 2026
 
-Statut : application déployée, en phase de test avec les 6 membres du groupe. Depuis la v1.6 : logo du groupe (barre supérieure et écran de connexion), saisie des horaires par « heure de début + durée » avec heure de fin calculée, ajout d'un rendez-vous ou d'un concert au calendrier de l'appareil via un fichier .ics, retouches du code couleur des types de rendez-vous, corrections de défilement et de compteurs, correction du zoom d'iOS à la saisie du mot de passe.
+Statut : application déployée, en phase de test avec les 6 membres du groupe. Depuis la v1.7 : **migration du backend de Supabase vers Neon** (base PostgreSQL) avec une couche de fonctions serveur `/api/*` sur Vercel — le frontend ne se connecte plus jamais directement à la base, et plus aucun identifiant d'accès aux données n'est présent dans son code. Nouvelle section § 2.5 décrivant cette migration et le filet de retour arrière. Le projet Supabase est conservé intact quelques semaines comme filet de sécurité avant nettoyage.
 
 # 1. Présentation du projet
 
@@ -33,21 +33,43 @@ L'application suit une architecture web moderne, entièrement hébergée sur des
 | Frontend | React 18 + Vite | Interface utilisateur (PWA), un seul composant principal (App.jsx) |
 | Hébergement frontend | Vercel | Build et diffusion publique de l'application (déploiement automatique depuis GitHub) |
 | Code source | GitHub | Dépôt versionné ; toute modification poussée sur la branche principale redéploie automatiquement l'app sur Vercel |
-| Base de données | Supabase (PostgreSQL) | Stockage des membres, morceaux, phases de choix, notifications, concerts, rendez-vous, idées et commentaires |
-| Fonctions serveur | Supabase Edge Functions (Deno) | Recherche Deezer, gestion sécurisée des mots de passe et tamponnage de la dernière activité des membres |
+| Base de données | Neon (PostgreSQL) | Stockage des membres, morceaux, phases de choix, notifications, concerts, rendez-vous, idées et commentaires |
+| Fonctions serveur | Vercel Functions (Node, dossier `api/`) | Accès à la base (`api/db`), gestion sécurisée des mots de passe et tamponnage de la dernière activité (`api/member-auth`), relais de recherche Deezer (`api/search-deezer`) |
 | API externe | Deezer (catalogue public) | Recherche de morceaux avec auto-complétion (titre, artiste, durée, pochette) |
+
+L'historique de cette architecture (backend Supabase jusqu'en septembre 2026, puis migration vers Neon) est décrit au § 2.5.
 
 ## 2.1 Flux général
 
-Le navigateur (frontend React) communique directement avec Supabase via deux canaux : l'API REST PostgREST (lecture/écriture des tables, authentifiée par une clé publique dite "publishable") et les Edge Functions (pour les opérations nécessitant un secret serveur : hachage des mots de passe, tamponnage de l'activité des membres, recherche Deezer relayée pour éviter les soucis de CORS).
+Le navigateur (frontend React) ne se connecte **jamais directement à la base de données**. Il appelle des fonctions serveur hébergées par Vercel dans le dossier `api/` du dépôt, toutes en `POST` (ou `GET` pour Deezer), au format JSON, sur la même origine que l'application (pas de CORS) :
 
-Aucune couche serveur propriétaire n'a été développée : toute la logique applicative réside dans le composant React et dans les deux fonctions serverless.
+- `api/db` — point d'accès générique aux tables (lecture et écriture), décrit au § 2.2.
+- `api/member-auth` — création et vérification des mots de passe, tamponnage de l'activité (§ 2.2, § 4).
+- `api/search-deezer` — relais vers le catalogue public Deezer (§ 2.2, § 12).
 
-## 2.2 Les deux Edge Functions
+Seules ces fonctions détiennent la chaîne de connexion à Neon (`DATABASE_URL`), fournie par une variable d'environnement Vercel et **jamais exposée au frontend**. Aucune autre couche serveur propriétaire n'a été développée : toute la logique applicative réside dans le composant React et dans ces trois fonctions serverless.
 
-Code versionné dans `supabase/functions/` (Deno). Ces fonctions sont appelées directement par le frontend, avec la clé publishable en en-têtes `apikey` et `Authorization: Bearer`. Elles répondent au préflight CORS (`OPTIONS`) et renvoient toujours du JSON.
+## 2.2 Les trois fonctions serveur (`api/`)
 
-### member-auth — `POST /functions/v1/member-auth`
+Code versionné dans `api/` à la racine du dépôt (Node, modules ES). Vercel les transforme automatiquement en fonctions serverless, servies sous `/api/<nom>` sur la même origine que l'application. Le helper partagé `lib/neon.js` ouvre la connexion à Neon via le pilote HTTP `@neondatabase/serverless` en lisant `DATABASE_URL`. Toutes renvoient du JSON.
+
+### api/db — `POST /api/db`
+
+Point d'accès générique aux 8 tables, appelé par toutes les lectures et écritures de l'application. Corps JSON `{ op, table, ... }` :
+
+| `op` | Paramètres | Effet |
+| --- | --- | --- |
+| `select` | `columns?`, `where?`, `order?`, `limit?` | Lecture ; renvoie les lignes |
+| `insert` | `rows: [...]` | Insertion |
+| `upsert` | `rows: [...]` | Insertion avec `ON CONFLICT (id) DO UPDATE` |
+| `update` | `set: {...}`, `where` | Mise à jour |
+| `delete` | `where` (**obligatoire**) | Suppression |
+
+- `table` doit appartenir à la liste blanche des 8 tables ; tout nom de colonne est validé contre `^[a-z_][a-z0-9_]*$` ; toutes les valeurs passent en paramètres SQL liés (`$1`, `$2`, …). Une clause `where` absente sur un `delete` est refusée.
+- **Protection de `members`** : `password_hash` n'est jamais renvoyé (retiré des lignes côté fonction) ; `password_hash` et `last_activity_at` ne sont pas modifiables par cet endpoint (rejet). Seule `api/member-auth` peut y toucher. Cela remplace le mécanisme de RLS + révocation de privilèges qui existait sous Supabase (§ 2.5, § 4.2).
+- Les constructeurs de requêtes SQL (`where`, `order`) sont couverts par des tests unitaires (rejet d'injection, paramétrage, protection des colonnes).
+
+### api/member-auth — `POST /api/member-auth`
 
 Corps JSON `{ action, member_id, password? }`. Trois actions :
 
@@ -58,24 +80,57 @@ Corps JSON `{ action, member_id, password? }`. Trois actions :
 | `touch` | Tamponne `members.last_activity_at = now()`, **sans mot de passe** | `{ ok: true }` (200) — réponse ignorée par le client (§ 4.1, § 11.6) |
 
 - `member` renvoyé = `{ id, name, instrument }` uniquement — jamais `password_hash`.
-- Hachage PBKDF2 : 100 000 itérations, sel aléatoire de 16 octets, SHA-256, stocké au format `saltHex:hashHex` (§ 4.1). **Modifier ce schéma invalide tous les mots de passe existants** — ne le faire qu'avec un plan de migration.
-- La fonction utilise la **clé service role** (variable d'environnement `SUPABASE_SERVICE_ROLE_KEY`, injectée automatiquement par Supabase) pour écrire dans `members.password_hash` et `members.last_activity_at`, colonnes dont l'écriture directe est révoquée pour la clé publishable (§ 4.2).
+- Hachage PBKDF2 (Web Crypto) : 100 000 itérations, sel aléatoire de 16 octets, SHA-256, stocké au format `saltHex:hashHex` (§ 4.1). **Modifier ce schéma invalide tous les mots de passe existants** — ne le faire qu'avec un plan de migration. Ce schéma est identique à celui de l'ancienne Edge Function Supabase, pour que les empreintes migrées restent vérifiables (§ 2.5).
+- La fonction se connecte à Neon avec le rôle propriétaire (via `DATABASE_URL`) : elle seule écrit dans `members.password_hash` et `members.last_activity_at`. `api/db` refuse toute écriture sur ces colonnes (§ 2.2).
 - `verify` et `set` tamponnent aussi `last_activity_at` au passage (redondant avec `touch`, sans effet de bord).
-- Piège historique corrigé : ne pas sélectionner la colonne `preferred_platform` (supprimée en v1.3) dans la requête `members` — PostgREST échoue sinon et la fonction répond « Membre introuvable » à tort pour tout le monde.
 
-### search-deezer — `GET /functions/v1/search-deezer?q=<recherche>`
+### api/search-deezer — `GET /api/search-deezer?q=<recherche>`
 
-Relais sans état vers l'API publique Deezer (`api.deezer.com/search`, aucune clé, aucun accès à la base de données), pour contourner les restrictions CORS d'un appel direct depuis le navigateur.
+Relais sans état vers l'API publique Deezer (`api.deezer.com/search`, aucune clé, aucun accès à la base de données). Historiquement destiné à contourner les restrictions CORS d'un appel direct depuis le navigateur ; sur la même origine que l'application depuis la migration (§ 2.5), il reste utile comme point d'accès stable et pour ne pas dépendre du format de réponse brut de Deezer.
 
 Réponse `{ results: [...] }` (10 max), chaque entrée au format `{ title, artist, album, duration_seconds, cover_url, deezer_url }` — exactement les champs attendus par le formulaire d'ajout de morceau (§ 5.3). Erreurs : `{ error }` avec code `400` (paramètre `q` absent), `502` (Deezer indisponible) ou `500` (exception).
 
-## 2.3 Fiabilisation des écritures Supabase
+## 2.3 Fiabilisation des écritures
 
-Deux anomalies identifiées en cours de développement ont été corrigées dans la fonction générique d'appel à l'API Supabase, commune à toutes les tables :
+Deux anomalies historiques, identifiées du temps du backend Supabase (§ 2.5), avaient été corrigées dans la fonction générique d'appel à l'API, commune à toutes les tables. Elles restent documentées ici car le comportement côté frontend (n'envoyer que les lignes réellement modifiées, tolérer une réponse vide) a été conservé lors de la migration :
 
-- Regroupement des écritures — l'enregistrement d'un morceau du répertoire envoyait initialement l'intégralité de la table à chaque sauvegarde en un seul appel groupé ; PostgREST exige que tous les objets d'un même envoi partagent exactement les mêmes colonnes, ce qui provoquait une erreur (PGRST102) dès qu'un morceau nouvellement créé (aux clés incomplètes côté client) cohabitait avec des morceaux déjà en base. Corrigé en ne transmettant plus que les lignes réellement ajoutées ou modifiées.
+- Regroupement des écritures — l'enregistrement d'un morceau du répertoire envoyait initialement l'intégralité de la table à chaque sauvegarde en un seul appel groupé ; PostgREST (API REST de Supabase) exigeait que tous les objets d'un même envoi partagent exactement les mêmes colonnes, ce qui provoquait une erreur (PGRST102) dès qu'un morceau nouvellement créé (aux clés incomplètes côté client) cohabitait avec des morceaux déjà en base. Corrigé en ne transmettant plus que les lignes réellement ajoutées ou modifiées — principe conservé avec `api/db`.
 
-- Réponses à corps vide — un enregistrement réussi côté serveur (code HTTP 201, utilisé par les écritures avec l'en-tête "Prefer: return=minimal") pouvait néanmoins déclencher une erreur de lecture de la réponse ("SyntaxError" côté Safari), la fonction ne sachant reconnaître une réponse vide que via le code 204. Corrigée pour accepter tout corps de réponse vide, quel que soit le code HTTP retourné.
+- Réponses à corps vide — un enregistrement réussi côté serveur (code HTTP 201, écritures avec l'en-tête « Prefer: return=minimal ») pouvait néanmoins déclencher une erreur de lecture de la réponse (« SyntaxError » côté Safari), la fonction ne sachant reconnaître une réponse vide que via le code 204. Corrigée pour accepter tout corps de réponse vide, quel que soit le code HTTP retourné.
+
+## 2.4 Piège historique members
+
+Ne jamais sélectionner la colonne `preferred_platform` (supprimée en v1.3) dans une requête sur `members` : elle n'existe plus dans le schéma. Sous Supabase, une telle requête faisait échouer PostgREST et `member-auth` répondait « Membre introuvable » à tort pour tous. `api/db` ne sélectionne que les colonnes explicitement demandées et échouerait de la même façon sur une colonne inexistante.
+
+## 2.5 Migration de Supabase vers Neon (septembre 2026)
+
+### Pourquoi
+
+Jusqu'à la v1.7, le backend était **Supabase** : base PostgreSQL exposée au frontend via l'API REST PostgREST (authentifiée par une clé « publishable » codée en dur dans `src/App.jsx`), protégée par des règles Row Level Security « accès ouvert », plus deux Edge Functions Deno (`member-auth`, `search-deezer`). Motivation du changement : le plafond de 2 projets gratuits chez Supabase, alors que Neon propose une offre gratuite beaucoup plus large et que le frontend est déjà hébergé sur Vercel — regrouper base et fonctions serveur au même endroit simplifie l'ensemble.
+
+### Architecture retenue (« chemin B »)
+
+Une première piste consistait à réutiliser la **Data API** de Neon (compatible PostgREST, quasi-substitut direct de l'appel `fetch` existant). Elle a été écartée : la Data API de Neon **exige un jeton JWT** validé contre un fournisseur d'identité (Neon Auth par défaut), sans mode anonyme simple équivalent à la clé publishable de Supabase — inadapté au modèle de l'application (6 profils partagés, sécurité par confidentialité du lien, § 4.3).
+
+Le choix final : **une couche de fonctions serveur maison** (`api/db`, `api/member-auth`, `api/search-deezer`) sur Vercel, qui se connectent à Neon en direct avec le rôle propriétaire. Conséquences :
+
+- Le frontend ne contient plus **aucun identifiant** d'accès aux données (avant : URL Supabase + clé publishable en dur). La chaîne `DATABASE_URL` vit uniquement dans les variables d'environnement Vercel.
+- Plus de RLS ni de politiques Postgres : la base n'est jamais jointe depuis l'extérieur. La protection de `members.password_hash` / `last_activity_at` est faite dans le code de `api/db` (§ 2.2, § 4.2).
+- `src/App.jsx` conserve un point de commutation `const BACKEND` (`'neon'` en production) : les branches d'appel à Supabase sont restées dans le code le temps de la période de sécurité, un simple retour de la constante à `'supabase'` rebranche l'ancien backend.
+
+### Migration des données
+
+Script `db/migrate.mjs` (Node + pilote `pg`), lancé une fois à la bascule : copie les 8 tables de Supabase vers Neon dans l'ordre des dépendances de clés étrangères, en préservant les identifiants, les empreintes de mots de passe et les colonnes JSON. La source (Supabase) n'est jamais modifiée. Un mode `--rollback` copie en sens inverse (Neon → Supabase). Schéma cible : `db/neon_schema.sql` (identique au schéma Supabase, sans la partie RLS/rôles).
+
+### Filet de sécurité
+
+- Étiquette Git `pre-neon-migration` = dernier état du code sur Supabase.
+- Retour arrière niveau 1 : **Instant Rollback** de Vercel (réactive le déploiement Supabase précédent en ~30 s).
+- Retour arrière niveau 2 : repasser `const BACKEND` à `'supabase'` dans `src/App.jsx` et redéployer.
+- Retour arrière niveau 3 : `node db/migrate.mjs --rollback` (si des données ont été écrites côté Neon entre-temps).
+- Le projet Supabase (base + Edge Functions) est **laissé strictement intact au moins deux semaines** après la bascule. Son nettoyage (suppression du dossier `supabase/`, des branches Supabase de `src/App.jsx`, puis du projet lui-même) fera l'objet d'une évolution ultérieure.
+
+Plan détaillé et journal d'exécution : `docs/Migration_Neon.md` dans le dépôt.
 
 # 3. Modèle de données
 
@@ -89,7 +144,7 @@ La base compte désormais 8 tables. Les données des phases de choix (vetos, vot
 | name | text | Prénom du membre |
 | instrument | text | Instrument joué |
 | password_hash | text | Empreinte du mot de passe (PBKDF2 + sel) — jamais lisible depuis le frontend |
-| last_activity_at | timestamptz | Horodatage de la dernière activité du membre (pas seulement de sa dernière connexion — voir § 4.1 et § 11.6), tamponné exclusivement par l'Edge Function member-auth |
+| last_activity_at | timestamptz | Horodatage de la dernière activité du membre (pas seulement de sa dernière connexion — voir § 4.1 et § 11.6), tamponné exclusivement par la fonction `api/member-auth` |
 | created_at | timestamptz | Date de création du profil |
 
 ## 3.2 Table songs
@@ -192,7 +247,7 @@ Table partagée entre les modules Rendez-vous et Concerts (§ 8.5) : en pratique
 
 # 4. Sécurité et authentification
 
-Choix assumé pour ce projet : pas de Supabase Auth (jugé trop complexe à gérer pour 6 utilisateurs). L'authentification est gérée entièrement au niveau applicatif.
+Choix assumé pour ce projet : pas de service d'authentification tiers (jugé trop complexe à gérer pour 6 utilisateurs). L'authentification est gérée entièrement au niveau applicatif.
 
 ## 4.1 Fonctionnement
 
@@ -202,13 +257,23 @@ Choix assumé pour ce projet : pas de Supabase Auth (jugé trop complexe à gér
 
 - Aux accès suivants, le mot de passe est demandé et vérifié.
 
-- La création et la vérification se font exclusivement côté serveur, dans l'Edge Function member-auth (contrat d'API au § 2.2, code dans `supabase/functions/member-auth/`), avec un hachage PBKDF2 (100 000 itérations, sel aléatoire de 16 octets, SHA-256). Le mot de passe en clair ne transite jamais vers la base, et l'empreinte n'est jamais renvoyée au navigateur.
+- La création et la vérification se font exclusivement côté serveur, dans la fonction `api/member-auth` (contrat d'API au § 2.2, code dans `api/member-auth.js`), avec un hachage PBKDF2 (100 000 itérations, sel aléatoire de 16 octets, SHA-256). Le mot de passe en clair ne transite jamais vers la base, et l'empreinte n'est jamais renvoyée au navigateur.
 
-- Une fois l'identité vérifiée, elle reste mémorisée sur l'appareil : le mot de passe n'est donc redemandé qu'à la toute première connexion, jamais aux ouvertures suivantes de l'application (jusqu'à un changement explicite de compte). Chaque ouverture — connexion fraîche ou session mémorisée — déclenche néanmoins un signal d'activité vers le serveur (action "touch" de l'Edge Function member-auth, sans mot de passe), qui tamponne members.last_activity_at. Cette distinction importe : s'appuyer sur les seuls événements de connexion aurait très largement sous-estimé la fréquence d'usage réelle du groupe. La donnée est affichée dans l'écran Accueil, section "Dernières connexions" (§ 11.6).
+- Une fois l'identité vérifiée, elle reste mémorisée sur l'appareil : le mot de passe n'est donc redemandé qu'à la toute première connexion, jamais aux ouvertures suivantes de l'application (jusqu'à un changement explicite de compte). Chaque ouverture — connexion fraîche ou session mémorisée — déclenche néanmoins un signal d'activité vers le serveur (action "touch" de `api/member-auth`, sans mot de passe), qui tamponne members.last_activity_at. Cette distinction importe : s'appuyer sur les seuls événements de connexion aurait très largement sous-estimé la fréquence d'usage réelle du groupe. La donnée est affichée dans l'écran Accueil, section "Dernières connexions" (§ 11.6).
 
-## 4.2 Contrôle d'accès (Row Level Security)
+## 4.2 Contrôle d'accès aux données
 
-Toutes les tables sont protégées par des règles Postgres (RLS), avec un accès ouvert à quiconque dispose de la clé "publishable" de l'application (clé destinée à vivre dans le code du frontend). Deux colonnes de la table members font exception : password_hash, dont les privilèges de lecture ET d'écriture sont explicitement révoqués pour cette clé, et last_activity_at, dont seule l'écriture est révoquée (la lecture reste ouverte, cette donnée étant affichée à l'écran). Dans les deux cas, seule l'Edge Function (via la clé secrète, jamais exposée) peut modifier la colonne — ce qui empêche un client de falsifier son propre mot de passe ou la dernière activité d'un autre membre via un appel REST direct. La table comments (§ 3.8) suit le régime d'accès ouvert commun à la majorité des tables : tout membre peut y ajouter ou supprimer une ligne, sans restriction liée à l'auteur (§ 8.5).
+Depuis la migration vers Neon (§ 2.5), **la base de données n'est jamais jointe depuis l'extérieur** : seules les fonctions `api/*` de Vercel s'y connectent, avec le rôle propriétaire, via la variable d'environnement `DATABASE_URL` jamais exposée au frontend. Il n'y a donc plus ni règles Row Level Security ni clé d'accès publique à protéger.
+
+Le contrôle d'accès repose entièrement sur `api/db` (§ 2.2), qui :
+
+- n'accepte de requête que sur les 8 tables connues, valide tout nom de colonne et lie toutes les valeurs en paramètres SQL (pas d'injection possible) ;
+- ne renvoie **jamais** `members.password_hash` (colonne retirée des lignes avant réponse) ;
+- **refuse toute écriture** sur `members.password_hash` et `members.last_activity_at` — seule `api/member-auth` peut les modifier. Un client ne peut donc pas falsifier son propre mot de passe ni la dernière activité d'un autre membre.
+
+La table comments (§ 3.8) suit le régime commun : tout membre peut y ajouter ou supprimer une ligne, sans restriction liée à l'auteur (§ 8.5).
+
+*Rappel de l'architecture antérieure (backend Supabase) : toutes les tables étaient protégées par des règles RLS « accès ouvert » à quiconque disposait de la clé « publishable » présente dans le frontend, et les deux colonnes sensibles de `members` étaient protégées par une révocation de privilèges au niveau Postgres, seule l'Edge Function pouvant les écrire via la clé service role. Le nouveau dispositif obtient le même résultat, sans clé dans le frontend.*
 
 ## 4.3 Limites connues
 
@@ -518,7 +583,7 @@ Deezer est l'unique plateforme d'écoute intégrée à l'application, et le rest
 
 | Plateforme | Statut | Détail |
 | --- | --- | --- |
-| Deezer | Opérationnel | Recherche du catalogue public via l'Edge Function search-deezer, sans compte ni clé nécessaire côté Deezer ; utilisée à la fois pour compléter les métadonnées d'un morceau et pour le bouton d'écoute rapide. |
+| Deezer | Opérationnel | Recherche du catalogue public via la fonction `api/search-deezer`, sans compte ni clé nécessaire côté Deezer ; utilisée à la fois pour compléter les métadonnées d'un morceau et pour le bouton d'écoute rapide. |
 
 # 13. Interface et navigation
 
@@ -588,21 +653,23 @@ Les trois écrans présentant une liste de cartes (Répertoire, Concerts, Rendez
 
 - Frontend construit avec Vite et servi statiquement par Vercel (offre gratuite, sans carte bancaire).
 
-- Backend hébergé sur Supabase, projet identifié par l'URL hhtjuwmlllgglnxtnjtx.supabase.co (offre gratuite, sans carte bancaire).
+- Fonctions serveur `api/*` (§ 2.2) déployées automatiquement par Vercel avec le frontend, depuis le dossier `api/` du dépôt (runtime Node). Elles lisent la variable d'environnement **`DATABASE_URL`** (chaîne de connexion Neon, en pool), à définir dans Vercel → Settings → Environment Variables pour les portées *Production* et *Preview*. C'est le seul secret du projet ; il n'apparaît nulle part dans le code.
 
-- Aucun serveur à maintenir : les deux plateformes gèrent l'hébergement, la mise à l'échelle et la sécurité de l'infrastructure.
+- Base de données hébergée sur **Neon** (PostgreSQL, offre gratuite, sans carte bancaire). Le projet Supabase historique (`hhtjuwmlllgglnxtnjtx.supabase.co`) est conservé intact quelques semaines comme filet de retour arrière (§ 2.5) puis sera supprimé.
+
+- Aucun serveur à maintenir : les plateformes gèrent l'hébergement, la mise à l'échelle et la sécurité de l'infrastructure.
 
 - Rafraîchissement automatique (§ 13.2) : chaque build Vite génère un identifiant de version (hash du commit Git fourni par Vercel) et l'écrit dans un fichier version.json déposé à la racine du site ; l'application compare cet identifiant à celui embarqué dans le code qu'elle exécute pour détecter qu'une version plus récente a été déployée.
 
 - Règles de cache (fichier vercel.json) : la page d'accueil (index.html), le fichier version.json et le manifest PWA ne sont jamais mis en cache par le navigateur, pour être certain que la vérification de version porte toujours sur les dernières données publiées ; les fichiers JS/CSS générés par le build (nom unique à chaque déploiement) restent au contraire mis en cache durablement, sans conflit possible entre deux versions.
 
-Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaines de morceaux, usage occasionnel) restant très en-deçà des paliers gratuits des deux plateformes.
+Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaines de morceaux, usage occasionnel) restant très en-deçà des paliers gratuits des plateformes.
 
 # 15. Limites connues et pistes d'évolution
 
 | Sujet | État actuel | Évolution possible |
 | --- | --- | --- |
-| Authentification | Mot de passe par profil, sans limite de tentatives | Ajout d'un blocage après plusieurs échecs ; éventuellement Supabase Auth si besoin de comptes email formels |
+| Authentification | Mot de passe par profil, sans limite de tentatives | Ajout d'un blocage après plusieurs échecs ; éventuellement un vrai service d'authentification si besoin de comptes email formels |
 | Pochettes | Disponibles seulement pour les morceaux passés par la recherche Deezer | Recherche automatique en lot pour compléter les pochettes du catalogue importé |
 | Notifications | Journal interne à l'application uniquement | Intégration d'un envoi réel vers un canal externe, si le besoin revient |
 | Streaming | Deezer uniquement, par choix assumé et définitif du groupe | — (piste Spotify / Apple Music explicitement écartée, voir § 12) |
@@ -611,6 +678,7 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 | Dernière activité | Tamponnée à l'ouverture de l'application uniquement, pas à chaque action | Granularité plus fine possible (ex. tamponnage sur des actions clés) si le besoin s'en fait sentir |
 | Multi-comptes simultanés | Un profil à la fois par appareil | Non prioritaire pour un usage à 6 personnes |
 | Rafraîchissement automatique | Une instance déjà installée sur un téléphone avant la mise en place de ce mécanisme (§ 13.2) doit encore être mise à jour une dernière fois manuellement pour en bénéficier | Aucune (limite ponctuelle, sans impact au-delà de cette transition unique) |
+| Nettoyage post-migration Neon | Le dépôt contient encore le dossier `supabase/` et les branches Supabase de `src/App.jsx` (point de commutation `const BACKEND`), conservés comme filet de retour arrière (§ 2.5) | À supprimer après quelques semaines d'exploitation stable sur Neon, avec suppression du projet Supabase et mise à jour du § 18 |
 
 # 16. Journal des évolutions
 
@@ -732,25 +800,39 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - Edge Functions : le code de `member-auth` et `search-deezer` rejoint le dépôt Git dans `supabase/functions/` (avec un README de contrat d'API), après avoir vécu jusque-là hors versionnement. Nouvelle section § 2.2 « Les deux Edge Functions » (l'ancienne § 2.2 devient § 2.3), et § 18.4 étoffé (variables d'environnement injectées par Supabase, question du `--no-verify-jwt` selon la config du projet, avertissement sur le schéma de hachage à ne pas modifier).
 
+## 16.8 Depuis la v1.7 (→ v1.8)
+
+- **Migration du backend de Supabase vers Neon** (§ 2.5). Motivation : le plafond de 2 projets gratuits chez Supabase. Le frontend ne se connecte plus directement à la base : il passe par trois fonctions serveur `api/*` hébergées sur Vercel (`api/db` — accès générique aux tables ; `api/member-auth` — mots de passe et activité, schéma de hachage PBKDF2 inchangé ; `api/search-deezer` — relais Deezer). La chaîne de connexion Neon (`DATABASE_URL`) vit uniquement dans les variables d'environnement Vercel ; **plus aucun identifiant d'accès aux données n'est présent dans `src/App.jsx`** (avant : URL Supabase + clé publishable en dur).
+
+- La Data API de Neon (compatible PostgREST) a été évaluée puis écartée : elle impose un jeton JWT sans mode anonyme simple, incompatible avec le modèle « 6 profils partagés, sécurité par confidentialité du lien » (§ 2.5, § 4.3).
+
+- Contrôle d'accès (§ 4.2) refondu : plus de Row Level Security ni de clé publique à protéger (la base n'est jamais jointe de l'extérieur). La protection de `members.password_hash` (jamais renvoyé) et `last_activity_at` (non modifiable) est faite dans le code de `api/db`. Constructeurs de requêtes SQL paramétrés et testés.
+
+- Migration des données par le script `db/migrate.mjs` (Node + `pg`) : copie des 8 tables en préservant identifiants, empreintes de mots de passe et colonnes JSON, source jamais modifiée, mode `--rollback` pour le sens inverse. Schéma cible `db/neon_schema.sql`.
+
+- Filet de sécurité (§ 2.5) : étiquette Git `pre-neon-migration`, Instant Rollback Vercel (~30 s), point de commutation `const BACKEND` dans `src/App.jsx` (les branches Supabase du code sont conservées), et **projet Supabase laissé intact au moins deux semaines** avant nettoyage. Plan complet dans `docs/Migration_Neon.md`.
+
+- Sections mises à jour : § 2 (architecture, flux, fonctions serveur), nouvelle § 2.4 (piège `preferred_platform`) et § 2.5 (migration), § 4 (authentification et contrôle d'accès), § 12, § 14 (infrastructure, variable `DATABASE_URL`), § 15, § 17, § 18 (première installation entièrement réécrite pour Neon).
+
 # 17. Références
 
 Application déployée : https://calyxter-set-manager-8xe2nnee2-ndalmont.vercel.app (URL de déploiement la plus récente testée — vérifier l'URL de production stable dans le tableau de bord Vercel).
 
-Dépôt de code : GitHub, dépôt "calyxter-set-manager" du compte utilisé pour le déploiement Vercel — src/App.jsx (code source complet), recreate_full_schema.sql à la racine (structure complète à jour de la base, sans données) et cette documentation dans docs/.
+Dépôt de code : GitHub, dépôt "calyxter-set-manager" du compte utilisé pour le déploiement Vercel. Points d'entrée : `src/App.jsx` (frontend complet), `api/` (fonctions serveur : `db.js`, `member-auth.js`, `search-deezer.js`) et `lib/neon.js` (connexion Neon partagée), `db/neon_schema.sql` (schéma de la base) et `db/migrate.mjs` (migration/rollback des données), cette documentation dans `docs/` et le plan de migration `docs/Migration_Neon.md`.
 
-Projet Supabase : https://hhtjuwmlllgglnxtnjtx.supabase.co (tableau de bord Supabase pour la base de données et les Edge Functions).
+Base de données : projet **Neon** (tableau de bord Neon → branche `main` → SQL Editor et Connection Details). La variable `DATABASE_URL` des fonctions Vercel pointe vers ce projet.
 
-Code des Edge Functions (search-deezer, member-auth) : versionné dans `supabase/functions/` (README du dossier pour le contrat d'API). Migrations incrémentales antérieures : voir le script consolidé `supabase/recreate_full_schema.sql` et l'historique du projet de développement.
+Filet de retour arrière — projet Supabase historique : https://hhtjuwmlllgglnxtnjtx.supabase.co, conservé intact quelques semaines (§ 2.5). Code des anciennes Edge Functions et schéma d'origine encore dans `supabase/` (`functions/`, `recreate_full_schema.sql`) jusqu'au nettoyage post-migration.
 
 # 18. Première installation (repartir de zéro)
 
-Procédure pour reconstruire l'application sur des comptes neufs (nouveau projet Supabase, nouveau déploiement Vercel), par exemple pour un environnement de test ou après une perte d'accès. L'application est volontairement minimaliste : pas de fichier `.env`, pas d'étape de configuration au premier lancement.
+Procédure pour reconstruire l'application sur des comptes neufs (nouveau projet Neon, nouveau déploiement Vercel), par exemple pour un environnement de test ou après une perte d'accès. Décrit l'architecture depuis la migration Neon (§ 2.5). Une seule configuration à faire : la variable d'environnement `DATABASE_URL` sur Vercel — aucun secret dans le code, aucun fichier `.env` versionné.
 
 ## 18.1 Prérequis
 
 - Node.js ≥ 18 (testé avec la 24) et npm, pour le développement local et le build.
-- Un compte GitHub (dépôt de code), un compte Supabase (base + Edge Functions), un compte Vercel (hébergement du frontend). Les trois suffisent en offre gratuite aux volumes d'usage du groupe.
-- Le code des deux Edge Functions (`member-auth`, `search-deezer`) est versionné dans `supabase/functions/` (§ 18.4).
+- Un compte GitHub (dépôt de code), un compte Neon (base de données), un compte Vercel (frontend + fonctions serveur). Les trois suffisent en offre gratuite aux volumes d'usage du groupe.
+- Aucun outil `psql` / `pg_dump` requis : le script de migration des données (§ 18.6) est en Node pur.
 
 ## 18.2 Récupérer le code
 
@@ -760,50 +842,57 @@ cd calyxter-set-manager
 npm install
 ```
 
-`npm run dev` lance un serveur de développement (Vite, port 5173) ; `npm run build` produit le site statique dans `dist/`.
+`npm run dev` lance le serveur de développement Vite (port 5173) — mais les fonctions `api/*` n'y tournent pas ; pour les tester en local, utiliser `npx vercel dev` (après `vercel link`) qui sert frontend et fonctions ensemble et lit `.env.local`. `npm run build` produit le site statique dans `dist/`.
 
-## 18.3 Base de données Supabase
+## 18.3 Base de données Neon
 
-1. Créer un projet Supabase.
-2. Dans l'éditeur SQL, exécuter l'intégralité de `supabase/recreate_full_schema.sql` (à la racine du dépôt) : il crée les 8 tables, les types enum, les index, active la RLS, pose les policies « accès ouvert » et révoque pour la clé publishable la lecture/écriture de `members.password_hash` et l'écriture de `members.last_activity_at` (§ 4.2). Le script commence par des `drop ... cascade` — sur un projet neuf, sans effet.
-3. Relever, dans les paramètres API du projet : l'URL du projet (`https://<ref>.supabase.co`) et la clé publishable (dite aussi « anon »).
+1. Créer un projet Neon (région au choix ; une branche `main` est créée par défaut). **Neon Auth n'est pas nécessaire** — l'application n'utilise pas la Data API.
+2. Dans le SQL Editor, exécuter l'intégralité de `db/neon_schema.sql` (dans le dépôt) : extension `pgcrypto`, 8 tables, types enum, index. Pas de RLS ni de rôle applicatif (§ 2.5, § 4.2). Le script commence par des `drop ... cascade` — sur un projet neuf, sans effet.
+3. Dans *Connection Details*, relever la chaîne de connexion **en pool** (« Pooled connection », hôte en `-pooler`) : c'est la valeur de `DATABASE_URL` (§ 18.5). Garder aussi la chaîne **directe** (sans `-pooler`) sous la main pour la migration des données (§ 18.6).
 
-## 18.4 Edge Functions
+## 18.4 Fonctions serveur (`api/`)
 
-Le code des deux fonctions Deno est versionné dans `supabase/functions/` (`member-auth/index.ts`, `search-deezer/index.ts`) ; leur rôle et leur contrat d'API sont décrits au § 2.2, et résumés dans le README du dossier. Les déployer depuis la racine du dépôt, après avoir lié le dépôt au projet Supabase (`supabase link --project-ref <ref>`) :
-
-```
-supabase functions deploy member-auth
-supabase functions deploy search-deezer
-```
+Rien à déployer séparément : les trois fichiers de `api/` (`db.js`, `member-auth.js`, `search-deezer.js`) et le helper `lib/neon.js` sont déployés automatiquement par Vercel avec le frontend, servis sous `/api/<nom>` (§ 2.2, § 14).
 
 Précisions :
 
-- **Variables d'environnement** : `member-auth` lit `SUPABASE_URL` et `SUPABASE_SERVICE_ROLE_KEY`, toutes deux injectées automatiquement par la plateforme Supabase à l'exécution — rien à configurer. `search-deezer` n'a besoin d'aucun secret (Deezer expose un catalogue public sans clé).
-- **Rôle de la clé service role** : elle permet à `member-auth` d'écrire dans `members.password_hash` et `members.last_activity_at`, colonnes dont l'écriture est révoquée pour la clé publishable (§ 4.2). Ne jamais exposer cette clé au frontend.
-- **Vérification du JWT** : le frontend appelle les fonctions avec la clé publishable (`sb_publishable_…`) en `Authorization: Bearer`. Selon la configuration du projet Supabase, il peut être nécessaire de déployer avec `--no-verify-jwt` pour que ces appels passent (`member-auth` fait lui-même le contrôle du mot de passe ; `search-deezer` est un simple relais public — le modèle de sécurité repose sur la confidentialité du lien, § 4.3). Tester la connexion après déploiement et ajouter ce drapeau si les appels renvoient 401.
-- **Après reconstruction sur un projet neuf** : les mots de passe des membres sont vides — chacun recrée le sien à sa première connexion (§ 18.6). Sur le projet existant, en revanche, ne jamais redéployer une version de `member-auth` au schéma de hachage différent (§ 2.2) : les mots de passe stockés deviendraient invérifiables.
-- **Cohérence** : avant tout redéploiement depuis le dépôt sur le projet en production, vérifier que `supabase/functions/*/index.ts` correspond bien à ce qui tourne (`supabase functions download <nom>` pour comparer).
+- **Unique variable d'environnement** : `DATABASE_URL` (chaîne Neon en pool). À définir sur Vercel (§ 18.7) et, pour le développement local avec `vercel dev`, dans `.env.local` (gitignoré ; un modèle est fourni dans `.env.example`).
+- **Dépendance runtime** : `@neondatabase/serverless` doit rester dans `dependencies` (pas `devDependencies`) — les fonctions en ont besoin à l'exécution. `pg` est en `devDependencies` (utilisé seulement par le script de migration `db/migrate.mjs`).
+- **Schéma de hachage** : `api/member-auth.js` utilise PBKDF2 100 000 itérations / sel 16 octets / SHA-256, format `saltHex:hashHex`. Sur une base neuve, les mots de passe sont vides et chaque membre crée le sien (§ 18.6, § 4.1). Sur une base contenant des empreintes migrées, **ne jamais modifier ce schéma** : les mots de passe deviendraient invérifiables (§ 2.2).
 
 ## 18.5 Configurer le frontend
 
-Les identifiants Supabase sont **codés en dur** dans `src/App.jsx` (constantes `SUPABASE_URL` et `SUPABASE_ANON_KEY`, vers les lignes 188-189) : y reporter l'URL et la clé publishable du nouveau projet, puis committer. Il n'y a pas d'autre configuration côté frontend.
+Le frontend ne contient **aucun identifiant**. Vérifier seulement, dans `src/App.jsx`, que la constante `BACKEND` (vers le début du fichier) vaut `'neon'`. La valeur `'supabase'` réactive l'ancien backend (branches de code conservées le temps de la période de sécurité, § 2.5) et suppose un projet Supabase configuré.
 
 ## 18.6 Créer les membres et le répertoire
 
-- Insérer les 6 lignes de `members` (colonnes `name`, `instrument` ; l'`id` et `created_at` sont auto-générés). Ne pas renseigner `password_hash` : chaque membre définit son mot de passe à sa première connexion (§ 4.1).
-- Pour que les icônes et couleurs d'avatar personnalisées s'appliquent, les prénoms doivent correspondre exactement à ceux du tableau du § 11.5 (Do, Dave, Alex, Niko, Véro, Gawel). Un autre prénom retombe sur l'affichage par défaut (initiale, couleur de secours).
-- Importer éventuellement le répertoire (161 morceaux) dans `songs` depuis le fichier de suivi du groupe.
+Deux cas.
+
+**Reprise de données existantes** (migration depuis un backend Supabase encore en place) : lancer le script de copie, avec les chaînes de connexion **directes** des deux bases passées en variables d'environnement (jamais en clair dans un fichier versionné) :
+
+```
+export SUPABASE_DIRECT_URL='postgresql://postgres.<ref>:<mdp>@aws-<...>.pooler.supabase.com:5432/postgres'
+export NEON_DIRECT_URL='postgresql://<user>:<mdp>@<hôte-sans-pooler>/<db>?sslmode=require'
+node db/migrate.mjs
+```
+
+Le script copie les 8 tables dans l'ordre des clés étrangères, vide la cible au préalable, préserve identifiants / empreintes de mots de passe / colonnes JSON, vérifie les volumes, et **ne modifie jamais la source**. `node db/migrate.mjs --rollback` copie en sens inverse (Neon → Supabase).
+
+**Base vierge** :
+
+- Insérer les 6 lignes de `members` (colonnes `name`, `instrument` ; `id` et `created_at` auto-générés). Ne pas renseigner `password_hash` : chaque membre définit son mot de passe à sa première connexion (§ 4.1).
+- Pour les icônes et couleurs d'avatar personnalisées, les prénoms doivent correspondre exactement au tableau du § 11.5 (Do, Dave, Alex, Niko, Véro, Gawel). Un autre prénom retombe sur l'affichage par défaut.
+- Importer éventuellement le répertoire (161 morceaux) dans `songs`.
 
 ## 18.7 Déploiement Vercel
 
 1. Connecter le dépôt GitHub à un projet Vercel.
-2. Build command `npm run build`, output directory `dist` (Vercel détecte Vite automatiquement).
-3. Aucune variable d'environnement à définir : `VERCEL_GIT_COMMIT_SHA` est fournie automatiquement par Vercel et alimente le mécanisme de version (§ 14) ; le reste est en dur dans le code.
+2. Build command `npm run build`, output directory `dist` (Vercel détecte Vite automatiquement) ; le dossier `api/` est repris automatiquement comme fonctions serverless.
+3. **Environment Variables** : ajouter `DATABASE_URL` (chaîne Neon en pool) pour les portées *Production* **et** *Preview*. `VERCEL_GIT_COMMIT_SHA` est fournie automatiquement et alimente le mécanisme de version (§ 14).
 4. Le fichier `vercel.json` (déjà dans le dépôt) fixe les règles de cache (§ 14) : ne pas le modifier.
 
 Chaque `git push` sur la branche principale redéploie ensuite l'application automatiquement.
 
 ## 18.8 Vérification
 
-Ouvrir l'URL de production, choisir un profil, créer un mot de passe : l'application doit charger la liste des membres, permettre la connexion, puis afficher l'écran Accueil. En cas d'échec de chargement des membres, vérifier l'URL et la clé dans `src/App.jsx` et les policies RLS.
+Ouvrir l'URL de production, choisir un profil, créer (ou saisir) un mot de passe : l'application doit charger la liste des membres, permettre la connexion, puis afficher l'écran Accueil. Ouvrir les outils de développement du navigateur (onglet Réseau) : toutes les requêtes de données doivent viser `/api/db`, `/api/member-auth`, `/api/search-deezer` — aucune vers un autre domaine. En cas d'échec de chargement des membres : vérifier que `DATABASE_URL` est bien définie sur Vercel et que le schéma `db/neon_schema.sql` a été exécuté sur la bonne branche Neon (consulter les logs de la fonction `api/db` dans Vercel).
