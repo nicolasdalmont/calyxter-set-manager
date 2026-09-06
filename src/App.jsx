@@ -1172,13 +1172,23 @@ function GlobalStyle() {
         text-align: left;
       }
       /* Rangée de champs côte à côte (nom/date/heure/durée…). Sur écran
-         étroit, chaque champ occupe toute la largeur : un input date/heure
-         garde sur iOS une largeur intrinsèque qui, à deux ou trois par ligne,
-         déborde de la carte. On ne touche PAS à l'apparence du champ date
-         (sinon iOS n'affiche plus sa valeur) — juste la disposition. */
+         étroit, chaque champ occupe toute la largeur. On ne touche PAS à
+         l'apparence du champ date (sinon iOS n'affiche plus sa valeur) —
+         juste la disposition. */
       .clx-field-row { display: flex; gap: 10px; flex-wrap: wrap; }
       @media (max-width: 560px) {
         .clx-field-row > * { flex: 1 1 100% !important; }
+      }
+      /* Sur iOS, l'input date/heure garde une largeur intrinsèque
+         incompressible que min-width:0 / width:100% ne réduisent pas : il
+         dépasse le bord de l'écran. Comme on s'interdit de styliser le champ,
+         on masque le débordement au niveau de son conteneur direct (le label
+         du composant Field). La valeur, alignée à gauche, reste visible ;
+         seule l'icône du sélecteur, à droite, peut être rognée — le champ
+         reste tapable pour ouvrir le sélecteur. */
+      label:has(> .clx-input[type="date"]),
+      label:has(> .clx-input[type="time"]) {
+        overflow: hidden;
       }
       .clx-input:focus { border-color: #F2A93B; box-shadow: 0 0 0 3px #F2A93B22; }
       .clx-input::placeholder { color: #6B6862; }
