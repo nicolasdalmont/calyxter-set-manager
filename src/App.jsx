@@ -1148,6 +1148,33 @@ function GlobalStyle() {
       .clx-row-action:hover { color: #F2A93B; background: #18181D; }
       .clx-row-action.active { color: #F2A93B; }
 
+      /* Plusieurs actions secondaires empilées dans une seule colonne en
+         bout de ligne (agenda + commentaires), pour ne prendre qu'une
+         largeur de gouttière au lieu de deux. */
+      .clx-row-actions-col {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        border-left: 1px solid #2A2A2E;
+        flex-shrink: 0;
+      }
+      .clx-row-actions-col > * + * { border-top: 1px solid #2A2A2E; }
+      .clx-row-action-mini {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        padding: 6px 13px;
+        background: none;
+        border: none;
+        color: #6B6862;
+        cursor: pointer;
+        font: inherit;
+      }
+      .clx-row-action-mini:hover { color: #F2A93B; background: #18181D; }
+      .clx-row-action-mini.active { color: #F2A93B; }
+
       @media (prefers-reduced-motion: reduce) {
         .clx-btn, .clx-spin { transition: none; animation: none; }
       }
@@ -3681,22 +3708,23 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
         </div>
       </button>
 
-      <button
-        onClick={() => exportConcertToCalendar(concert, songs)}
-        className="clx-row-action"
-        title="Ajouter à mon agenda"
-      >
-        <CalendarPlus size={16} />
-      </button>
-
-      <button
-        onClick={onOpenComments}
-        className={`clx-mono clx-row-action${commentCount > 0 ? ' active' : ''}`}
-        title="Voir les commentaires"
-      >
-        <MessageCircle size={16} />
-        <span style={{ fontSize: 11 }}>{commentCount}</span>
-      </button>
+      <div className="clx-row-actions-col">
+        <button
+          onClick={() => exportConcertToCalendar(concert, songs)}
+          className="clx-row-action-mini"
+          title="Ajouter à mon agenda"
+        >
+          <CalendarPlus size={15} />
+        </button>
+        <button
+          onClick={onOpenComments}
+          className={`clx-mono clx-row-action-mini${commentCount > 0 ? ' active' : ''}`}
+          title="Voir les commentaires"
+        >
+          <MessageCircle size={15} />
+          <span style={{ fontSize: 10 }}>{commentCount}</span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -4386,22 +4414,23 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
         </div>
       </button>
 
-      <button
-        onClick={() => (item.source === 'concert' ? exportConcertToCalendar(item.raw) : exportEventToCalendar(item.raw, members))}
-        className="clx-row-action"
-        title="Ajouter à mon agenda"
-      >
-        <CalendarPlus size={16} />
-      </button>
-
-      <button
-        onClick={onOpenComments}
-        className={`clx-mono clx-row-action${commentCount > 0 ? ' active' : ''}`}
-        title="Voir les commentaires"
-      >
-        <MessageCircle size={16} />
-        <span style={{ fontSize: 11 }}>{commentCount}</span>
-      </button>
+      <div className="clx-row-actions-col">
+        <button
+          onClick={() => (item.source === 'concert' ? exportConcertToCalendar(item.raw) : exportEventToCalendar(item.raw, members))}
+          className="clx-row-action-mini"
+          title="Ajouter à mon agenda"
+        >
+          <CalendarPlus size={15} />
+        </button>
+        <button
+          onClick={onOpenComments}
+          className={`clx-mono clx-row-action-mini${commentCount > 0 ? ' active' : ''}`}
+          title="Voir les commentaires"
+        >
+          <MessageCircle size={15} />
+          <span style={{ fontSize: 10 }}>{commentCount}</span>
+        </button>
+      </div>
     </div>
   );
 }
