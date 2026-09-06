@@ -1161,22 +1161,17 @@ function GlobalStyle() {
         min-width: 0;
       }
       /* type=date / type=time gardent une largeur intrinsèque large (surtout
-         sur iOS) : on retire l'apparence native et on neutralise la largeur
-         mini du champ, de sa valeur et de son éditeur internes pour qu'ils
-         suivent la largeur de leur conteneur flex. */
-      .clx-input[type="date"], .clx-input[type="time"] {
-        -webkit-appearance: none;
-        appearance: none;
-        min-width: 0;
-      }
+         sur iOS) : on neutralise la largeur mini du champ et de la valeur
+         interne pour qu'ils suivent la largeur de leur conteneur. On NE touche
+         PAS à -webkit-appearance : sur iOS Safari cela écrase la hauteur
+         native du champ, qui s'affiche alors écrasé tant qu'on ne l'a pas
+         sélectionné. */
+      .clx-input[type="date"], .clx-input[type="time"] { min-width: 0; }
       .clx-input[type="date"]::-webkit-date-and-time-value,
       .clx-input[type="time"]::-webkit-date-and-time-value {
         min-width: 0;
-        margin: 0;
         text-align: left;
       }
-      .clx-input::-webkit-datetime-edit { padding: 0; }
-      .clx-input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
       /* Rangée de champs côte à côte : passe en colonne pleine largeur sous
          560 px pour qu'aucun champ (date/heure en tête) ne déborde. */
       .clx-field-row { display: flex; gap: 10px; flex-wrap: wrap; }
