@@ -43,7 +43,33 @@ Le navigateur (frontend React) communique directement avec Supabase via deux can
 
 Aucune couche serveur propriétaire n'a été développée : toute la logique applicative réside dans le composant React et dans les deux fonctions serverless.
 
-## 2.2 Fiabilisation des écritures Supabase
+## 2.2 Les deux Edge Functions
+
+Code versionné dans `supabase/functions/` (Deno). Ces fonctions sont appelées directement par le frontend, avec la clé publishable en en-têtes `apikey` et `Authorization: Bearer`. Elles répondent au préflight CORS (`OPTIONS`) et renvoient toujours du JSON.
+
+### member-auth — `POST /functions/v1/member-auth`
+
+Corps JSON `{ action, member_id, password? }`. Trois actions :
+
+| Action | Effet | Réponses |
+| --- | --- | --- |
+| `verify` | Vérifie le mot de passe du membre | `{ member }` (200) ; `{ error: "no_password_set" }` (409) si aucun mot de passe n'est encore défini ; `{ error: "Mot de passe incorrect." }` (401) |
+| `set` | Définit le mot de passe (première connexion) | `{ member }` (200) ; `{ error }` (409) si un mot de passe existe déjà, (400) si < 6 caractères |
+| `touch` | Tamponne `members.last_activity_at = now()`, **sans mot de passe** | `{ ok: true }` (200) — réponse ignorée par le client (§ 4.1, § 11.6) |
+
+- `member` renvoyé = `{ id, name, instrument }` uniquement — jamais `password_hash`.
+- Hachage PBKDF2 : 100 000 itérations, sel aléatoire de 16 octets, SHA-256, stocké au format `saltHex:hashHex` (§ 4.1). **Modifier ce schéma invalide tous les mots de passe existants** — ne le faire qu'avec un plan de migration.
+- La fonction utilise la **clé service role** (variable d'environnement `SUPABASE_SERVICE_ROLE_KEY`, injectée automatiquement par Supabase) pour écrire dans `members.password_hash` et `members.last_activity_at`, colonnes dont l'écriture directe est révoquée pour la clé publishable (§ 4.2).
+- `verify` et `set` tamponnent aussi `last_activity_at` au passage (redondant avec `touch`, sans effet de bord).
+- Piège historique corrigé : ne pas sélectionner la colonne `preferred_platform` (supprimée en v1.3) dans la requête `members` — PostgREST échoue sinon et la fonction répond « Membre introuvable » à tort pour tout le monde.
+
+### search-deezer — `GET /functions/v1/search-deezer?q=<recherche>`
+
+Relais sans état vers l'API publique Deezer (`api.deezer.com/search`, aucune clé, aucun accès à la base de données), pour contourner les restrictions CORS d'un appel direct depuis le navigateur.
+
+Réponse `{ results: [...] }` (10 max), chaque entrée au format `{ title, artist, album, duration_seconds, cover_url, deezer_url }` — exactement les champs attendus par le formulaire d'ajout de morceau (§ 5.3). Erreurs : `{ error }` avec code `400` (paramètre `q` absent), `502` (Deezer indisponible) ou `500` (exception).
+
+## 2.3 Fiabilisation des écritures Supabase
 
 Deux anomalies identifiées en cours de développement ont été corrigées dans la fonction générique d'appel à l'API Supabase, commune à toutes les tables :
 
@@ -176,7 +202,7 @@ Choix assumé pour ce projet : pas de Supabase Auth (jugé trop complexe à gér
 
 - Aux accès suivants, le mot de passe est demandé et vérifié.
 
-- La création et la vérification se font exclusivement côté serveur, dans l'Edge Function member-auth, avec un hachage PBKDF2 (100 000 itérations, sel aléatoire de 16 octets, SHA-256). Le mot de passe en clair ne transite jamais vers la base, et l'empreinte n'est jamais renvoyée au navigateur.
+- La création et la vérification se font exclusivement côté serveur, dans l'Edge Function member-auth (contrat d'API au § 2.2, code dans `supabase/functions/member-auth/`), avec un hachage PBKDF2 (100 000 itérations, sel aléatoire de 16 octets, SHA-256). Le mot de passe en clair ne transite jamais vers la base, et l'empreinte n'est jamais renvoyée au navigateur.
 
 - Une fois l'identité vérifiée, elle reste mémorisée sur l'appareil : le mot de passe n'est donc redemandé qu'à la toute première connexion, jamais aux ouvertures suivantes de l'application (jusqu'à un changement explicite de compte). Chaque ouverture — connexion fraîche ou session mémorisée — déclenche néanmoins un signal d'activité vers le serveur (action "touch" de l'Edge Function member-auth, sans mot de passe), qui tamponne members.last_activity_at. Cette distinction importe : s'appuyer sur les seuls événements de connexion aurait très largement sous-estimé la fréquence d'usage réelle du groupe. La donnée est affichée dans l'écran Accueil, section "Dernières connexions" (§ 11.6).
 
@@ -604,7 +630,7 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - Correction de la barre d'onglets sur petit écran (mode icônes seules en dessous de 640 px, défilement horizontal de secours).
 
-- Correction de deux anomalies d'enregistrement affectant l'ensemble des tables (voir § 2.2) : erreur PGRST102 lors de l'ajout d'un morceau, et erreur de lecture de réponse vide sur Safari.
+- Correction de deux anomalies d'enregistrement affectant l'ensemble des tables (voir § 2.3) : erreur PGRST102 lors de l'ajout d'un morceau, et erreur de lecture de réponse vide sur Safari.
 
 ## 16.2 Depuis la v1.1 (→ v1.2)
 
@@ -704,6 +730,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - Phase de choix (§ 6.4) : faire avancer une phase d'une étape à l'autre et la clôturer une fois le résultat obtenu sont désormais ouverts à tous les membres (comme le lancement et l'annulation l'étaient déjà), pour ne pas dépendre de l'initiateur·rice. Ces deux actions demandent une confirmation, et la notification de clôture indique le membre qui a clôturé.
 
+- Edge Functions : le code de `member-auth` et `search-deezer` rejoint le dépôt Git dans `supabase/functions/` (avec un README de contrat d'API), après avoir vécu jusque-là hors versionnement. Nouvelle section § 2.2 « Les deux Edge Functions » (l'ancienne § 2.2 devient § 2.3), et § 18.4 étoffé (variables d'environnement injectées par Supabase, question du `--no-verify-jwt` selon la config du projet, avertissement sur le schéma de hachage à ne pas modifier).
+
 # 17. Références
 
 Application déployée : https://calyxter-set-manager-8xe2nnee2-ndalmont.vercel.app (URL de déploiement la plus récente testée — vérifier l'URL de production stable dans le tableau de bord Vercel).
@@ -712,7 +740,7 @@ Dépôt de code : GitHub, dépôt "calyxter-set-manager" du compte utilisé pour
 
 Projet Supabase : https://hhtjuwmlllgglnxtnjtx.supabase.co (tableau de bord Supabase pour la base de données et les Edge Functions).
 
-Migrations incrémentales et code des Edge Functions (search-deezer, member-auth) : disponibles en pièces jointes du projet de développement.
+Code des Edge Functions (search-deezer, member-auth) : versionné dans `supabase/functions/` (README du dossier pour le contrat d'API). Migrations incrémentales antérieures : voir le script consolidé `supabase/recreate_full_schema.sql` et l'historique du projet de développement.
 
 # 18. Première installation (repartir de zéro)
 
@@ -722,7 +750,7 @@ Procédure pour reconstruire l'application sur des comptes neufs (nouveau projet
 
 - Node.js ≥ 18 (testé avec la 24) et npm, pour le développement local et le build.
 - Un compte GitHub (dépôt de code), un compte Supabase (base + Edge Functions), un compte Vercel (hébergement du frontend). Les trois suffisent en offre gratuite aux volumes d'usage du groupe.
-- Le code des deux Edge Functions (`member-auth`, `search-deezer`) : il **ne figure pas dans le dépôt Git** (§ 17), il faut le récupérer depuis les pièces jointes du projet de développement.
+- Le code des deux Edge Functions (`member-auth`, `search-deezer`) est versionné dans `supabase/functions/` (§ 18.4).
 
 ## 18.2 Récupérer le code
 
@@ -742,10 +770,20 @@ npm install
 
 ## 18.4 Edge Functions
 
-Déployer les deux fonctions Deno (via la CLI Supabase ou le tableau de bord) :
+Le code des deux fonctions Deno est versionné dans `supabase/functions/` (`member-auth/index.ts`, `search-deezer/index.ts`) ; leur rôle et leur contrat d'API sont décrits au § 2.2, et résumés dans le README du dossier. Les déployer depuis la racine du dépôt, après avoir lié le dépôt au projet Supabase (`supabase link --project-ref <ref>`) :
 
-- `member-auth` — création / vérification des mots de passe (PBKDF2), et action `touch` de tamponnage d'activité. A besoin de la clé secrète (service role) du projet en variable d'environnement pour écrire dans les colonnes protégées.
-- `search-deezer` — relais de recherche vers l'API publique Deezer (contourne CORS). Aucun secret Deezer requis.
+```
+supabase functions deploy member-auth
+supabase functions deploy search-deezer
+```
+
+Précisions :
+
+- **Variables d'environnement** : `member-auth` lit `SUPABASE_URL` et `SUPABASE_SERVICE_ROLE_KEY`, toutes deux injectées automatiquement par la plateforme Supabase à l'exécution — rien à configurer. `search-deezer` n'a besoin d'aucun secret (Deezer expose un catalogue public sans clé).
+- **Rôle de la clé service role** : elle permet à `member-auth` d'écrire dans `members.password_hash` et `members.last_activity_at`, colonnes dont l'écriture est révoquée pour la clé publishable (§ 4.2). Ne jamais exposer cette clé au frontend.
+- **Vérification du JWT** : le frontend appelle les fonctions avec la clé publishable (`sb_publishable_…`) en `Authorization: Bearer`. Selon la configuration du projet Supabase, il peut être nécessaire de déployer avec `--no-verify-jwt` pour que ces appels passent (`member-auth` fait lui-même le contrôle du mot de passe ; `search-deezer` est un simple relais public — le modèle de sécurité repose sur la confidentialité du lien, § 4.3). Tester la connexion après déploiement et ajouter ce drapeau si les appels renvoient 401.
+- **Après reconstruction sur un projet neuf** : les mots de passe des membres sont vides — chacun recrée le sien à sa première connexion (§ 18.6). Sur le projet existant, en revanche, ne jamais redéployer une version de `member-auth` au schéma de hachage différent (§ 2.2) : les mots de passe stockés deviendraient invérifiables.
+- **Cohérence** : avant tout redéploiement depuis le dépôt sur le projet en production, vérifier que `supabase/functions/*/index.ts` correspond bien à ce qui tourne (`supabase functions download <nom>` pour comparer).
 
 ## 18.5 Configurer le frontend
 
