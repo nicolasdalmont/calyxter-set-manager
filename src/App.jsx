@@ -1167,6 +1167,24 @@ function GlobalStyle() {
         min-width: 0;
         text-align: left;
       }
+      /* Sur fond sombre, iOS/WebKit rendent la valeur (et les sous-champs de
+         l'éditeur) dans une couleur système sombre -> le champ paraît vide.
+         On force la couleur du texte de tous les fragments internes. */
+      .clx-input::-webkit-date-and-time-value,
+      .clx-input::-webkit-datetime-edit,
+      .clx-input::-webkit-datetime-edit-text,
+      .clx-input::-webkit-datetime-edit-year-field,
+      .clx-input::-webkit-datetime-edit-month-field,
+      .clx-input::-webkit-datetime-edit-day-field,
+      .clx-input::-webkit-datetime-edit-hour-field,
+      .clx-input::-webkit-datetime-edit-minute-field,
+      .clx-input::-webkit-datetime-edit-second-field,
+      .clx-input::-webkit-datetime-edit-meridiem-field {
+        color: #F5F1E8;
+        -webkit-text-fill-color: #F5F1E8;
+        opacity: 1;
+      }
+      .clx-input::-webkit-calendar-picker-indicator { filter: invert(1); opacity: .55; }
       /* Rangée de champs côte à côte : passe en colonne pleine largeur sous
          560 px pour qu'aucun champ (date/heure en tête) ne déborde. */
       .clx-field-row { display: flex; gap: 10px; flex-wrap: wrap; }
