@@ -4,9 +4,9 @@ SET MANAGER
 
 Documentation technique et fonctionnelle
 
-Version 1.6 — 2 septembre 2026
+Version 1.7 — 6 septembre 2026
 
-Statut : application déployée, en phase de test avec les 6 membres du groupe — rafraîchissement automatique à l'ouverture, commentaires sur les rendez-vous et les concerts, palette d'avatars individuelle et pastel par membre, écrans de liste harmonisés
+Statut : application déployée, en phase de test avec les 6 membres du groupe. Depuis la v1.6 : logo du groupe (barre supérieure et écran de connexion), saisie des horaires par « heure de début + durée » avec heure de fin calculée, ajout d'un rendez-vous ou d'un concert au calendrier de l'appareil via un fichier .ics, retouches du code couleur des types de rendez-vous, corrections de défilement et de compteurs, correction du zoom d'iOS à la saisie du mot de passe.
 
 # 1. Présentation du projet
 
@@ -33,7 +33,7 @@ L'application suit une architecture web moderne, entièrement hébergée sur des
 | Frontend | React 18 + Vite | Interface utilisateur (PWA), un seul composant principal (App.jsx) |
 | Hébergement frontend | Vercel | Build et diffusion publique de l'application (déploiement automatique depuis GitHub) |
 | Code source | GitHub | Dépôt versionné ; toute modification poussée sur la branche principale redéploie automatiquement l'app sur Vercel |
-| Base de données | Supabase (PostgreSQL) | Stockage des membres, morceaux, phases de choix, notifications, concerts et rendez-vous |
+| Base de données | Supabase (PostgreSQL) | Stockage des membres, morceaux, phases de choix, notifications, concerts, rendez-vous, idées et commentaires |
 | Fonctions serveur | Supabase Edge Functions (Deno) | Recherche Deezer, gestion sécurisée des mots de passe et tamponnage de la dernière activité des membres |
 | API externe | Deezer (catalogue public) | Recherche de morceaux avec auto-complétion (titre, artiste, durée, pochette) |
 
@@ -213,13 +213,13 @@ Toutes les tables sont protégées par des règles Postgres (RLS), avec un accè
 
 - Tri alphabétique par titre appliqué par défaut sur l'ensemble de la liste.
 
-- Pochette d'album affichée pour chaque morceau ayant été ajouté ou complété via la recherche Deezer (au même gabarit que la pastille date des listes Concerts et Rendez-vous, voir § 13.2) ; icône de remplacement sinon.
+- Pochette d'album affichée pour chaque morceau ayant été ajouté ou complété via la recherche Deezer (au même gabarit que la pastille date des listes Concerts et Rendez-vous, voir § 13.3) ; icône de remplacement sinon.
 
-- Ligne de la liste entièrement cliquable pour ouvrir l'édition du morceau, comme sur les listes Concerts et Rendez-vous (§ 13.2) ; le bouton d'écoute rapide reste une action distincte, isolée en bout de ligne.
+- Ligne de la liste entièrement cliquable pour ouvrir l'édition du morceau, comme sur les listes Concerts et Rendez-vous (§ 13.3) ; le bouton d'écoute rapide reste une action distincte, isolée en bout de ligne.
 
 - Bouton d'écoute rapide : ouvre le lien Deezer direct si disponible, sinon une recherche sur Deezer (seule plateforme d'écoute intégrée — choix assumé du groupe, sans notion de service préféré par membre).
 
-- Liste contenue dans un conteneur à hauteur limitée avec défilement interne, comme les listes Concerts et Rendez-vous (§ 13.2).
+- Liste contenue dans un conteneur à hauteur limitée avec défilement interne, comme les listes Concerts et Rendez-vous (§ 13.3).
 
 - Mise en page responsive : sur mobile, les informations (titre, artiste, album) s'affichent en pleine largeur, les métadonnées (statut, langue, durée, actions) se replacent sur une ligne dédiée.
 
@@ -371,7 +371,7 @@ Un rendez-vous est défini par un type (Répétition, Atelier de travail, Résid
 
 - Code couleur par type, repris sur la pastille de date, le badge de catégorie et (écran Accueil) la bande d'angle : Répétition bleu ardoise, Atelier de travail sauge, Résidence ambre clair (blé doré), Autre violet, Concert turquoise. Le turquoise du concert le distingue nettement des autres rendez-vous dans la liste ; il a remplacé un rouge qui se confondait avec la couleur d'alerte de l'application (vetos, erreurs, suppressions, statut "Sorti"). Le violet du type "Autre" a de même remplacé un taupe qui, étant le gris neutre d'interface de l'application, faisait lire ces rendez-vous comme passés ou désactivés. L'ambre de la Résidence a été éclairci (`#F0CE8A`) pour ne plus se confondre avec l'ambre d'accent de l'application (`#F2A93B` : badge "PROCHAIN", surbrillance, bandeau de phase). Un rendez-vous passé, lui, perd bien sa couleur au profit d'un gris neutre.
 
-- Les libellés de la ligne (indication "récurrent" le cas échéant, badge "PROCHAIN" le cas échéant, puis catégorie du rendez-vous) sont regroupés en bout de ligne dans cet ordre, au même endroit et selon la même logique de repli sur mobile que les badges de statut et de langue du Répertoire (§ 13.2) — le titre du rendez-vous occupe désormais la première ligne de la carte.
+- Les libellés de la ligne (indication "récurrent" le cas échéant, badge "PROCHAIN" le cas échéant, puis catégorie du rendez-vous) sont regroupés en bout de ligne dans cet ordre, au même endroit et selon la même logique de repli sur mobile que les badges de statut et de langue du Répertoire (§ 13.3) — le titre du rendez-vous occupe désormais la première ligne de la carte.
 
 - Les concerts apparaissent dans cette liste au même titre que les autres rendez-vous : cliquer dessus bascule vers le module Concerts et ouvre directement le concert concerné en édition (la mention "non modifiable ici", auparavant affichée sur ces lignes, a été retirée — elle entrait en contradiction avec ce comportement au clic et n'apportait qu'une confusion). Les données affichées proviennent en direct de la table concerts — toute modification faite depuis le module Concerts se répercute donc immédiatement dans l'agenda.
 
@@ -692,6 +692,10 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - Bouton "Ajouter à mon agenda" sur les éditeurs de concert (§ 7.2) et de rendez-vous (§ 8.2), et icône agenda en bout de ligne dans les listes Concerts (§ 7.1) et Rendez-vous (§ 8.3) : génère un fichier iCalendar (.ics) ouvert par l'application de calendrier par défaut de l'appareil (heure locale flottante ; règle de récurrence incluse pour une série). Aucun serveur ni compte tiers, aucune donnée envoyée à l'extérieur.
 
+- Listes Concerts et Rendez-vous (§ 13.3) : les actions de bout de ligne (agenda, commentaires) sont empilées dans une seule colonne au lieu d'être juxtaposées, pour rendre de la largeur à la carte.
+
+- Documentation : passage en v1.7 (en-tête et statut), correction de renvois « § 13.2 » qui visaient en réalité « § 13.3 » (harmonisation des listes), et ajout d'une section « Première installation » (§ 18) décrivant la reconstruction complète sur des comptes neufs.
+
 # 17. Références
 
 Application déployée : https://calyxter-set-manager-8xe2nnee2-ndalmont.vercel.app (URL de déploiement la plus récente testée — vérifier l'URL de production stable dans le tableau de bord Vercel).
@@ -701,3 +705,59 @@ Dépôt de code : GitHub, dépôt "calyxter-set-manager" du compte utilisé pour
 Projet Supabase : https://hhtjuwmlllgglnxtnjtx.supabase.co (tableau de bord Supabase pour la base de données et les Edge Functions).
 
 Migrations incrémentales et code des Edge Functions (search-deezer, member-auth) : disponibles en pièces jointes du projet de développement.
+
+# 18. Première installation (repartir de zéro)
+
+Procédure pour reconstruire l'application sur des comptes neufs (nouveau projet Supabase, nouveau déploiement Vercel), par exemple pour un environnement de test ou après une perte d'accès. L'application est volontairement minimaliste : pas de fichier `.env`, pas d'étape de configuration au premier lancement.
+
+## 18.1 Prérequis
+
+- Node.js ≥ 18 (testé avec la 24) et npm, pour le développement local et le build.
+- Un compte GitHub (dépôt de code), un compte Supabase (base + Edge Functions), un compte Vercel (hébergement du frontend). Les trois suffisent en offre gratuite aux volumes d'usage du groupe.
+- Le code des deux Edge Functions (`member-auth`, `search-deezer`) : il **ne figure pas dans le dépôt Git** (§ 17), il faut le récupérer depuis les pièces jointes du projet de développement.
+
+## 18.2 Récupérer le code
+
+```
+git clone <url-du-dépôt> calyxter-set-manager
+cd calyxter-set-manager
+npm install
+```
+
+`npm run dev` lance un serveur de développement (Vite, port 5173) ; `npm run build` produit le site statique dans `dist/`.
+
+## 18.3 Base de données Supabase
+
+1. Créer un projet Supabase.
+2. Dans l'éditeur SQL, exécuter l'intégralité de `supabase/recreate_full_schema.sql` (à la racine du dépôt) : il crée les 8 tables, les types enum, les index, active la RLS, pose les policies « accès ouvert » et révoque pour la clé publishable la lecture/écriture de `members.password_hash` et l'écriture de `members.last_activity_at` (§ 4.2). Le script commence par des `drop ... cascade` — sur un projet neuf, sans effet.
+3. Relever, dans les paramètres API du projet : l'URL du projet (`https://<ref>.supabase.co`) et la clé publishable (dite aussi « anon »).
+
+## 18.4 Edge Functions
+
+Déployer les deux fonctions Deno (via la CLI Supabase ou le tableau de bord) :
+
+- `member-auth` — création / vérification des mots de passe (PBKDF2), et action `touch` de tamponnage d'activité. A besoin de la clé secrète (service role) du projet en variable d'environnement pour écrire dans les colonnes protégées.
+- `search-deezer` — relais de recherche vers l'API publique Deezer (contourne CORS). Aucun secret Deezer requis.
+
+## 18.5 Configurer le frontend
+
+Les identifiants Supabase sont **codés en dur** dans `src/App.jsx` (constantes `SUPABASE_URL` et `SUPABASE_ANON_KEY`, vers les lignes 188-189) : y reporter l'URL et la clé publishable du nouveau projet, puis committer. Il n'y a pas d'autre configuration côté frontend.
+
+## 18.6 Créer les membres et le répertoire
+
+- Insérer les 6 lignes de `members` (colonnes `name`, `instrument` ; l'`id` et `created_at` sont auto-générés). Ne pas renseigner `password_hash` : chaque membre définit son mot de passe à sa première connexion (§ 4.1).
+- Pour que les icônes et couleurs d'avatar personnalisées s'appliquent, les prénoms doivent correspondre exactement à ceux du tableau du § 11.5 (Do, Dave, Alex, Niko, Véro, Gawel). Un autre prénom retombe sur l'affichage par défaut (initiale, couleur de secours).
+- Importer éventuellement le répertoire (161 morceaux) dans `songs` depuis le fichier de suivi du groupe.
+
+## 18.7 Déploiement Vercel
+
+1. Connecter le dépôt GitHub à un projet Vercel.
+2. Build command `npm run build`, output directory `dist` (Vercel détecte Vite automatiquement).
+3. Aucune variable d'environnement à définir : `VERCEL_GIT_COMMIT_SHA` est fournie automatiquement par Vercel et alimente le mécanisme de version (§ 14) ; le reste est en dur dans le code.
+4. Le fichier `vercel.json` (déjà dans le dépôt) fixe les règles de cache (§ 14) : ne pas le modifier.
+
+Chaque `git push` sur la branche principale redéploie ensuite l'application automatiquement.
+
+## 18.8 Vérification
+
+Ouvrir l'URL de production, choisir un profil, créer un mot de passe : l'application doit charger la liste des membres, permettre la connexion, puis afficher l'écran Accueil. En cas d'échec de chargement des membres, vérifier l'URL et la clé dans `src/App.jsx` et les policies RLS.
