@@ -1202,16 +1202,28 @@ function GlobalStyle() {
       @media (hover: none) and (pointer: coarse) {
         .clx-input { font-size: 16px; }
         /* iOS Safari donne aux input date/time une largeur intrinsèque fixe
-           (ils débordent du conteneur) tant qu'on ne retire pas l'apparence
-           native ; mais -webkit-appearance: none leur retire alors leur
-           hauteur -> on la rétablit explicitement, valeur alignée sur celle
-           d'un champ texte tactile (16px, padding 9px, bordure 1px). Ciblé
-           tactile uniquement : sur ordinateur on garde le sélecteur natif. */
+           (débordement) tant qu'on ne retire pas l'apparence native. Mais
+           -webkit-appearance: none leur retire aussi leur hauteur ET fait
+           s'effondrer la zone de valeur (champ visuellement vide). On
+           rétablit donc explicitement la hauteur du champ ET celle de sa
+           valeur interne. Ciblé tactile : sur ordinateur, sélecteur natif. */
         .clx-input[type="date"], .clx-input[type="time"] {
           -webkit-appearance: none;
           appearance: none;
           height: 40px;
           line-height: 20px;
+        }
+        .clx-input[type="date"]::-webkit-date-and-time-value,
+        .clx-input[type="time"]::-webkit-date-and-time-value {
+          display: inline-block;
+          min-height: 20px;
+          line-height: 20px;
+          padding: 0;
+        }
+        .clx-input[type="date"]::-webkit-datetime-edit,
+        .clx-input[type="time"]::-webkit-datetime-edit {
+          line-height: 20px;
+          padding: 0;
         }
       }
 
