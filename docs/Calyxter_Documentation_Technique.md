@@ -237,11 +237,13 @@ Toutes les tables sont protégées par des règles Postgres (RLS), avec un accè
 
 # 6. Fonctionnalités — Module Phase de choix
 
-N'importe quel membre peut lancer une phase de choix. Ce module n'a plus d'onglet dédié dans la barre de navigation : son accès est désormais rattaché à l'onglet Répertoire, avec lequel il est étroitement lié (voir § 6.8). Elle se déroule en 4 étapes successives, avec une barre de progression affichant, sous le libellé de chaque étape, un indicateur contextuel : nombre de morceaux proposés depuis le lancement de la phase, nombre de morceaux rejetés par veto, nombre de bulletins de vote validés.
+N'importe quel membre peut lancer une phase de choix, la faire avancer d'une étape à la suivante, la clôturer une fois le résultat obtenu (§ 6.4) ou l'annuler (§ 6.6) : aucune de ces actions n'est réservée à l'initiateur·rice, pour que le groupe ne dépende jamais d'une seule personne. Le passage à l'étape suivante et la clôture demandent une confirmation, puisque tout le groupe y a accès. Ce module n'a plus d'onglet dédié dans la barre de navigation : son accès est désormais rattaché à l'onglet Répertoire, avec lequel il est étroitement lié (voir § 6.8). Elle se déroule en 4 étapes successives, avec une barre de progression affichant, sous le libellé de chaque étape, un indicateur contextuel : nombre de **nouvelles** propositions (voir § 6.1), nombre de morceaux rejetés par veto, nombre de bulletins de vote validés.
 
 ## 6.1 Étape 1 — Proposition
 
-Tout membre peut proposer un nouveau morceau (recherche Deezer ou saisie manuelle). Les morceaux déjà au statut "Proposé" avant l'ouverture de la phase intègrent automatiquement la liste.
+Tout membre peut proposer un nouveau morceau (recherche Deezer ou saisie manuelle). L'écran affiche l'intégralité des morceaux au statut "Proposé" — y compris ceux proposés avant l'ouverture de la phase, ou entre deux phases — car c'est sur cette liste complète que portera le vote (§ 6.3).
+
+L'indicateur chiffré sous l'étape (et l'écran Accueil, § 11.3) ne compte en revanche que les **nouvelles** propositions : celles faites depuis la fin de la dernière phase clôturée, et non depuis le seul lancement de la phase en cours. Une proposition ajoutée entre deux phases est donc bien comptabilisée. En l'absence de phase antérieure (toute première phase), toutes les propositions comptent.
 
 ## 6.2 Étape 2 — Veto
 
@@ -250,6 +252,8 @@ Chaque membre peut poser son veto sur un ou plusieurs morceaux proposés. Le vet
 ## 6.3 Étape 3 — Vote
 
 Le vote se fait par un classement interactif plutôt qu'une saisie de notes indépendantes :
+
+- Le vote porte sur l'**intégralité** des morceaux au statut "Proposé" au moment du vote (tous ceux non rejetés par veto), quelle que soit leur date de proposition — pas seulement les nouvelles propositions comptées par l'indicateur de l'étape Proposition (§ 6.1). Le classement final (§ 6.4) est calculé sur ce même ensemble complet.
 
 - Les morceaux n'ont aucune note par défaut.
 
@@ -269,13 +273,13 @@ Le classement final est calculé automatiquement à partir des points cumulés d
 
 - Départage en cas d'égalité, dans l'ordre : (1) meilleure note individuelle reçue par un morceau ; (2) mini-vote de départage express entre les morceaux ex-æquo ; (3) message invitant à un arbitrage oral en répétition si l'égalité persiste.
 
-- La clôture de la phase (réservée à son initiateur) fait passer les 3 morceaux retenus au statut "À préparer" et publie le résultat sur le journal de notifications. Au même moment, un instantané du nombre de propositions et du résultat final est enregistré sur la ligne de la phase (colonnes proposed_count et result, § 3.3) pour alimenter l'historique des phases (§ 6.7).
+- La clôture de la phase — ouverte à **n'importe quel membre**, pas seulement l'initiateur·rice, et confirmée par une boîte de dialogue — fait passer les 3 morceaux retenus au statut "À préparer" et publie le résultat sur le journal de notifications (avec le nom du membre qui a clôturé). Au même moment, un instantané du nombre de nouvelles propositions et du résultat final est enregistré sur la ligne de la phase (colonnes proposed_count et result, § 3.3) pour alimenter l'historique des phases (§ 6.7).
 
 ## 6.5 Copie dans le presse-papier
 
 Chaque étape propose un bouton dédié pour copier un résumé prêt à coller dans une conversation :
 
-- Étape Proposition — "Copier les propositions" : liste des morceaux proposés depuis le lancement de la phase, avec l'identité du membre à l'origine de chaque proposition.
+- Étape Proposition — "Copier les propositions" : liste des **nouvelles** propositions (celles faites depuis la fin de la dernière phase clôturée, § 6.1), avec l'identité du membre à l'origine de chaque proposition.
 
 - Étape Veto — "Copier les rejets" : liste des morceaux rejetés durant la phase, avec l'identité du ou des membres ayant posé leur veto sur chacun.
 
@@ -297,9 +301,9 @@ N'importe quel membre du groupe — pas seulement l'initiateur — peut annuler 
 
 ## 6.7 Historique des phases
 
-Accessible depuis un bouton dédié (visible en permanence pendant une phase active, et depuis l'écran "Aucune phase en cours"), l'historique liste les phases clôturées normalement, avec pour chacune : l'initiateur, la date de début, la date de fin et la durée écoulée entre les deux, le nombre de propositions, le nombre de morceaux rejetés par veto, et le résultat final (titre et artiste des 3 morceaux retenus, sans lien vers le répertoire). Les phases annulées (§ 6.6) n'y apparaissent jamais.
+Accessible depuis un bouton dédié (visible en permanence pendant une phase active, et depuis l'écran "Aucune phase en cours"), l'historique liste les phases clôturées normalement, avec pour chacune : l'initiateur, la date de début, la date de fin et la durée écoulée entre les deux, le nombre de nouvelles propositions, le nombre de morceaux rejetés par veto, et le résultat final (titre et artiste des 3 morceaux retenus, sans lien vers le répertoire). Les phases annulées (§ 6.6) n'y apparaissent jamais.
 
-Le nombre de propositions et le résultat final proviennent d'un instantané pris au moment précis de la clôture (§ 3.3, § 6.4) : ils ne peuvent pas être recalculés après coup, les morceaux gagnants changeant de statut et le répertoire pouvant évoluer depuis. Pour une phase close avant l'introduction de ces colonnes (ou importée rétroactivement sans cette donnée), l'écran affiche "—" plutôt qu'un chiffre ou un résultat inventés. Le nombre de vetos, lui, reste dérivé à l'affichage à partir des vetos conservés sur la ligne de la phase — aucune colonne dédiée n'est nécessaire.
+Le nombre de propositions retenu est celui des **nouvelles** propositions de la phase (§ 6.1) : celles faites depuis la fin de la phase précédente, qu'elles soient au final retenues, encore en lice ou rejetées par veto durant la phase — cohérent avec l'indicateur affiché pendant la phase. Ce nombre et le résultat final proviennent d'un instantané pris au moment précis de la clôture (§ 3.3, § 6.4) : ils ne peuvent pas être recalculés après coup, les morceaux gagnants changeant de statut et le répertoire pouvant évoluer depuis. Pour une phase close avant l'introduction de ces colonnes (ou importée rétroactivement sans cette donnée), l'écran affiche "—" plutôt qu'un chiffre ou un résultat inventés. Le nombre de vetos, lui, reste dérivé à l'affichage à partir des vetos conservés sur la ligne de la phase — aucune colonne dédiée n'est nécessaire.
 
 ## 6.8 Rattachement à l'onglet Répertoire
 
@@ -695,6 +699,10 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - Listes Concerts et Rendez-vous (§ 13.3) : les actions de bout de ligne (agenda, commentaires) sont empilées dans une seule colonne au lieu d'être juxtaposées, pour rendre de la largeur à la carte.
 
 - Documentation : passage en v1.7 (en-tête et statut), correction de renvois « § 13.2 » qui visaient en réalité « § 13.3 » (harmonisation des listes), et ajout d'une section « Première installation » (§ 18) décrivant la reconstruction complète sur des comptes neufs.
+
+- Phase de choix (§ 6) : l'indicateur « propositions » de la barre de progression, la liste « Copier les propositions » et l'instantané `proposed_count` de l'historique comptent désormais les nouvelles propositions **depuis la dernière phase clôturée** (et non depuis le seul lancement de la phase en cours) — une proposition ajoutée entre deux phases est donc prise en compte. Le vote, lui, portait déjà et porte toujours sur l'intégralité des morceaux non rejetés (§ 6.3), quelle que soit leur date : rien changé, clarifié dans la doc.
+
+- Phase de choix (§ 6.4) : faire avancer une phase d'une étape à l'autre et la clôturer une fois le résultat obtenu sont désormais ouverts à tous les membres (comme le lancement et l'annulation l'étaient déjà), pour ne pas dépendre de l'initiateur·rice. Ces deux actions demandent une confirmation, et la notification de clôture indique le membre qui a clôturé.
 
 # 17. Références
 

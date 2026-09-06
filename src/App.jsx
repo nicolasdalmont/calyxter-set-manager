@@ -333,6 +333,25 @@ async function searchDeezer(query) {
 
 
 
+// Borne temporelle des "nouvelles propositions" : la fin de la dernière
+// phase clôturée (phaseHistory est trié du plus récent au plus ancien, la
+// phase active n'y figure pas encore). Sans historique, tout compte.
+function lastPhaseBoundary(phaseHistory) {
+  const iso = phaseHistory && phaseHistory[0] && phaseHistory[0].closed_at;
+  return iso ? new Date(iso) : null;
+}
+function isNewProposalSince(song, boundary) {
+  if (!song) return false;
+  return !boundary || (song.created_at && new Date(song.created_at) >= boundary);
+}
+// Morceaux encore "Proposé" ajoutés depuis la fin de la dernière phase
+// clôturée — et non depuis le seul lancement de la phase en cours (une
+// phase hérite des propositions faites entre deux phases, voir § 6.1).
+function newProposalsSinceLastPhase(songs, phaseHistory) {
+  const boundary = lastPhaseBoundary(phaseHistory);
+  return songs.filter((s) => s.status === 'proposed' && isNewProposalSince(s, boundary));
+}
+
 function computeRanking(songs, votes) {
   const eligible = songs.filter((s) => s.status === 'proposed');
   const points = {};
@@ -1668,12 +1687,9 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
   const readySeconds = readySongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
   const toPrepareSeconds = toPrepareSongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
 
-  // Propositions "depuis la fin de la dernière phase clôturée" : phaseHistory
-  // est trié du plus récent au plus ancien (voir fetchPhaseHistory), donc
-  // phaseHistory[0].closed_at borne la fenêtre. À défaut d'historique, on
-  // compte toutes les propositions encore au statut "Proposé".
-  const sinceLastClosed = phaseHistory[0]?.closed_at || null;
-  const proposalsSinceLastClosed = songs.filter((s) => s.status === 'proposed' && (!sinceLastClosed || s.created_at >= sinceLastClosed)).length;
+  // Propositions faites depuis la fin de la dernière phase clôturée
+  // (helper partagé avec le module Phase de choix, § 6).
+  const proposalsSinceLastClosed = newProposalsSinceLastPhase(songs, phaseHistory).length;
 
   const hasVoted = !!(phase && phase.votes || []).some((v) => v.user_id === currentUser.id);
 
@@ -2437,14 +2453,18 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
   }
 
   const initiator = members.find((m) => m.id === phase.initiated_by_user_id);
-  const isInitiator = currentUser.id === phase.initiated_by_user_id;
   const stepIndex = STEP_ORDER.indexOf(phase.current_step);
 
+  // Faire avancer et clôturer la phase sont ouverts à tous les membres (comme
+  // le lancement et l'annulation), pour ne pas dépendre de l'initiateur·rice.
+  // Une confirmation protège de l'action accidentelle, puisque tout le groupe
+  // y a accès.
   const advance = async () => {
     const next = STEP_ORDER[stepIndex + 1];
     if (!next) return;
+    if (!window.confirm(`Faire passer la phase à l'étape « ${STEP_LABEL[next]} » pour tout le groupe ?`)) return;
     await updatePhase((p) => ({ ...p, current_step: next }));
-    await pushNotification(`➡️ La phase passe à l'étape « ${STEP_LABEL[next]} ».`, 'step');
+    await pushNotification(`➡️ ${currentUser.name} fait passer la phase à l'étape « ${STEP_LABEL[next]} ».`, 'step');
   };
 
   const handleCancel = async () => {
@@ -2479,7 +2499,7 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
       <Stepper
         current={phase.current_step}
         stats={{
-          proposal: songs.filter((s) => s.status === 'proposed' && s.created_at && new Date(s.created_at) >= new Date(phase.created_at)).length,
+          proposal: newProposalsSinceLastPhase(songs, phaseHistory).length,
           veto: phase.vetoes.length,
           vote: `${phase.votes.length}/${members.length}`,
         }}
@@ -2487,7 +2507,7 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
 
       <div style={{ marginTop: 20 }}>
         {phase.current_step === 'proposal' && (
-          <ProposalStep songs={songs} members={members} currentUser={currentUser} phase={phase} updateSongs={updateSongs} deleteSong={deleteSong} pushNotification={pushNotification} />
+          <ProposalStep songs={songs} members={members} currentUser={currentUser} phase={phase} phaseHistory={phaseHistory} updateSongs={updateSongs} deleteSong={deleteSong} pushNotification={pushNotification} />
         )}
         {phase.current_step === 'veto' && (
           <VetoStep songs={songs} members={members} currentUser={currentUser} phase={phase} updateSongs={updateSongs} updatePhase={updatePhase} pushNotification={pushNotification} />
@@ -2496,7 +2516,7 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
           <VoteStep songs={songs} members={members} currentUser={currentUser} phase={phase} updatePhase={updatePhase} />
         )}
         {phase.current_step === 'result' && (
-          <ResultStep songs={songs} members={members} currentUser={currentUser} phase={phase} updatePhase={updatePhase} updateSongs={updateSongs} pushNotification={pushNotification} isInitiator={isInitiator} />
+          <ResultStep songs={songs} members={members} currentUser={currentUser} phase={phase} phaseHistory={phaseHistory} updatePhase={updatePhase} updateSongs={updateSongs} pushNotification={pushNotification} />
         )}
       </div>
 
@@ -2510,15 +2530,9 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
         </button>
 
         {phase.current_step !== 'result' && (
-          isInitiator ? (
-            <button onClick={advance} className="clx-btn clx-btn-primary" style={{ padding: '10px 18px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
-              Passer à l'étape suivante <ChevronRight size={15} />
-            </button>
-          ) : (
-            <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862' }}>
-              Seul·e {initiator ? initiator.name : "l'initiateur·rice"} peut faire avancer cette phase.
-            </div>
-          )
+          <button onClick={advance} className="clx-btn clx-btn-primary" style={{ padding: '10px 18px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            Passer à l'étape suivante <ChevronRight size={15} />
+          </button>
         )}
       </div>
     </div>
@@ -2660,23 +2674,23 @@ function Stepper({ current, stats }) {
 
 /* --- Step 1 : Proposition -------------------------------------------------- */
 
-function ProposalStep({ songs, members, currentUser, phase, updateSongs, deleteSong, pushNotification }) {
+function ProposalStep({ songs, members, currentUser, phase, phaseHistory, updateSongs, deleteSong, pushNotification }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingSong, setEditingSong] = useState(null);
   const [copied, setCopied] = useState(false);
   const proposed = songs.filter((s) => s.status === 'proposed');
-  // Propositions faites depuis le lancement de cette phase précisément (même
-  // filtre que l'indicateur affiché sous l'étape "Proposition" du Stepper).
-  const proposedSincePhase = songs.filter((s) => s.status === 'proposed' && s.created_at && new Date(s.created_at) >= new Date(phase.created_at));
+  // Nouvelles propositions depuis la dernière phase clôturée (même filtre
+  // que l'indicateur du Stepper et que l'écran Accueil, § 11.3).
+  const newProposals = newProposalsSinceLastPhase(songs, phaseHistory);
 
   const handleCopy = async () => {
-    const lines = proposedSincePhase.length > 0
-      ? proposedSincePhase.map((s, i) => {
+    const lines = newProposals.length > 0
+      ? newProposals.map((s, i) => {
           const proposer = members.find((m) => m.id === s.added_by_user_id);
           return `${i + 1}. ${s.title} — ${s.artist} (proposé par ${proposer ? proposer.name : 'membre inconnu'})`;
         }).join('\n')
-      : '(aucune proposition depuis le lancement de cette phase)';
-    const text = ['Propositions de cette phase de choix', '', lines].join('\n');
+      : '(aucune nouvelle proposition depuis la dernière phase de choix)';
+    const text = ['Nouvelles propositions pour cette phase de choix', '', lines].join('\n');
     try {
       await copyTextToClipboard(text);
       setCopied(true);
@@ -3058,7 +3072,7 @@ function VoteStep({ songs, members, currentUser, phase, updatePhase }) {
 
 /* --- Step 4 : Résultat -------------------------------------------------------- */
 
-function ResultStep({ songs, members, currentUser, phase, updatePhase, updateSongs, pushNotification, isInitiator }) {
+function ResultStep({ songs, members, currentUser, phase, phaseHistory, updatePhase, updateSongs, pushNotification }) {
   const { scored, tieGroup, slotsForTie } = useMemo(() => computeRanking(songs, phase.votes), [songs, phase.votes]);
   const resolution = useMemo(
     () => resolveWithTieBreak(scored, tieGroup, slotsForTie, phase.tie_break_votes || []),
@@ -3096,18 +3110,25 @@ function ResultStep({ songs, members, currentUser, phase, updatePhase, updateSon
 
   const finalize = async () => {
     if (!quota.finalTop3) return;
+    const names = quota.finalTop3.map((s) => `« ${s.title} »`).join(', ');
+    if (!window.confirm(`Finaliser et clôturer la phase ?\n\n${names} passeront au statut « À préparer » et la phase rejoindra l'historique. Action irréversible.`)) return;
     const winnerIds = quota.finalTop3.map((s) => s.id);
     await updateSongs((prev) => prev.map((s) => (winnerIds.includes(s.id) ? { ...s, status: 'to_prepare' } : s)));
-    const names = quota.finalTop3.map((s) => `« ${s.title} »`).join(', ');
-    await pushNotification(`🏆 Résultat de la phase : ${names} passent en préparation !${quota.quotaApplied ? ' (quota francophone appliqué)' : ''}`, 'result');
+    await pushNotification(`🏆 ${currentUser.name} a clôturé la phase : ${names} passent en préparation !${quota.quotaApplied ? ' (quota francophone appliqué)' : ''}`, 'result');
     // Instantanés pris ici, avant la clôture (voir phases.proposed_count et
     // phases.result dans recreate_full_schema.sql) : une fois les morceaux
     // gagnants passés au statut "À préparer" ci-dessus, computeRanking ne
     // pourrait plus les retrouver parmi les morceaux "Proposé" — le nombre
     // de propositions et le résultat final deviendraient donc impossibles à
     // reconstituer fiablement pour l'écran "Historique des phases".
+    // Nombre de propositions = nouvelles propositions depuis la dernière
+    // phase clôturée (encore en lice + départies par veto durant la phase),
+    // cohérent avec l'indicateur affiché pendant la phase (§ 6, § 11.3).
+    const boundary = lastPhaseBoundary(phaseHistory);
+    const isNew = (s) => isNewProposalSince(s, boundary);
     const vetoedSongIds = new Set((phase.vetoes || []).map((v) => v.song_id));
-    const proposedCount = scored.length + vetoedSongIds.size;
+    const newVetoedCount = [...vetoedSongIds].filter((id) => isNew(songs.find((s) => s.id === id))).length;
+    const proposedCount = scored.filter(isNew).length + newVetoedCount;
     const result = quota.finalTop3.map((s) => ({ title: s.title, artist: s.artist }));
     await updatePhase(null, { proposed_count: proposedCount, result });
   };
@@ -3151,7 +3172,7 @@ function ResultStep({ songs, members, currentUser, phase, updatePhase, updateSon
             </>
           ) : (
             <div style={{ fontSize: 13, color: '#9A958C' }}>
-              L'égalité persiste après le vote de départage express. Comme prévu au règlement, c'est à trancher à l'oral en répétition — l'administrateur·rice peut ensuite ajuster manuellement le statut des morceaux concernés dans le répertoire.
+              L'égalité persiste après le vote de départage express. Comme prévu au règlement, c'est à trancher à l'oral en répétition — n'importe quel membre peut ensuite ajuster manuellement le statut des morceaux concernés dans le répertoire.
             </div>
           )}
         </div>
@@ -3194,13 +3215,9 @@ function ResultStep({ songs, members, currentUser, phase, updatePhase, updateSon
             </div>
           )}
 
-          {isInitiator ? (
-            <button onClick={finalize} className="clx-btn clx-btn-primary" style={{ padding: '10px 20px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Sparkles size={15} /> Finaliser et clôturer la phase
-            </button>
-          ) : (
-            <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862' }}>En attente que l'administrateur·rice de la phase finalise le résultat.</div>
-          )}
+          <button onClick={finalize} className="clx-btn clx-btn-primary" style={{ padding: '10px 20px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Sparkles size={15} /> Finaliser et clôturer la phase
+          </button>
         </>
       )}
 
