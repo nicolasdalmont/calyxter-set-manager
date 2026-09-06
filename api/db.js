@@ -79,6 +79,18 @@ export function assertWritable(table, obj) {
   }
 }
 
+// Le pilote Neon encode un tableau JS comme un littéral tableau Postgres
+// ("{a,b}"), rejeté par les colonnes jsonb (« invalid input syntax for type
+// json »). Toutes les colonnes « liste » du schéma sont jsonb : on sérialise
+// donc tout objet/tableau en texte JSON (même règle que db/migrate.mjs). Un
+// objet simple passerait déjà, mais on uniformise.
+export function normValue(v) {
+  if (v !== null && typeof v === 'object' && !(v instanceof Date)) {
+    return JSON.stringify(v);
+  }
+  return v;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Méthode non autorisée.' });
@@ -114,7 +126,7 @@ export default async function handler(req, res) {
         assertWritable(table, row);
         const keys = Object.keys(row);
         if (keys.length === 0) throw new Error('Ligne vide');
-        const params = keys.map((k) => row[k]);
+        const params = keys.map((k) => normValue(row[k]));
         const colList = keys.map(ident).join(', ');
         const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
         let q = `insert into ${t} (${colList}) values (${placeholders})`;
@@ -136,7 +148,7 @@ export default async function handler(req, res) {
       assertWritable(table, set);
       const keys = Object.keys(set);
       if (keys.length === 0) return res.status(400).json({ error: 'Rien à mettre à jour.' });
-      const params = keys.map((k) => set[k]);
+      const params = keys.map((k) => normValue(set[k]));
       const assigns = keys.map((k, i) => `${ident(k)} = $${i + 1}`).join(', ');
       const q = `update ${t} set ${assigns}${buildWhere(body.where, params)}`;
       await sql.query(q, params);
