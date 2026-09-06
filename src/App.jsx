@@ -1171,6 +1171,15 @@ function GlobalStyle() {
         min-width: 0;
         text-align: left;
       }
+      /* Rangée de champs côte à côte (nom/date/heure/durée…). Sur écran
+         étroit, chaque champ occupe toute la largeur : un input date/heure
+         garde sur iOS une largeur intrinsèque qui, à deux ou trois par ligne,
+         déborde de la carte. On ne touche PAS à l'apparence du champ date
+         (sinon iOS n'affiche plus sa valeur) — juste la disposition. */
+      .clx-field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+      @media (max-width: 560px) {
+        .clx-field-row > * { flex: 1 1 100% !important; }
+      }
       .clx-input:focus { border-color: #F2A93B; box-shadow: 0 0 0 3px #F2A93B22; }
       .clx-input::placeholder { color: #6B6862; }
       /* iOS Safari zoome la page au focus d'un champ dont la police fait
@@ -4302,7 +4311,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 
       <div className="clx-card" style={{ padding: 18, marginBottom: 20 }}>
         <div className="clx-tape" />
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div className="clx-field-row" style={{ marginBottom: 10 }}>
           <Field label="Nom du concert *" style={{ flex: '2 1 220px' }}>
             <input className="clx-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Festival des Docks" />
           </Field>
@@ -5056,7 +5065,7 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
           </Field>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div className="clx-field-row" style={{ marginBottom: 10 }}>
           <Field label="Date de début *" style={{ flex: '1 1 140px' }}>
             <input type="date" className="clx-input" value={eventDate} onChange={(e) => handleEventDateChange(e.target.value)} />
           </Field>
@@ -5076,7 +5085,7 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
         </label>
 
         {!allDay && (
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div className="clx-field-row" style={{ marginBottom: 10 }}>
             <Field label="Heure de début" style={{ flex: '1 1 110px' }}>
               <input type="time" className="clx-input" value={startTime} onChange={(e) => handleStartTimeChange(e.target.value)} />
             </Field>
