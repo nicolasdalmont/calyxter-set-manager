@@ -19,7 +19,7 @@ import { sql } from '../lib/neon.js';
 
 const TABLES = new Set([
   'members', 'songs', 'phases', 'notifications',
-  'concerts', 'events', 'ideas', 'comments', 'compos',
+  'concerts', 'events', 'ideas', 'comments', 'compos', 'settings',
 ]);
 const IDENT_RE = /^[a-z_][a-z0-9_]*$/;
 

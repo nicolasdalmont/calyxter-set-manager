@@ -19,6 +19,7 @@
 create extension if not exists pgcrypto;
 
 -- 0. Nettoyage préalable (ordre inverse des dépendances)
+drop table if exists settings cascade;
 drop table if exists comments cascade;
 drop table if exists ideas cascade;
 drop table if exists events cascade;
@@ -199,6 +200,15 @@ create table compos (
   constraint compos_created_by_user_id_fkey foreign key (created_by_user_id) references members(id)
 );
 create index compos_status_idx on compos(status);
+
+-- 11. Réglages applicatifs simples (clé/valeur). id = la clé (ex.
+-- 'band_drive_url'). Upsert via /api/db (on conflict id).
+create table settings (
+  id text not null,
+  value text,
+  updated_at timestamptz not null default now(),
+  constraint settings_pkey primary key (id)
+);
 
 -- (Chemin B retenu — voir docs/Migration_Neon.md § 4 : la couche /api/db
 -- sur Vercel Functions parle a Neon en direct, sans Data API. Aucun role

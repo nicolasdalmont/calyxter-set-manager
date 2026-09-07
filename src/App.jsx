@@ -6,7 +6,7 @@ import {
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
   Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer,
-  Disc3, FileText, Music4, TrendingUp, RefreshCw, Unlink, Link2, Paperclip
+  Disc3, FileText, Music4, TrendingUp, RefreshCw, Unlink, Link2, Paperclip, FolderOpen
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -419,6 +419,20 @@ async function fetchCompos() {
   return dbSelect('compos', { order: [['title', 'asc']] });
 }
 
+// Réglages applicatifs (table settings, clé/valeur) — renvoyés en objet plat.
+// Non critique : un échec ne doit pas empêcher le chargement de l'app.
+async function fetchSettings() {
+  try {
+    const rows = await dbSelect('settings');
+    const out = {};
+    for (const r of rows || []) out[r.id] = r.value;
+    return out;
+  } catch (e) {
+    console.error('Erreur en chargeant les réglages', e);
+    return {};
+  }
+}
+
 // Commentaires sur les rendez-vous et concerts (table partagée) : chargés
 // en une fois comme le reste des données, filtrés côté client par
 // event_id/concert_id (voir commentsForTarget ci-dessous).
@@ -588,6 +602,7 @@ export default function App() {
   const [phaseHistory, setPhaseHistory] = useState([]);
   const [ideas, setIdeas] = useState([]);
   const [compos, setCompos] = useState([]);
+  const [settings, setSettings] = useState({});
   const [comments, setComments] = useState([]);
   const [concertToOpen, setConcertToOpen] = useState(null);
   const [openPhaseHistory, setOpenPhaseHistory] = useState(false);
@@ -609,7 +624,7 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [supaMembers, s, p, n, c, ev, ph, id, cp, cm] = await Promise.all([
+        const [supaMembers, s, p, n, c, ev, ph, id, cp, st, cm] = await Promise.all([
           withTimeout(fetchMembersFromSupabase(), 8000, null),
           withTimeout(loadSongs(), 8000, []),
           withTimeout(fetchActivePhase(), 8000, null),
@@ -619,6 +634,7 @@ export default function App() {
           withTimeout(fetchPhaseHistory(), 8000, []),
           withTimeout(fetchIdeas(), 8000, []),
           withTimeout(fetchCompos(), 8000, []),
+          withTimeout(fetchSettings(), 8000, {}),
           withTimeout(fetchComments(), 8000, []),
         ]);
         if (cancelled) return;
@@ -635,6 +651,7 @@ export default function App() {
         setPhaseHistory(ph);
         setIdeas(id);
         setCompos(cp);
+        setSettings(st || {});
         setComments(cm);
         setCurrentUserId(loadPersonal('current-member-id'));
       } catch (e) {
@@ -744,6 +761,16 @@ export default function App() {
       await dbDelete('compos', [['id', 'eq', compoId]]);
     } catch (e) {
       console.error('Erreur en supprimant la compo', e);
+    }
+  }, []);
+
+  const saveSetting = useCallback(async (key, value) => {
+    const v = (value || '').trim();
+    setSettings((prev) => ({ ...prev, [key]: v }));
+    try {
+      await upsertRows('settings', [{ id: key, value: v || null, updated_at: new Date().toISOString() }]);
+    } catch (e) {
+      console.error('Erreur en enregistrant le réglage', e);
     }
   }, []);
 
@@ -1074,6 +1101,8 @@ export default function App() {
             saveCompo={saveCompo}
             deleteCompo={deleteCompo}
             pushNotification={pushNotification}
+            bandDriveUrl={settings.band_drive_url || ''}
+            onSetBandDriveUrl={(url) => saveSetting('band_drive_url', url)}
           />
         )}
 
@@ -2545,7 +2574,7 @@ function formatDeezerRank(rank) {
   return typeof rank === 'number' ? rank.toLocaleString('fr-FR') : null;
 }
 
-function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushNotification }) {
+function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushNotification, bandDriveUrl, onSetBandDriveUrl }) {
   const [editing, setEditing] = useState(null); // 'new' | objet compo | null
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(() => new Set(['wip', 'done']));
@@ -2625,6 +2654,11 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
     setEditing(null);
   };
 
+  const editBandDrive = () => {
+    const v = window.prompt('Lien du dossier Google Drive partagé du groupe :', bandDriveUrl || '');
+    if (v !== null) onSetBandDriveUrl(v);
+  };
+
   return (
     <div>
       <div className="clx-counter" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
@@ -2639,6 +2673,18 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
         >
           <Plus size={14} /> Nouvelle compo
         </button>
+      </div>
+
+      <div className="clx-mono" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#9A958C', marginBottom: 12, flexWrap: 'wrap' }}>
+        <FolderOpen size={13} color="#6B6862" style={{ flexShrink: 0 }} />
+        {bandDriveUrl ? (
+          <>
+            <a href={bandDriveUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#F2A93B' }}>Ouvrir le dossier Drive du groupe</a>
+            <button onClick={editBandDrive} className="clx-btn clx-btn-ghost" style={{ padding: '2px 8px', borderRadius: 5, fontSize: 10 }}>modifier</button>
+          </>
+        ) : (
+          <button onClick={editBandDrive} className="clx-btn clx-btn-ghost" style={{ padding: '4px 10px', borderRadius: 5, fontSize: 11 }}>Définir le dossier Drive du groupe</button>
+        )}
       </div>
 
       <div style={{ position: 'relative', marginBottom: 10 }}>
@@ -2673,6 +2719,7 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
           compo={editing === 'new' ? null : editing}
           members={members}
           currentUser={currentUser}
+          bandDriveUrl={bandDriveUrl}
           onClose={() => setEditing(null)}
           onSave={handleSave}
           onDelete={handleDelete}
@@ -2750,7 +2797,7 @@ function CompoRow({ compo, members, onEdit }) {
   );
 }
 
-function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete }) {
+function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSave, onDelete }) {
   const isEdit = !!compo;
   const [title, setTitle] = useState(compo?.title || '');
   const [status, setStatus] = useState(compo?.status || 'wip');
@@ -2990,6 +3037,9 @@ function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete })
           {docError && <div style={{ color: '#C1454B', fontSize: 11, marginTop: 6 }}>{docError}</div>}
           <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 6 }}>
             Colle un lien de partage (Drive, doc, SoundCloud privé…). Autant de documents que nécessaire.
+            {bandDriveUrl && (
+              <> — <a href={bandDriveUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#F2A93B' }}>ouvrir le dossier Drive du groupe</a> pour récupérer le lien d'un fichier.</>
+            )}
           </div>
         </div>
 

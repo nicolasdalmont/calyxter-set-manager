@@ -139,7 +139,7 @@ Plan détaillé et journal d'exécution : `docs/Migration_Neon.md` dans le dép�
 
 # 3. Modèle de données
 
-La base compte désormais 9 tables (la 9ᵉ, `compos`, ajoutée avec le module § 5.4). Les données des phases de choix (vetos, votes, brouillons, départages) restent volontairement embarquées en JSON directement dans la table des phases plutôt que normalisées, pour rester au plus près de la structure manipulée par l'interface ; le même principe a été repris pour les sets de concert et pour la récurrence des rendez-vous.
+La base compte désormais 10 tables (`compos` ajoutée avec le module § 5.4, `settings` — réglages clé/valeur, § 3.10). Les données des phases de choix (vetos, votes, brouillons, départages) restent volontairement embarquées en JSON directement dans la table des phases plutôt que normalisées, pour rester au plus près de la structure manipulée par l'interface ; le même principe a été repris pour les sets de concert et pour la récurrence des rendez-vous.
 
 ## 3.1 Table members
 
@@ -274,6 +274,18 @@ Morceaux originaux du groupe (module § 5.4), indépendante de `songs`.
 | created_by_user_id | uuid | Référence vers members.id |
 | created_at / updated_at | timestamptz | Horodatage |
 
+## 3.10 Table settings
+
+Réglages applicatifs simples, en clé/valeur (pas d'écran de réglages dédié).
+
+| Colonne | Type | Description |
+| --- | --- | --- |
+| id | text | La clé du réglage (clé primaire) |
+| value | text | La valeur |
+| updated_at | timestamptz | Dernière modification |
+
+Clé utilisée à ce jour : `band_drive_url` (lien du dossier Google Drive partagé du groupe, § 5.4). L'écriture passe par un upsert `on conflict (id)` via `/api/db`.
+
 # 4. Sécurité et authentification
 
 Choix assumé pour ce projet : pas de service d'authentification tiers (jugé trop complexe à gérer pour 6 utilisateurs). L'authentification est gérée entièrement au niveau applicatif.
@@ -364,7 +376,9 @@ Chaque compo porte :
 - **titre** (obligatoire), **durée** (mm:ss), **statut** — « En création » ou « Abouti » —, **album** (texte libre, vide si le morceau n'est sur aucun album) ;
 - **auteur·rice·s des paroles** et **compositeur·rice·s**, chacun en multi-sélection parmi les membres ;
 - **grille d'accords** : champ texte libre saisi dans l'application (en général quelques accords) ;
-- **documents liés** : une liste de liens **typés** — bouton « Lier un document », on saisit un nom (raccourcis proposés : Paroles, Maquette, Partition, Tablature, Enregistrement) et on colle un lien de partage (Google Drive, doc, SoundCloud privé…). Autant de documents que nécessaire ; chacun est modifiable (renommer) ou retirable. Ce sont des liens externes, **aucun fichier n'est hébergé par l'application** — choix assumé pour ne pas consommer de stockage avec des fichiers audio, et parce que ces contenus vivent déjà dans les outils du groupe. Stockés dans `compos.documents` (jsonb, § 3.9). Il n'y a pas d'explorateur Drive intégré (cela demanderait une authentification Google par membre, hors périmètre).
+- **documents liés** : une liste de liens **typés** — bouton « Lier un document », on saisit un nom (raccourcis proposés : Paroles, Maquette, Partition, Tablature, Enregistrement) et on colle un lien de partage (Google Drive, doc, SoundCloud privé…). Autant de documents que nécessaire ; chacun est modifiable (renommer) ou retirable. Ce sont des liens externes, **aucun fichier n'est hébergé par l'application** — choix assumé pour ne pas consommer de stockage avec des fichiers audio, et parce que ces contenus vivent déjà dans les outils du groupe. Stockés dans `compos.documents` (jsonb, § 3.9).
+
+Il n'y a pas d'explorateur Drive intégré (cela demanderait une authentification Google par membre, hors périmètre). À la place, un **raccourci vers le dossier Drive partagé du groupe** : en tête de l'onglet Compos, un lien « Ouvrir le dossier Drive du groupe » (et « Définir / modifier » pour renseigner son URL). Le même lien est rappelé dans l'éditeur, sous la zone d'ajout de document, pour aller y chercher le lien de partage d'un fichier puis le coller. L'URL du dossier est stockée dans `settings.band_drive_url` (§ 3.10).
 
 **Lien Deezer** (pour les compos déjà publiées) : une recherche Deezer dans l'éditeur permet de lier la piste. Au moment du lien, l'application récupère et stocke la **pochette de l'album** et l'**indice de popularité `rank`** de Deezer (entier ; ce n'est pas un nombre d'écoutes — non exposé par Deezer —, juste un classement interne, instable sur de petits volumes, cf. § 12). Un bouton « Rafraîchir » dans l'éditeur et « Délier » pour retirer l'association ; la date de dernière synchro est affichée. Endpoint dédié `api/deezer-track` (portée Neon uniquement).
 
