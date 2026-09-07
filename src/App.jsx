@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search, Plus, X, Check, ExternalLink, ListPlus, Users, Pencil, ChevronUp, ChevronDown, GripVertical,
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Music2,
@@ -2502,8 +2503,21 @@ function DurationSelect({ value, onChange }) {
 }
 
 function Modal({ onClose, title, icon: Icon, children, wide }) {
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: '#000000aa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, zIndex: 50 }} onClick={onClose}>
+  // Rendu via un portail sur <body> : sinon le calque est piégé dans le
+  // contexte d'empilement de <main> (position: relative; z-index: 1) et passe
+  // SOUS le bandeau supérieur (position: sticky; z-index: 10). Le wrapper
+  // garde la classe `calyxter-app` pour hériter du box-sizing et de la police,
+  // mais on neutralise son fond (le calque doit rester semi-transparent).
+  return createPortal(
+    <div
+      className="calyxter-app"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 100,
+        background: '#000000aa', backgroundImage: 'none',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+      }}
+      onClick={onClose}
+    >
       <div
         className="clx-card clx-scrollbar"
         style={{ width: '100%', maxWidth: wide ? 560 : 420, maxHeight: '88vh', overflowY: 'auto', padding: 22 }}
@@ -2518,7 +2532,8 @@ function Modal({ onClose, title, icon: Icon, children, wide }) {
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
