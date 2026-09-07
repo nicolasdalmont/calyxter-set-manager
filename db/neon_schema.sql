@@ -185,9 +185,8 @@ create table compos (
   album text,                                        -- nom de l'album si le morceau y figure, sinon null
   author_ids jsonb not null default '[]'::jsonb,     -- auteur(s) des paroles (membres)
   composer_ids jsonb not null default '[]'::jsonb,   -- compositeur(s) (membres)
-  lyrics_url text,                                   -- lien vers les paroles
   chords text,                                       -- grille d'accords, saisie libre (quelques accords)
-  demo_url text,                                     -- lien vers la maquette (morceaux en création)
+  documents jsonb not null default '[]'::jsonb,      -- liens typés : [{ id, name, url }] (paroles, maquette, partition…)
   deezer_track_id text,                              -- id de la piste Deezer si le morceau y est
   deezer_url text,
   cover_url text,                                    -- pochette récupérée de Deezer

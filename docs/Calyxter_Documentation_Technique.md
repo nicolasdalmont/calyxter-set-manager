@@ -265,7 +265,7 @@ Morceaux originaux du groupe (module § 5.4), indépendante de `songs`.
 | author_ids | jsonb | Tableau d'identifiants de membres — auteur·rice·s des paroles |
 | composer_ids | jsonb | Tableau d'identifiants de membres — compositeur·rice·s |
 | chords | text | Grille d'accords, saisie libre dans l'application (« quelques accords », ex. `A#min Gmaj Cmaj`) |
-| lyrics_url / demo_url | text | Liens externes (Drive, doc, SoundCloud privé…) vers les paroles et la maquette. Aucun fichier n'est hébergé par l'application |
+| documents | jsonb | Liens typés : tableau `[{ id, name, url }]`. Autant que nécessaire (paroles, maquette, partition, tablature, enregistrement…). Liens externes (Drive, doc, SoundCloud privé…) — aucun fichier n'est hébergé par l'application |
 | deezer_track_id | text | Identifiant de la piste Deezer si liée |
 | deezer_url | text | Lien vers la piste Deezer |
 | cover_url | text | Pochette d'album récupérée de Deezer |
@@ -364,13 +364,13 @@ Chaque compo porte :
 - **titre** (obligatoire), **durée** (mm:ss), **statut** — « En création » ou « Abouti » —, **album** (texte libre, vide si le morceau n'est sur aucun album) ;
 - **auteur·rice·s des paroles** et **compositeur·rice·s**, chacun en multi-sélection parmi les membres ;
 - **grille d'accords** : champ texte libre saisi dans l'application (en général quelques accords) ;
-- **paroles** et **maquette** : des **liens externes** (Google Drive, doc, SoundCloud privé…), pas des fichiers hébergés par l'application — choix assumé pour ne pas consommer de stockage avec des fichiers audio, et parce que ces contenus vivent déjà dans les outils du groupe. La maquette concerne surtout les morceaux en création.
+- **documents liés** : une liste de liens **typés** — bouton « Lier un document », on saisit un nom (raccourcis proposés : Paroles, Maquette, Partition, Tablature, Enregistrement) et on colle un lien de partage (Google Drive, doc, SoundCloud privé…). Autant de documents que nécessaire ; chacun est modifiable (renommer) ou retirable. Ce sont des liens externes, **aucun fichier n'est hébergé par l'application** — choix assumé pour ne pas consommer de stockage avec des fichiers audio, et parce que ces contenus vivent déjà dans les outils du groupe. Stockés dans `compos.documents` (jsonb, § 3.9). Il n'y a pas d'explorateur Drive intégré (cela demanderait une authentification Google par membre, hors périmètre).
 
 **Lien Deezer** (pour les compos déjà publiées) : une recherche Deezer dans l'éditeur permet de lier la piste. Au moment du lien, l'application récupère et stocke la **pochette de l'album** et l'**indice de popularité `rank`** de Deezer (entier ; ce n'est pas un nombre d'écoutes — non exposé par Deezer —, juste un classement interne, instable sur de petits volumes, cf. § 12). Un bouton « Rafraîchir » dans l'éditeur et « Délier » pour retirer l'association ; la date de dernière synchro est affichée. Endpoint dédié `api/deezer-track` (portée Neon uniquement).
 
 **Mise à jour automatique** : à chaque ouverture de l'onglet Compos, l'application réinterroge Deezer en arrière-plan (séquentiel, silencieux) pour toutes les compos liées et n'enregistre que celles dont l'indice de popularité (ou la pochette) a réellement bougé. En cas d'échec Deezer, la valeur connue est conservée.
 
-**Écran liste** : compteur (total, abouties, en création), recherche titre/album, filtre de statut en multi-sélection (§ 5.2), et par carte : pochette (ou icône), titre, durée, album, indice de popularité, auteurs/compositeurs, badge de statut. En bout de ligne, des raccourcis directs vers la maquette, les paroles et la page Deezer quand ils existent.
+**Écran liste** : compteur (total, abouties, en création), recherche titre/album, filtre de statut en multi-sélection (§ 5.2), et par carte : pochette (ou icône), titre, durée, album, indice de popularité, auteurs/compositeurs, aperçu de la grille d'accords, badge de statut. En bout de ligne, des raccourcis directs vers les premiers documents liés et la page Deezer quand ils existent.
 
 # 6. Fonctionnalités — Module Phase de choix
 

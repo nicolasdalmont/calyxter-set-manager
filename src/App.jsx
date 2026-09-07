@@ -6,7 +6,7 @@ import {
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
   Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer,
-  Disc3, FileText, Music4, AudioLines, TrendingUp, RefreshCw, Unlink
+  Disc3, FileText, Music4, TrendingUp, RefreshCw, Unlink, Link2, Paperclip
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -2688,9 +2688,9 @@ function CompoRow({ compo, members, onEdit }) {
   const authors = names(compo.author_ids);
   const composers = names(compo.composer_ids);
   const rank = formatDeezerRank(compo.deezer_rank);
+  const docs = Array.isArray(compo.documents) ? compo.documents.filter((d) => d && d.url) : [];
   const quickLinks = [
-    compo.demo_url && { href: compo.demo_url, icon: AudioLines, title: 'Écouter la maquette' },
-    compo.lyrics_url && { href: compo.lyrics_url, icon: FileText, title: 'Paroles' },
+    ...docs.slice(0, 3).map((d) => ({ href: d.url, icon: FileText, title: d.name || 'Document' })),
     compo.deezer_url && { href: compo.deezer_url, icon: Radio, title: 'Ouvrir sur Deezer' },
   ].filter(Boolean);
 
@@ -2758,9 +2758,15 @@ function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete })
   const [album, setAlbum] = useState(compo?.album || '');
   const [authorIds, setAuthorIds] = useState(compo?.author_ids || []);
   const [composerIds, setComposerIds] = useState(compo?.composer_ids || []);
-  const [lyricsUrl, setLyricsUrl] = useState(compo?.lyrics_url || '');
   const [chords, setChords] = useState(compo?.chords || '');
-  const [demoUrl, setDemoUrl] = useState(compo?.demo_url || '');
+  const [documents, setDocuments] = useState(
+    Array.isArray(compo?.documents)
+      ? compo.documents.filter((d) => d && d.url).map((d) => ({ id: d.id || uid(), name: String(d.name || ''), url: String(d.url) }))
+      : [],
+  );
+  const [docName, setDocName] = useState('');
+  const [docUrl, setDocUrl] = useState('');
+  const [docError, setDocError] = useState('');
   const [deezer, setDeezer] = useState(
     compo && compo.deezer_track_id
       ? { id: String(compo.deezer_track_id), url: compo.deezer_url, cover_url: compo.cover_url, rank: compo.deezer_rank, synced_at: compo.deezer_synced_at }
@@ -2825,6 +2831,16 @@ function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete })
     }
   };
 
+  const addDocument = () => {
+    const u = docUrl.trim();
+    if (!u) { setDocError('Le lien est obligatoire.'); return; }
+    if (!/^https?:\/\//i.test(u)) { setDocError('Le lien doit commencer par http:// ou https://'); return; }
+    setDocuments((prev) => [...prev, { id: uid(), name: docName.trim(), url: u }]);
+    setDocName(''); setDocUrl(''); setDocError('');
+  };
+  const removeDocument = (id) => setDocuments((prev) => prev.filter((d) => d.id !== id));
+  const renameDocument = (id, name) => setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, name } : d)));
+
   const submit = async () => {
     if (!title.trim()) { setError('Le titre est obligatoire.'); return; }
     const seconds = parseDurationInput(duration);
@@ -2838,9 +2854,10 @@ function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete })
       album: album.trim() || null,
       author_ids: authorIds,
       composer_ids: composerIds,
-      lyrics_url: lyricsUrl.trim() || null,
       chords: chords.trim() || null,
-      demo_url: demoUrl.trim() || null,
+      documents: documents
+        .filter((d) => d.url && d.url.trim())
+        .map((d) => ({ id: d.id, name: (d.name || '').trim() || 'Document', url: d.url.trim() })),
       deezer_track_id: deezer?.id || null,
       deezer_url: deezer?.url || null,
       cover_url: deezer?.cover_url || null,
@@ -2899,12 +2916,82 @@ function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete })
             placeholder="Ex. Couplet : A#min  Gmaj  Cmaj  —  Refrain : Fmaj  Gmaj"
           />
         </Field>
-        <Field label="Paroles — lien (Drive, doc…)">
-          <input className="clx-input" value={lyricsUrl} onChange={(e) => setLyricsUrl(e.target.value)} placeholder="https://…" />
-        </Field>
-        <Field label="Maquette — lien (Drive, SoundCloud privé…)">
-          <input className="clx-input" value={demoUrl} onChange={(e) => setDemoUrl(e.target.value)} placeholder="https://…" />
-        </Field>
+        <div className="clx-card" style={{ padding: 12, background: '#101012' }}>
+          <div className="clx-display" style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <Paperclip size={14} color="#F2A93B" /> Documents liés
+          </div>
+
+          {documents.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+              {documents.map((d) => (
+                <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <FileText size={13} color="#9A958C" style={{ flexShrink: 0 }} />
+                  <input
+                    className="clx-input"
+                    value={d.name}
+                    onChange={(e) => renameDocument(d.id, e.target.value)}
+                    placeholder="Nom du document"
+                    style={{ flex: '1 1 90px', padding: '6px 8px', fontSize: 13 }}
+                  />
+                  <a
+                    href={d.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="clx-mono"
+                    style={{ flex: '2 1 120px', minWidth: 0, fontSize: 11, color: '#F2A93B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={d.url}
+                  >
+                    {d.url.replace(/^https?:\/\//, '')}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => removeDocument(d.id)}
+                    className="clx-btn clx-btn-ghost"
+                    style={{ padding: 5, borderRadius: 5, display: 'flex', flexShrink: 0, color: '#C1454B' }}
+                    title="Retirer"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+            {['Paroles', 'Maquette', 'Partition', 'Tablature', 'Enregistrement'].map((preset) => (
+              <Chip key={preset} active={docName === preset} onClick={() => setDocName(preset)}>{preset}</Chip>
+            ))}
+          </div>
+          <div className="clx-field-row">
+            <input
+              className="clx-input"
+              value={docName}
+              onChange={(e) => setDocName(e.target.value)}
+              placeholder="Nom (ex. Paroles)"
+              style={{ flex: '1 1 120px' }}
+            />
+            <input
+              className="clx-input"
+              value={docUrl}
+              onChange={(e) => setDocUrl(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addDocument(); } }}
+              placeholder="Lien (Drive, SoundCloud privé…)"
+              style={{ flex: '2 1 160px' }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={addDocument}
+            className="clx-btn clx-btn-ghost"
+            style={{ marginTop: 6, padding: '7px 12px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Link2 size={13} /> Lier un document
+          </button>
+          {docError && <div style={{ color: '#C1454B', fontSize: 11, marginTop: 6 }}>{docError}</div>}
+          <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 6 }}>
+            Colle un lien de partage (Drive, doc, SoundCloud privé…). Autant de documents que nécessaire.
+          </div>
+        </div>
 
         <div className="clx-card" style={{ padding: 12, background: '#101012' }}>
           <div className="clx-display" style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
