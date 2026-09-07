@@ -2535,6 +2535,47 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(() => new Set(['wip', 'done']));
 
+  // À chaque ouverture de l'onglet, on réinterroge Deezer pour les compos
+  // liées et on met à jour l'indice de popularité (et la pochette) s'il a
+  // bougé. En arrière-plan, séquentiel (limites de débit Deezer), silencieux :
+  // en cas d'échec on garde la valeur stockée. `saveCompo` n'écrit en base que
+  // les compos réellement modifiées.
+  const composRef = useRef(compos);
+  composRef.current = compos;
+  useEffect(() => {
+    const linked = composRef.current.filter((c) => c.deezer_track_id);
+    if (linked.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const linkedCompo of linked) {
+        try {
+          const t = await fetchDeezerTrack(linkedCompo.deezer_track_id);
+          if (cancelled) return;
+          // Version la plus fraîche (une édition a pu passer entre-temps).
+          const c = composRef.current.find((x) => x.id === linkedCompo.id);
+          if (!c) continue;
+          const newRank = typeof t.rank === 'number' ? t.rank : null;
+          const newCover = t.cover_url || c.cover_url || null;
+          const newUrl = t.deezer_url || c.deezer_url || null;
+          if (newRank !== c.deezer_rank || newCover !== c.cover_url || newUrl !== c.deezer_url) {
+            const nowIso = new Date().toISOString();
+            await saveCompo({
+              ...c,
+              deezer_rank: newRank,
+              cover_url: newCover,
+              deezer_url: newUrl,
+              deezer_synced_at: nowIso,
+              updated_at: nowIso,
+            });
+          }
+        } catch (e) {
+          // silencieux : Deezer indisponible ou piste supprimée -> on garde la valeur connue
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const toggleStatus = (s) => setStatusFilter((prev) => {
     const next = new Set(prev);
     if (next.has(s)) next.delete(s); else next.add(s);
