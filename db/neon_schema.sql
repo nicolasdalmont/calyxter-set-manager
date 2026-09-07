@@ -34,6 +34,8 @@ drop type if exists event_kind cascade;
 drop type if exists phase_step cascade;
 drop type if exists song_language cascade;
 drop type if exists song_status cascade;
+drop table if exists compos cascade;
+drop type if exists compo_status cascade;
 
 -- 1. Types énumérés
 create type song_status as enum ('proposed', 'rejected', 'to_prepare', 'ready');
@@ -42,6 +44,7 @@ create type phase_step as enum ('proposal', 'veto', 'vote', 'result', 'closed');
 create type event_kind as enum ('repetition', 'atelier', 'residence', 'autre');
 create type recurrence_unit as enum ('day', 'week', 'month', 'year');
 create type idea_status as enum ('created', 'processed', 'done');
+create type compo_status as enum ('wip', 'done');   -- wip = en création, done = abouti
 
 -- 2. Membres du groupe (comptes gérés au niveau de l'appli)
 create table members (
@@ -169,6 +172,34 @@ create table comments (
 );
 create index comments_event_id_idx on comments(event_id);
 create index comments_concert_id_idx on comments(concert_id);
+
+-- 10. Compos — répertoire des morceaux originaux du groupe (distinct du
+-- répertoire de reprises « songs »). Paroles, grille d'accords et maquette
+-- sont des LIENS externes (Drive…), pas des fichiers stockés. Le lien Deezer
+-- (piste) alimente pochette + indicateur de popularité (rank).
+create table compos (
+  id uuid not null default gen_random_uuid(),
+  title text not null,
+  status compo_status not null default 'wip',
+  duration_seconds integer,
+  album text,                                        -- nom de l'album si le morceau y figure, sinon null
+  author_ids jsonb not null default '[]'::jsonb,     -- auteur(s) des paroles (membres)
+  composer_ids jsonb not null default '[]'::jsonb,   -- compositeur(s) (membres)
+  lyrics_url text,                                   -- lien vers les paroles
+  chords_url text,                                   -- lien vers la grille d'accords
+  demo_url text,                                     -- lien vers la maquette (morceaux en création)
+  deezer_track_id text,                              -- id de la piste Deezer si le morceau y est
+  deezer_url text,
+  cover_url text,                                    -- pochette récupérée de Deezer
+  deezer_rank integer,                              -- indicateur de popularité Deezer (rank)
+  deezer_synced_at timestamptz,
+  created_by_user_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint compos_pkey primary key (id),
+  constraint compos_created_by_user_id_fkey foreign key (created_by_user_id) references members(id)
+);
+create index compos_status_idx on compos(status);
 
 -- (Chemin B retenu — voir docs/Migration_Neon.md § 4 : la couche /api/db
 -- sur Vercel Functions parle a Neon en direct, sans Data API. Aucun role

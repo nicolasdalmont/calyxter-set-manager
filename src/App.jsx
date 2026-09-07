@@ -4,7 +4,8 @@ import {
   ChevronRight, Radio, ListMusic, Ban, Sparkles, Music2,
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
-  Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer
+  Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer,
+  Disc3, FileText, Music4, AudioLines, TrendingUp, RefreshCw, Unlink
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -17,6 +18,13 @@ const STATUS = {
   proposed:    { label: 'Proposé',         badge: 'PROPOSÉ',     color: '#7C8BA8' },
   rejected:    { label: 'Sorti',           badge: 'SORTI',       color: '#C1454B' },
 };
+
+// Statuts des compos (morceaux originaux du groupe) — voir onglet Compos.
+const COMPO_STATUS = {
+  wip:  { label: 'En création', color: '#F0CE8A' },
+  done: { label: 'Abouti',      color: '#6FA287' },
+};
+const COMPO_STATUS_ORDER = ['wip', 'done'];
 
 const LANGUAGES = {
   FR: 'Francophone',
@@ -406,6 +414,10 @@ async function fetchIdeas() {
   return dbSelect('ideas', { order: [['created_at', 'desc']] });
 }
 
+async function fetchCompos() {
+  return dbSelect('compos', { order: [['title', 'asc']] });
+}
+
 // Commentaires sur les rendez-vous et concerts (table partagée) : chargés
 // en une fois comme le reste des données, filtrés côté client par
 // event_id/concert_id (voir commentsForTarget ci-dessous).
@@ -445,6 +457,15 @@ async function searchDeezer(query) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'La recherche Deezer a échoué.');
   return data.results || [];
+}
+
+// Détail d'une piste Deezer (pochette + rank) pour lier une compo. Neon
+// uniquement : pas d'équivalent parmi les Edge Functions Supabase.
+async function fetchDeezerTrack(trackId) {
+  const res = await fetch(`/api/deezer-track?id=${encodeURIComponent(trackId)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Récupération de la piste Deezer impossible.');
+  return data;
 }
 
 
@@ -565,6 +586,7 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [phaseHistory, setPhaseHistory] = useState([]);
   const [ideas, setIdeas] = useState([]);
+  const [compos, setCompos] = useState([]);
   const [comments, setComments] = useState([]);
   const [concertToOpen, setConcertToOpen] = useState(null);
   const [openPhaseHistory, setOpenPhaseHistory] = useState(false);
@@ -586,7 +608,7 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [supaMembers, s, p, n, c, ev, ph, id, cm] = await Promise.all([
+        const [supaMembers, s, p, n, c, ev, ph, id, cp, cm] = await Promise.all([
           withTimeout(fetchMembersFromSupabase(), 8000, null),
           withTimeout(loadSongs(), 8000, []),
           withTimeout(fetchActivePhase(), 8000, null),
@@ -595,6 +617,7 @@ export default function App() {
           withTimeout(fetchEvents(), 8000, []),
           withTimeout(fetchPhaseHistory(), 8000, []),
           withTimeout(fetchIdeas(), 8000, []),
+          withTimeout(fetchCompos(), 8000, []),
           withTimeout(fetchComments(), 8000, []),
         ]);
         if (cancelled) return;
@@ -610,6 +633,7 @@ export default function App() {
         setEvents(ev);
         setPhaseHistory(ph);
         setIdeas(id);
+        setCompos(cp);
         setComments(cm);
         setCurrentUserId(loadPersonal('current-member-id'));
       } catch (e) {
@@ -698,6 +722,27 @@ export default function App() {
       await dbDelete('songs', [['id', 'eq', songId]]);
     } catch (e) {
       console.error('Erreur en supprimant le morceau', e);
+    }
+  }, []);
+
+  const saveCompo = useCallback(async (compo) => {
+    setCompos((prev) => {
+      const exists = prev.some((c) => c.id === compo.id);
+      return exists ? prev.map((c) => (c.id === compo.id ? compo : c)) : [...prev, compo];
+    });
+    try {
+      await upsertRows('compos', [compo]);
+    } catch (e) {
+      console.error('Erreur en enregistrant la compo', e);
+    }
+  }, []);
+
+  const deleteCompo = useCallback(async (compoId) => {
+    setCompos((prev) => prev.filter((c) => c.id !== compoId));
+    try {
+      await dbDelete('compos', [['id', 'eq', compoId]]);
+    } catch (e) {
+      console.error('Erreur en supprimant la compo', e);
     }
   }, []);
 
@@ -1016,6 +1061,17 @@ export default function App() {
             currentUser={currentUser}
             saveIdea={saveIdea}
             deleteIdea={deleteIdea}
+            pushNotification={pushNotification}
+          />
+        )}
+
+        {tab === 'compos' && (
+          <ComposTab
+            compos={compos}
+            members={members}
+            currentUser={currentUser}
+            saveCompo={saveCompo}
+            deleteCompo={deleteCompo}
             pushNotification={pushNotification}
           />
         )}
@@ -1525,6 +1581,7 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
         <nav className="clx-topnav" style={{ display: 'flex', gap: 4 }}>
           <TabButton icon={Home} label="Accueil" active={tab === 'accueil'} onClick={() => setTab('accueil')} />
           <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} pulse={phaseActive} />
+          <TabButton icon={Disc3} label="Compos" active={tab === 'compos'} onClick={() => setTab('compos')} />
           <TabButton icon={Calendar} label="Rendez-vous" active={tab === 'rendezvous'} onClick={() => setTab('rendezvous')} />
           <TabButton icon={Mic2} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
           <TabButton icon={Lightbulb} label="Boîte à idées" active={tab === 'ideas'} onClick={() => setTab('ideas')} />
@@ -2462,6 +2519,416 @@ function Modal({ onClose, title, icon: Icon, children, wide }) {
         {children}
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  COMPOS — répertoire des morceaux originaux du groupe               */
+/* ------------------------------------------------------------------ */
+
+function formatDeezerRank(rank) {
+  return typeof rank === 'number' ? rank.toLocaleString('fr-FR') : null;
+}
+
+function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushNotification }) {
+  const [editing, setEditing] = useState(null); // 'new' | objet compo | null
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState(() => new Set(['wip', 'done']));
+
+  const toggleStatus = (s) => setStatusFilter((prev) => {
+    const next = new Set(prev);
+    if (next.has(s)) next.delete(s); else next.add(s);
+    return next;
+  });
+
+  const filtered = compos
+    .filter((c) => statusFilter.size === 0 || statusFilter.has(c.status))
+    .filter((c) => {
+      const q = search.trim().toLowerCase();
+      if (!q) return true;
+      return c.title.toLowerCase().includes(q) || (c.album || '').toLowerCase().includes(q);
+    });
+
+  const doneCount = compos.filter((c) => c.status === 'done').length;
+  const wipCount = compos.filter((c) => c.status === 'wip').length;
+
+  const handleSave = async (compo, isNew) => {
+    await saveCompo(compo);
+    await pushNotification(
+      isNew
+        ? `🎼 ${currentUser.name} a ajouté la compo « ${compo.title} ».`
+        : `🎼 ${currentUser.name} a modifié la compo « ${compo.title} ».`,
+      'info',
+    );
+    setEditing(null);
+  };
+
+  const handleDelete = async (compo) => {
+    await deleteCompo(compo.id);
+    await pushNotification(`🗑️ ${currentUser.name} a supprimé la compo « ${compo.title} ».`, 'info');
+    setEditing(null);
+  };
+
+  return (
+    <div>
+      <div className="clx-counter" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ fontSize: 14 }}>
+          <span style={{ fontWeight: 700 }}>{compos.length}</span> compo{compos.length > 1 ? 's' : ''}
+          <span style={{ color: '#9A958C' }}> · {doneCount} aboutie{doneCount > 1 ? 's' : ''}, {wipCount} en création</span>
+        </div>
+        <button
+          onClick={() => setEditing('new')}
+          className="clx-btn clx-btn-primary"
+          style={{ padding: '8px 14px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          <Plus size={14} /> Nouvelle compo
+        </button>
+      </div>
+
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6862' }} />
+        <input
+          className="clx-input"
+          style={{ paddingLeft: 32 }}
+          placeholder="Rechercher un titre ou un album…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
+        {COMPO_STATUS_ORDER.map((k) => (
+          <Chip key={k} active={statusFilter.has(k)} onClick={() => toggleStatus(k)}>{COMPO_STATUS[k].label}</Chip>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState text={compos.length === 0 ? 'Aucune compo pour le moment — ajoutes-en une.' : 'Aucune compo ne correspond à ces filtres.'} />
+      ) : (
+        <div className="clx-scrollbar" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
+          {filtered.map((c) => (
+            <CompoRow key={c.id} compo={c} members={members} onEdit={() => setEditing(c)} />
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <CompoEditor
+          compo={editing === 'new' ? null : editing}
+          members={members}
+          currentUser={currentUser}
+          onClose={() => setEditing(null)}
+          onSave={handleSave}
+          onDelete={handleDelete}
+        />
+      )}
+    </div>
+  );
+}
+
+function CompoRow({ compo, members, onEdit }) {
+  const st = COMPO_STATUS[compo.status] || COMPO_STATUS.wip;
+  const names = (ids) => (ids || []).map((id) => members.find((m) => m.id === id)?.name).filter(Boolean);
+  const authors = names(compo.author_ids);
+  const composers = names(compo.composer_ids);
+  const rank = formatDeezerRank(compo.deezer_rank);
+  const quickLinks = [
+    compo.demo_url && { href: compo.demo_url, icon: AudioLines, title: 'Écouter la maquette' },
+    compo.lyrics_url && { href: compo.lyrics_url, icon: FileText, title: 'Paroles' },
+    compo.deezer_url && { href: compo.deezer_url, icon: Radio, title: 'Ouvrir sur Deezer' },
+  ].filter(Boolean);
+
+  return (
+    <div className="clx-card clx-row" style={{ display: 'flex', alignItems: 'stretch' }}>
+      <button
+        onClick={onEdit}
+        style={{
+          flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          padding: '12px 14px', background: 'none', border: 'none', font: 'inherit', textAlign: 'left', color: '#F5F1E8', cursor: 'pointer',
+        }}
+        title="Modifier la compo"
+      >
+        {compo.cover_url ? (
+          <img src={compo.cover_url} alt="" style={{ width: 48, height: 48, borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />
+        ) : (
+          <div style={{ width: 48, height: 48, borderRadius: 5, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Music4 size={16} color="#6B6862" />
+          </div>
+        )}
+        <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{compo.title}</div>
+          <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
+            {compo.duration_seconds ? <span className="clx-mono">{formatSongDuration(compo.duration_seconds)}</span> : null}
+            {compo.album && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Disc3 size={11} /> {compo.album}</span>}
+            {rank && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Indice de popularité Deezer (rank)"><TrendingUp size={11} /> {rank}</span>}
+          </div>
+          {(authors.length > 0 || composers.length > 0) && (
+            <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 4 }}>
+              {authors.length > 0 && `Paroles : ${authors.join(', ')}`}
+              {authors.length > 0 && composers.length > 0 && ' · '}
+              {composers.length > 0 && `Musique : ${composers.join(', ')}`}
+            </div>
+          )}
+        </div>
+        <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="clx-badge" style={{ background: `${st.color}22`, color: st.color, border: `1px solid ${st.color}55` }}>{st.label}</span>
+          <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+        </div>
+      </button>
+
+      {quickLinks.length > 0 && (
+        <div className="clx-row-actions-col">
+          {quickLinks.map(({ href, icon: Icon, title }) => (
+            <a key={title} href={href} target="_blank" rel="noopener noreferrer" className="clx-row-action-mini" title={title}>
+              <Icon size={15} />
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete }) {
+  const isEdit = !!compo;
+  const [title, setTitle] = useState(compo?.title || '');
+  const [status, setStatus] = useState(compo?.status || 'wip');
+  const [duration, setDuration] = useState(compo?.duration_seconds ? formatSongDuration(compo.duration_seconds) : '');
+  const [album, setAlbum] = useState(compo?.album || '');
+  const [authorIds, setAuthorIds] = useState(compo?.author_ids || []);
+  const [composerIds, setComposerIds] = useState(compo?.composer_ids || []);
+  const [lyricsUrl, setLyricsUrl] = useState(compo?.lyrics_url || '');
+  const [chordsUrl, setChordsUrl] = useState(compo?.chords_url || '');
+  const [demoUrl, setDemoUrl] = useState(compo?.demo_url || '');
+  const [deezer, setDeezer] = useState(
+    compo && compo.deezer_track_id
+      ? { id: String(compo.deezer_track_id), url: compo.deezer_url, cover_url: compo.cover_url, rank: compo.deezer_rank, synced_at: compo.deezer_synced_at }
+      : null,
+  );
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [deezerError, setDeezerError] = useState('');
+  const [linking, setLinking] = useState(false);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (query.trim().length < 2) { setResults([]); setSearching(false); return; }
+    setSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        setResults(await searchDeezer(query.trim()));
+        setDeezerError('');
+      } catch (err) {
+        setDeezerError(err.message || 'Recherche indisponible.');
+        setResults([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [query]);
+
+  const toggleId = (setter) => (id) => setter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const linkTrack = async (r) => {
+    if (!r.id) { setDeezerError('Résultat Deezer sans identifiant.'); return; }
+    setLinking(true); setDeezerError('');
+    try {
+      const t = await fetchDeezerTrack(r.id);
+      setDeezer({ id: String(t.id), url: t.deezer_url, cover_url: t.cover_url, rank: t.rank, synced_at: new Date().toISOString() });
+      if (!duration && t.duration_seconds) setDuration(formatSongDuration(t.duration_seconds));
+      if (!album.trim() && t.album_title) setAlbum(t.album_title);
+      setResults([]); setQuery('');
+    } catch (e) {
+      setDeezerError(e.message || 'Lien Deezer impossible.');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const refreshDeezer = async () => {
+    if (!deezer) return;
+    setLinking(true); setDeezerError('');
+    try {
+      const t = await fetchDeezerTrack(deezer.id);
+      setDeezer({ id: deezer.id, url: t.deezer_url, cover_url: t.cover_url, rank: t.rank, synced_at: new Date().toISOString() });
+    } catch (e) {
+      setDeezerError(e.message || 'Rafraîchissement impossible.');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!title.trim()) { setError('Le titre est obligatoire.'); return; }
+    const seconds = parseDurationInput(duration);
+    if (duration && seconds === null) { setError('Format de durée invalide (mm:ss).'); return; }
+    setError(''); setSaving(true);
+    const built = {
+      id: compo?.id || uid(),
+      title: title.trim(),
+      status,
+      duration_seconds: seconds || null,
+      album: album.trim() || null,
+      author_ids: authorIds,
+      composer_ids: composerIds,
+      lyrics_url: lyricsUrl.trim() || null,
+      chords_url: chordsUrl.trim() || null,
+      demo_url: demoUrl.trim() || null,
+      deezer_track_id: deezer?.id || null,
+      deezer_url: deezer?.url || null,
+      cover_url: deezer?.cover_url || null,
+      deezer_rank: deezer && typeof deezer.rank === 'number' ? deezer.rank : null,
+      deezer_synced_at: deezer?.synced_at || null,
+      created_by_user_id: compo?.created_by_user_id || currentUser.id,
+      created_at: compo?.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      await onSave(built, !isEdit);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const memberChips = (selected, onToggle) => (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {members.map((m) => (
+        <Chip key={m.id} active={selected.includes(m.id)} onClick={() => onToggle(m.id)}>{m.name}</Chip>
+      ))}
+    </div>
+  );
+
+  return (
+    <Modal onClose={onClose} title={isEdit ? 'Modifier la compo' : 'Nouvelle compo'} icon={isEdit ? Pencil : Plus} wide>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Field label="Titre *">
+          <input className="clx-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex. Comme tu avances" />
+        </Field>
+
+        <div className="clx-field-row">
+          <Field label="Statut" style={{ flex: '1 1 150px' }}>
+            <select className="clx-input" value={status} onChange={(e) => setStatus(e.target.value)}>
+              {COMPO_STATUS_ORDER.map((k) => <option key={k} value={k}>{COMPO_STATUS[k].label}</option>)}
+            </select>
+          </Field>
+          <Field label="Durée (mm:ss)" style={{ flex: '1 1 110px' }}>
+            <input className="clx-input" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="3:48" />
+          </Field>
+          <Field label="Album" style={{ flex: '2 1 160px' }}>
+            <input className="clx-input" value={album} onChange={(e) => setAlbum(e.target.value)} placeholder="Optionnel — sinon vide" />
+          </Field>
+        </div>
+
+        <Field label="Auteur·rice·s des paroles">{memberChips(authorIds, toggleId(setAuthorIds))}</Field>
+        <Field label="Compositeur·rice·s">{memberChips(composerIds, toggleId(setComposerIds))}</Field>
+
+        <Field label="Paroles — lien (Drive, doc…)">
+          <input className="clx-input" value={lyricsUrl} onChange={(e) => setLyricsUrl(e.target.value)} placeholder="https://…" />
+        </Field>
+        <Field label="Grille d'accords — lien (Drive, doc…)">
+          <input className="clx-input" value={chordsUrl} onChange={(e) => setChordsUrl(e.target.value)} placeholder="https://…" />
+        </Field>
+        <Field label="Maquette — lien (Drive, SoundCloud privé…)">
+          <input className="clx-input" value={demoUrl} onChange={(e) => setDemoUrl(e.target.value)} placeholder="https://…" />
+        </Field>
+
+        <div className="clx-card" style={{ padding: 12, background: '#101012' }}>
+          <div className="clx-display" style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <Radio size={14} color="#F2A93B" /> Lien Deezer
+          </div>
+
+          {deezer ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {deezer.cover_url && <img src={deezer.cover_url} alt="" style={{ width: 46, height: 46, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="clx-mono" style={{ fontSize: 12 }}>
+                  Popularité : {formatDeezerRank(deezer.rank) || '—'}
+                </div>
+                <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862' }}>
+                  {deezer.synced_at ? `synchronisé le ${formatConcertDate(String(deezer.synced_at).slice(0, 10), { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                  {deezer.url ? ' · ' : ''}
+                  {deezer.url && <a href={deezer.url} target="_blank" rel="noopener noreferrer" style={{ color: '#F2A93B' }}>ouvrir</a>}
+                </div>
+              </div>
+              <button onClick={refreshDeezer} disabled={linking} className="clx-btn clx-btn-ghost" style={{ padding: '6px 10px', borderRadius: 6, fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+                {linking ? <Loader2 size={12} className="clx-spin" /> : <RefreshCw size={12} />} Rafraîchir
+              </button>
+              <button onClick={() => setDeezer(null)} className="clx-btn clx-btn-ghost" style={{ padding: '6px 10px', borderRadius: 6, fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, color: '#C1454B' }}>
+                <Unlink size={12} /> Délier
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginBottom: 6 }}>
+                Pour les morceaux déjà sur Deezer : récupère la pochette et l'indice de popularité.
+              </div>
+              <div style={{ position: 'relative' }}>
+                <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6862' }} />
+                <input
+                  className="clx-input"
+                  style={{ paddingLeft: 32 }}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Chercher la piste sur Deezer…"
+                />
+                {(searching || linking) && <Loader2 size={14} className="clx-spin" style={{ position: 'absolute', right: 11, top: 11, color: '#6B6862' }} />}
+              </div>
+              {results.length > 0 && (
+                <div className="clx-scrollbar" style={{ maxHeight: 200, overflowY: 'auto', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {results.map((r, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => linkTrack(r)}
+                      disabled={linking}
+                      className="clx-btn"
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 6, background: 'transparent', border: 'none', textAlign: 'left', color: '#F5F1E8' }}
+                    >
+                      {r.cover_url
+                        ? <img src={r.cover_url} alt="" style={{ width: 34, height: 34, borderRadius: 4, flexShrink: 0, objectFit: 'cover' }} />
+                        : <div style={{ width: 34, height: 34, borderRadius: 4, flexShrink: 0, background: '#16161A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Music2 size={13} color="#6B6862" /></div>}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
+                        <div style={{ fontSize: 10, color: '#9A958C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.artist}{r.album ? ` · ${r.album}` : ''}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {deezerError && <div style={{ color: '#C1454B', fontSize: 11, marginTop: 6 }}>{deezerError}</div>}
+        </div>
+
+        {error && <div style={{ color: '#C1454B', fontSize: 12 }}>{error}</div>}
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+          {isEdit ? (
+            <button
+              onClick={() => {
+                if (window.confirm(`Supprimer définitivement la compo « ${compo.title} » ?`)) onDelete(compo);
+              }}
+              className="clx-btn"
+              style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55' }}
+            >
+              Supprimer
+            </button>
+          ) : <span />}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={onClose} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>Annuler</button>
+            <button onClick={submit} disabled={saving} className="clx-btn clx-btn-primary" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              {saving && <Loader2 size={13} className="clx-spin" />} {isEdit ? 'Enregistrer' : 'Ajouter la compo'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

@@ -8,7 +8,7 @@ Version 1.9 — 6 septembre 2026
 
 Statut : application déployée, en phase de test avec les 6 membres du groupe.
 
-Depuis la v1.8 : **notes de transition** dans les sets de concert (§ 7.2) — repères libres insérés entre les morceaux (lancements, enchaînements, remerciements), comptés pour 1 min chacun dans la durée du set, stockés dans la nouvelle colonne `concerts.set_items` (§ 3.5) ; **export imprimable du set sur une page** (§ 7.4) ; **filtre de statut du Répertoire en multi-sélection** (§ 5.2, suppression du bouton "Tous", défaut Prêt + En préparation). Correction d'un bug de la couche `/api/db` : les écritures portant un tableau JSON (set d'un concert, participants d'un rendez-vous, vetos/votes d'une phase) échouaient en base (§ 16.9).
+Depuis la v1.8 : **notes de transition** dans les sets de concert (§ 7.2) — repères libres insérés entre les morceaux (lancements, enchaînements, remerciements), comptés pour 1 min chacun dans la durée du set, stockés dans la nouvelle colonne `concerts.set_items` (§ 3.5) ; **export imprimable du set sur une page** (§ 7.4) ; **filtre de statut du Répertoire en multi-sélection** (§ 5.2, suppression du bouton "Tous", défaut Prêt + En préparation) ; **nouvel onglet Compos** pour le répertoire des morceaux originaux du groupe (§ 5.4), avec lien Deezer facultatif (pochette + indice de popularité). Correction d'un bug de la couche `/api/db` : les écritures portant un tableau JSON (set d'un concert, participants d'un rendez-vous, vetos/votes d'une phase) échouaient en base (§ 16.9).
 
 Depuis la v1.7 : **migration du backend de Supabase vers Neon** (base PostgreSQL) avec une couche de fonctions serveur `/api/*` sur Vercel — le frontend ne se connecte plus jamais directement à la base, et plus aucun identifiant d'accès aux données n'est présent dans son code. Section § 2.5 décrivant cette migration et le filet de retour arrière. Le projet Supabase est conservé intact quelques semaines comme filet de sécurité avant nettoyage.
 
@@ -49,11 +49,12 @@ Le navigateur (frontend React) ne se connecte **jamais directement à la base de
 
 - `api/db` — point d'accès générique aux tables (lecture et écriture), décrit au § 2.2.
 - `api/member-auth` — création et vérification des mots de passe, tamponnage de l'activité (§ 2.2, § 4).
-- `api/search-deezer` — relais vers le catalogue public Deezer (§ 2.2, § 12).
+- `api/search-deezer` — relais de recherche vers le catalogue public Deezer (§ 2.2, § 12).
+- `api/deezer-track` — détail d'une piste Deezer (pochette + `rank`) pour lier une compo (§ 5.4).
 
-Seules ces fonctions détiennent la chaîne de connexion à Neon (`DATABASE_URL`), fournie par une variable d'environnement Vercel et **jamais exposée au frontend**. Aucune autre couche serveur propriétaire n'a été développée : toute la logique applicative réside dans le composant React et dans ces trois fonctions serverless.
+Seules `api/db` et `api/member-auth` détiennent la chaîne de connexion à Neon (`DATABASE_URL`), fournie par une variable d'environnement Vercel et **jamais exposée au frontend** ; les deux relais Deezer ne touchent pas la base. Aucune autre couche serveur propriétaire n'a été développée : toute la logique applicative réside dans le composant React et dans ces fonctions serverless.
 
-## 2.2 Les trois fonctions serveur (`api/`)
+## 2.2 Les fonctions serveur (`api/`)
 
 Code versionné dans `api/` à la racine du dépôt (Node, modules ES). Vercel les transforme automatiquement en fonctions serverless, servies sous `/api/<nom>` sur la même origine que l'application. Le helper partagé `lib/neon.js` ouvre la connexion à Neon via le pilote HTTP `@neondatabase/serverless` en lisant `DATABASE_URL`. Toutes renvoient du JSON.
 
@@ -138,7 +139,7 @@ Plan détaillé et journal d'exécution : `docs/Migration_Neon.md` dans le dép�
 
 # 3. Modèle de données
 
-La base compte désormais 8 tables. Les données des phases de choix (vetos, votes, brouillons, départages) restent volontairement embarquées en JSON directement dans la table des phases plutôt que normalisées, pour rester au plus près de la structure manipulée par l'interface ; le même principe a été repris pour les sets de concert et pour la récurrence des rendez-vous.
+La base compte désormais 9 tables (la 9ᵉ, `compos`, ajoutée avec le module § 5.4). Les données des phases de choix (vetos, votes, brouillons, départages) restent volontairement embarquées en JSON directement dans la table des phases plutôt que normalisées, pour rester au plus près de la structure manipulée par l'interface ; le même principe a été repris pour les sets de concert et pour la récurrence des rendez-vous.
 
 ## 3.1 Table members
 
@@ -250,6 +251,28 @@ Les concerts (table concerts) apparaissent automatiquement dans l'agenda des ren
 
 Table partagée entre les modules Rendez-vous et Concerts (§ 8.5) : en pratique chaque ligne ne référence que l'une des deux colonnes event_id / concert_id, jamais les deux. **Vérification faite contre la base réelle le 2026-09-04 (Schema Visualizer) : cette règle n'est pas imposée par une contrainte CHECK côté base, uniquement respectée côté code (saveComment)** — et la base ne comporte aucune clause ON DELETE sur les clés étrangères de la table (ni d'ailleurs sur aucune des clés étrangères du schéma : added_by_user_id, initiated_by_user_id, created_by_user_id, member_id). La suppression en cascade des commentaires liés à un rendez-vous ou à un concert est donc désormais prise en charge côté application : deleteEvent et deleteConcert (src/App.jsx) suppriment d'abord les lignes de comments référençant l'élément (via un DELETE filtré sur event_id ou concert_id) avant de supprimer l'élément lui-même. Auparavant cette suppression préalable n'était pas faite et supprimer un rendez-vous ou un concert commenté échouait en base sur une violation de contrainte de clé étrangère. Reste non traité : la suppression d'un membre référencé (added_by_user_id, etc.) échoue toujours en base pour la même raison — cas non exposé par l'interface actuelle.
 
+## 3.9 Table compos
+
+Morceaux originaux du groupe (module § 5.4), indépendante de `songs`.
+
+| Colonne | Type | Description |
+| --- | --- | --- |
+| id | uuid | Identifiant unique |
+| title | text | Titre |
+| status | enum | `wip` (En création) │ `done` (Abouti) |
+| duration_seconds | integer | Durée, optionnelle |
+| album | text | Nom de l'album si le morceau y figure, sinon NULL |
+| author_ids | jsonb | Tableau d'identifiants de membres — auteur·rice·s des paroles |
+| composer_ids | jsonb | Tableau d'identifiants de membres — compositeur·rice·s |
+| lyrics_url / chords_url / demo_url | text | Liens externes (Drive, doc, SoundCloud privé…) vers paroles, grille d'accords, maquette. Aucun fichier n'est hébergé par l'application |
+| deezer_track_id | text | Identifiant de la piste Deezer si liée |
+| deezer_url | text | Lien vers la piste Deezer |
+| cover_url | text | Pochette d'album récupérée de Deezer |
+| deezer_rank | integer | Indice de popularité Deezer (`rank`) au moment de la dernière synchro |
+| deezer_synced_at | timestamptz | Date de la dernière synchro Deezer |
+| created_by_user_id | uuid | Référence vers members.id |
+| created_at / updated_at | timestamptz | Horodatage |
+
 # 4. Sécurité et authentification
 
 Choix assumé pour ce projet : pas de service d'authentification tiers (jugé trop complexe à gérer pour 6 utilisateurs). L'authentification est gérée entièrement au niveau applicatif.
@@ -330,6 +353,20 @@ La table comments (§ 3.8) suit le régime commun : tout membre peut y ajouter o
 - Édition libre de tous les champs, y compris un changement manuel de statut en dehors de toute phase de choix (avec avertissement à l'écran).
 
 - Suppression définitive d'un morceau possible depuis la fiche d'édition, avec confirmation explicite avant l'action, irréversible.
+
+## 5.4 Module Compos (onglet dédié)
+
+Onglet séparé « Compos » (icône disque), pour le **répertoire des morceaux originaux du groupe** — distinct du Répertoire (§ 5.1-5.3), qui recense les reprises et les morceaux candidats aux phases de choix. Table `compos` (§ 3.9), indépendante de `songs`.
+
+Chaque compo porte :
+
+- **titre** (obligatoire), **durée** (mm:ss), **statut** — « En création » ou « Abouti » —, **album** (texte libre, vide si le morceau n'est sur aucun album) ;
+- **auteur·rice·s des paroles** et **compositeur·rice·s**, chacun en multi-sélection parmi les membres ;
+- **paroles**, **grille d'accords** et **maquette** : ce sont des **liens externes** (Google Drive, doc, SoundCloud privé…), pas des fichiers hébergés par l'application — choix assumé pour ne pas consommer de stockage avec des fichiers audio, et parce que ces contenus vivent déjà dans les outils du groupe. La maquette concerne surtout les morceaux en création.
+
+**Lien Deezer** (pour les compos déjà publiées) : une recherche Deezer dans l'éditeur permet de lier la piste. Au moment du lien, l'application récupère et stocke la **pochette de l'album** et l'**indice de popularité `rank`** de Deezer (entier ; ce n'est pas un nombre d'écoutes — non exposé par Deezer —, juste un classement interne, instable sur de petits volumes, cf. § 12). Un bouton « Rafraîchir » réinterroge Deezer ; « Délier » retire l'association. La date de dernière synchro est affichée. Endpoint dédié `api/deezer-track` (portée Neon uniquement).
+
+**Écran liste** : compteur (total, abouties, en création), recherche titre/album, filtre de statut en multi-sélection (§ 5.2), et par carte : pochette (ou icône), titre, durée, album, indice de popularité, auteurs/compositeurs, badge de statut. En bout de ligne, des raccourcis directs vers la maquette, les paroles et la page Deezer quand ils existent.
 
 # 6. Fonctionnalités — Module Phase de choix
 
@@ -843,6 +880,8 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 - **Correction — colonnes `date` renvoyées par Neon** : le driver `@neondatabase/serverless` renvoie une colonne `date` comme un objet `Date` JS, sérialisé ensuite en ISO datetime UTC (`2026-09-12T22:00:00.000Z` pour une date stockée le 13). Conséquences depuis la bascule Neon : les `<input type="date">` des éditeurs concert/rendez-vous recevaient un format invalide et **s'affichaient vides** (jusqu'à ce qu'on touche le champ), et `parseISODate` calculait **un jour trop tôt** partout où une date est affichée (listes, Accueil, prochain concert, logique passé/à venir) — masqué en France par le fuseau, mais bien présent. `lib/neon.js` force désormais le parseur des OID 1082 (`date`) et 1083 (`time`) en texte brut ; les `timestamptz` (1184) restent en ISO comme avant. *(Ce qui avait été d'abord pris pour un bug CSS des champs date sur iOS — plusieurs tentatives revertées ; la mise en page mobile de ces rangées, elle, a bien été refaite, cf. § 13.)*
 
 - **Feuille "Imprimer le set" — mobile** (§ 7.4) : dimensionnement pour tenir sur une page appliqué aussi sur mobile ; sur mobile, plus d'impression automatique — un bouton "Enregistrer en PDF" et un "Retour au concert", avec fermeture automatique de l'onglet après enregistrement.
+
+- **Nouvel onglet Compos** (§ 5.4, § 3.9) : répertoire des morceaux originaux du groupe, séparé du Répertoire des reprises. Titre, durée, statut (En création / Abouti), album, auteur·rice·s et compositeur·rice·s (multi-sélection de membres) ; paroles, grille d'accords et maquette sous forme de **liens externes** (Drive…), pas de fichiers hébergés. Lien Deezer pour les compos publiées → récupération de la pochette et de l'indice de popularité `rank` (nouvel endpoint `api/deezer-track`, `api/search-deezer` renvoie désormais l'`id` de piste). Nouvelle table `compos`, nouveau statut `compo_status`.
 
 # 17. Références
 

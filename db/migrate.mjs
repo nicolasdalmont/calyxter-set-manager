@@ -15,6 +15,9 @@ import pg from 'pg';
 import readline from 'node:readline';
 
 // Ordre de dépendance des clés étrangères (insertion) ; l'inverse pour le truncate.
+// Les 8 tables de la migration Supabase <-> Neon. `compos` (née après la
+// bascule, Neon uniquement, absente de Supabase) n'y figure pas : un rollback
+// vers Supabase ne peut pas la reprendre de toute façon.
 const TABLES = [
   'members', 'songs', 'phases', 'notifications',
   'concerts', 'events', 'ideas', 'comments',

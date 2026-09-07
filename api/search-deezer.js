@@ -17,6 +17,7 @@ export default async function handler(req, res) {
     }
     const data = await dz.json();
     const results = (data.data ?? []).map((t) => ({
+      id: t.id ?? null,
       title: t.title,
       artist: t.artist?.name ?? '',
       album: t.album?.title ?? '',
