@@ -2669,6 +2669,11 @@ function CompoRow({ compo, members, onEdit }) {
               {composers.length > 0 && `Musique : ${composers.join(', ')}`}
             </div>
           )}
+          {compo.chords && (
+            <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              🎸 {compo.chords.replace(/\s*\n\s*/g, ' · ')}
+            </div>
+          )}
         </div>
         <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="clx-badge" style={{ background: `${st.color}22`, color: st.color, border: `1px solid ${st.color}55` }}>{st.label}</span>
@@ -2698,7 +2703,7 @@ function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete })
   const [authorIds, setAuthorIds] = useState(compo?.author_ids || []);
   const [composerIds, setComposerIds] = useState(compo?.composer_ids || []);
   const [lyricsUrl, setLyricsUrl] = useState(compo?.lyrics_url || '');
-  const [chordsUrl, setChordsUrl] = useState(compo?.chords_url || '');
+  const [chords, setChords] = useState(compo?.chords || '');
   const [demoUrl, setDemoUrl] = useState(compo?.demo_url || '');
   const [deezer, setDeezer] = useState(
     compo && compo.deezer_track_id
@@ -2778,7 +2783,7 @@ function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete })
       author_ids: authorIds,
       composer_ids: composerIds,
       lyrics_url: lyricsUrl.trim() || null,
-      chords_url: chordsUrl.trim() || null,
+      chords: chords.trim() || null,
       demo_url: demoUrl.trim() || null,
       deezer_track_id: deezer?.id || null,
       deezer_url: deezer?.url || null,
@@ -2828,11 +2833,18 @@ function CompoEditor({ compo, members, currentUser, onClose, onSave, onDelete })
         <Field label="Auteur·rice·s des paroles">{memberChips(authorIds, toggleId(setAuthorIds))}</Field>
         <Field label="Compositeur·rice·s">{memberChips(composerIds, toggleId(setComposerIds))}</Field>
 
+        <Field label="Grille d'accords">
+          <textarea
+            className="clx-input"
+            value={chords}
+            onChange={(e) => setChords(e.target.value)}
+            rows={3}
+            style={{ fontFamily: "'Space Mono', monospace", resize: 'vertical', minHeight: 60 }}
+            placeholder="Ex. Couplet : A#min  Gmaj  Cmaj  —  Refrain : Fmaj  Gmaj"
+          />
+        </Field>
         <Field label="Paroles — lien (Drive, doc…)">
           <input className="clx-input" value={lyricsUrl} onChange={(e) => setLyricsUrl(e.target.value)} placeholder="https://…" />
-        </Field>
-        <Field label="Grille d'accords — lien (Drive, doc…)">
-          <input className="clx-input" value={chordsUrl} onChange={(e) => setChordsUrl(e.target.value)} placeholder="https://…" />
         </Field>
         <Field label="Maquette — lien (Drive, SoundCloud privé…)">
           <input className="clx-input" value={demoUrl} onChange={(e) => setDemoUrl(e.target.value)} placeholder="https://…" />

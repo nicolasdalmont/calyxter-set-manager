@@ -264,7 +264,8 @@ Morceaux originaux du groupe (module § 5.4), indépendante de `songs`.
 | album | text | Nom de l'album si le morceau y figure, sinon NULL |
 | author_ids | jsonb | Tableau d'identifiants de membres — auteur·rice·s des paroles |
 | composer_ids | jsonb | Tableau d'identifiants de membres — compositeur·rice·s |
-| lyrics_url / chords_url / demo_url | text | Liens externes (Drive, doc, SoundCloud privé…) vers paroles, grille d'accords, maquette. Aucun fichier n'est hébergé par l'application |
+| chords | text | Grille d'accords, saisie libre dans l'application (« quelques accords », ex. `A#min Gmaj Cmaj`) |
+| lyrics_url / demo_url | text | Liens externes (Drive, doc, SoundCloud privé…) vers les paroles et la maquette. Aucun fichier n'est hébergé par l'application |
 | deezer_track_id | text | Identifiant de la piste Deezer si liée |
 | deezer_url | text | Lien vers la piste Deezer |
 | cover_url | text | Pochette d'album récupérée de Deezer |
@@ -362,7 +363,8 @@ Chaque compo porte :
 
 - **titre** (obligatoire), **durée** (mm:ss), **statut** — « En création » ou « Abouti » —, **album** (texte libre, vide si le morceau n'est sur aucun album) ;
 - **auteur·rice·s des paroles** et **compositeur·rice·s**, chacun en multi-sélection parmi les membres ;
-- **paroles**, **grille d'accords** et **maquette** : ce sont des **liens externes** (Google Drive, doc, SoundCloud privé…), pas des fichiers hébergés par l'application — choix assumé pour ne pas consommer de stockage avec des fichiers audio, et parce que ces contenus vivent déjà dans les outils du groupe. La maquette concerne surtout les morceaux en création.
+- **grille d'accords** : champ texte libre saisi dans l'application (en général quelques accords) ;
+- **paroles** et **maquette** : des **liens externes** (Google Drive, doc, SoundCloud privé…), pas des fichiers hébergés par l'application — choix assumé pour ne pas consommer de stockage avec des fichiers audio, et parce que ces contenus vivent déjà dans les outils du groupe. La maquette concerne surtout les morceaux en création.
 
 **Lien Deezer** (pour les compos déjà publiées) : une recherche Deezer dans l'éditeur permet de lier la piste. Au moment du lien, l'application récupère et stocke la **pochette de l'album** et l'**indice de popularité `rank`** de Deezer (entier ; ce n'est pas un nombre d'écoutes — non exposé par Deezer —, juste un classement interne, instable sur de petits volumes, cf. § 12). Un bouton « Rafraîchir » réinterroge Deezer ; « Délier » retire l'association. La date de dernière synchro est affichée. Endpoint dédié `api/deezer-track` (portée Neon uniquement).
 
