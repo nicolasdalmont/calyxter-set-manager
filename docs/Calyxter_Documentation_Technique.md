@@ -8,7 +8,7 @@ Version 1.9 — 6 septembre 2026
 
 Statut : application déployée, en phase de test avec les 6 membres du groupe.
 
-Depuis la v1.8 : **notes de transition** dans les sets de concert (§ 7.2) — repères libres insérés entre les morceaux (lancements, enchaînements, remerciements), comptés pour 1 min chacun dans la durée du set, stockés dans la nouvelle colonne `concerts.set_items` (§ 3.5) ; **export imprimable du set sur une page** (§ 7.4) ; **filtre de statut du Répertoire en multi-sélection** (§ 5.2, suppression du bouton "Tous", défaut Prêt + En préparation) ; **nouvel onglet Compos** pour le répertoire des morceaux originaux du groupe (§ 5.4), avec lien Deezer facultatif (pochette + indice de popularité). Correction d'un bug de la couche `/api/db` : les écritures portant un tableau JSON (set d'un concert, participants d'un rendez-vous, vetos/votes d'une phase) échouaient en base (§ 16.9).
+Depuis la v1.8 : **notes de transition** dans les sets de concert (§ 7.2) — repères libres insérés entre les morceaux (lancements, enchaînements, remerciements), comptés pour 1 min chacun dans la durée du set, stockés dans la nouvelle colonne `concerts.set_items` (§ 3.5) ; **export imprimable du set sur une page** (§ 7.4) ; **filtre de statut du Répertoire en multi-sélection** (§ 5.2, suppression du bouton "Tous", défaut Prêt + En préparation) ; **nouvel onglet Compos** pour le répertoire des morceaux originaux du groupe, avec documents liés typés (§ 5.4) ; **indice de popularité Deezer dans le Répertoire**, mis à jour en arrière-plan (§ 5.2). Correction d'un bug de la couche `/api/db` : les écritures portant un tableau JSON (set d'un concert, participants d'un rendez-vous, vetos/votes d'une phase) échouaient en base (§ 16.9).
 
 Depuis la v1.7 : **migration du backend de Supabase vers Neon** (base PostgreSQL) avec une couche de fonctions serveur `/api/*` sur Vercel — le frontend ne se connecte plus jamais directement à la base, et plus aucun identifiant d'accès aux données n'est présent dans son code. Section § 2.5 décrivant cette migration et le filet de retour arrière. Le projet Supabase est conservé intact quelques semaines comme filet de sécurité avant nettoyage.
 
@@ -50,7 +50,7 @@ Le navigateur (frontend React) ne se connecte **jamais directement à la base de
 - `api/db` — point d'accès générique aux tables (lecture et écriture), décrit au § 2.2.
 - `api/member-auth` — création et vérification des mots de passe, tamponnage de l'activité (§ 2.2, § 4).
 - `api/search-deezer` — relais de recherche vers le catalogue public Deezer (§ 2.2, § 12).
-- `api/deezer-track` — détail d'une piste Deezer (pochette + `rank`) pour lier une compo (§ 5.4).
+- `api/deezer-track` — détail d'une piste Deezer (`rank`) pour l'indice de popularité affiché dans le Répertoire (§ 5.2).
 
 Seules `api/db` et `api/member-auth` détiennent la chaîne de connexion à Neon (`DATABASE_URL`), fournie par une variable d'environnement Vercel et **jamais exposée au frontend** ; les deux relais Deezer ne touchent pas la base. Aucune autre couche serveur propriétaire n'a été développée : toute la logique applicative réside dans le composant React et dans ces fonctions serverless.
 
@@ -162,7 +162,7 @@ La base compte désormais 10 tables (`compos` ajoutée avec le module § 5.4, `s
 | language | enum | FR │ EN │ INSTRUMENTAL │ OTHER |
 | status | enum | proposed │ to_prepare │ ready │ rejected (affiché "Sorti") |
 | added_by_user_id | uuid | Référence vers members.id — auteur de la proposition |
-| links | jsonb | custom_url, deezer_url, cover_url — liens externes et pochette |
+| links | jsonb | `custom_url`, `deezer_url`, `cover_url` (liens externes et pochette) ; `deezer_rank` + `deezer_synced_at` alimentés en arrière-plan (§ 5.2) |
 | created_at / updated_at | timestamptz | Horodatage de création / dernière modification |
 
 ## 3.3 Table phases
@@ -266,11 +266,6 @@ Morceaux originaux du groupe (module § 5.4), indépendante de `songs`.
 | composer_ids | jsonb | Tableau d'identifiants de membres — compositeur·rice·s |
 | chords | text | Grille d'accords, saisie libre dans l'application (« quelques accords », ex. `A#min Gmaj Cmaj`) |
 | documents | jsonb | Liens typés : tableau `[{ id, name, url }]`. Autant que nécessaire (paroles, maquette, partition, tablature, enregistrement…). Liens externes (Drive, doc, SoundCloud privé…) — aucun fichier n'est hébergé par l'application |
-| deezer_track_id | text | Identifiant de la piste Deezer si liée |
-| deezer_url | text | Lien vers la piste Deezer |
-| cover_url | text | Pochette d'album récupérée de Deezer |
-| deezer_rank | integer | Indice de popularité Deezer (`rank`) au moment de la dernière synchro |
-| deezer_synced_at | timestamptz | Date de la dernière synchro Deezer |
 | created_by_user_id | uuid | Référence vers members.id |
 | created_at / updated_at | timestamptz | Horodatage |
 
@@ -308,7 +303,7 @@ Depuis la migration vers Neon (§ 2.5), **la base de données n'est jamais joint
 
 Le contrôle d'accès repose entièrement sur `api/db` (§ 2.2), qui :
 
-- n'accepte de requête que sur les 8 tables connues, valide tout nom de colonne et lie toutes les valeurs en paramètres SQL (pas d'injection possible) ;
+- n'accepte de requête que sur les tables de la liste blanche, valide tout nom de colonne et lie toutes les valeurs en paramètres SQL (pas d'injection possible) ;
 - ne renvoie **jamais** `members.password_hash` (colonne retirée des lignes avant réponse) ;
 - **refuse toute écriture** sur `members.password_hash` et `members.last_activity_at` — seule `api/member-auth` peut les modifier. Un client ne peut donc pas falsifier son propre mot de passe ni la dernière activité d'un autre membre.
 
@@ -347,6 +342,8 @@ La table comments (§ 3.8) suit le régime commun : tout membre peut y ajouter o
 
 - Pochette d'album affichée pour chaque morceau ayant été ajouté ou complété via la recherche Deezer (au même gabarit que la pastille date des listes Concerts et Rendez-vous, voir § 13.3) ; icône de remplacement sinon.
 
+- **Indice de popularité Deezer** affiché sur chaque ligne (icône courbe + nombre), pour les morceaux ayant un lien Deezer. C'est le `rank` de Deezer — un score de classement interne, **pas un nombre d'écoutes** (non exposé par Deezer), non linéaire et instable sur de faibles volumes (§ 12). **Mise à jour en arrière-plan** à chaque ouverture du Répertoire : l'identifiant de piste est extrait de `links.deezer_url`, l'API Deezer est réinterrogée via `api/deezer-track`, de façon séquentielle et throttlée (limites de débit Deezer), en sautant les morceaux synchronisés depuis moins de 6 h et en plafonnant à 40 par ouverture (les plus anciens d'abord) — un premier passage complet s'étale donc sur quelques ouvertures. Résultat stocké dans `links.deezer_rank` / `links.deezer_synced_at` ; silencieux en cas d'échec.
+
 - Ligne de la liste entièrement cliquable pour ouvrir l'édition du morceau, comme sur les listes Concerts et Rendez-vous (§ 13.3) ; le bouton d'écoute rapide reste une action distincte, isolée en bout de ligne.
 
 - Bouton d'écoute rapide : ouvre le lien Deezer direct si disponible, sinon une recherche sur Deezer (seule plateforme d'écoute intégrée — choix assumé du groupe, sans notion de service préféré par membre).
@@ -369,7 +366,7 @@ La table comments (§ 3.8) suit le régime commun : tout membre peut y ajouter o
 
 ## 5.4 Module Compos (onglet dédié)
 
-Onglet séparé « Compos » (icône disque), pour le **répertoire des morceaux originaux du groupe** — distinct du Répertoire (§ 5.1-5.3), qui recense les reprises et les morceaux candidats aux phases de choix. Table `compos` (§ 3.9), indépendante de `songs`.
+Onglet séparé « Compos » (icône disque), pour le **répertoire des morceaux originaux du groupe** — distinct du Répertoire (§ 5.1-5.3), qui recense les reprises et les morceaux candidats aux phases de choix. Centré sur les **créations en cours** : pas de lien Deezer ici (l'indice de popularité des morceaux publiés est affiché dans le Répertoire, § 5.2). Table `compos` (§ 3.9), indépendante de `songs`.
 
 Chaque compo porte :
 
@@ -380,11 +377,7 @@ Chaque compo porte :
 
 Il n'y a pas d'explorateur Drive intégré (cela demanderait une authentification Google par membre, hors périmètre). À la place, un **raccourci vers le dossier Drive partagé du groupe** : en tête de l'onglet Compos, un lien « Ouvrir le dossier Drive du groupe » (et « Définir / modifier » pour renseigner son URL). Le même lien est rappelé dans l'éditeur, sous la zone d'ajout de document, pour aller y chercher le lien de partage d'un fichier puis le coller. L'URL du dossier est stockée dans `settings.band_drive_url` (§ 3.10).
 
-**Lien Deezer** (pour les compos déjà publiées) : une recherche Deezer dans l'éditeur permet de lier la piste. Au moment du lien, l'application récupère et stocke la **pochette de l'album** et l'**indice de popularité `rank`** de Deezer (entier ; ce n'est pas un nombre d'écoutes — non exposé par Deezer —, juste un classement interne, instable sur de petits volumes, cf. § 12). Un bouton « Rafraîchir » dans l'éditeur et « Délier » pour retirer l'association ; la date de dernière synchro est affichée. Endpoint dédié `api/deezer-track` (portée Neon uniquement).
-
-**Mise à jour automatique** : à chaque ouverture de l'onglet Compos, l'application réinterroge Deezer en arrière-plan (séquentiel, silencieux) pour toutes les compos liées et n'enregistre que celles dont l'indice de popularité (ou la pochette) a réellement bougé. En cas d'échec Deezer, la valeur connue est conservée.
-
-**Écran liste** : compteur (total, abouties, en création), recherche titre/album, filtre de statut en multi-sélection (§ 5.2), et par carte : pochette (ou icône), titre, durée, album, indice de popularité, auteurs/compositeurs, aperçu de la grille d'accords, badge de statut. En bout de ligne, des raccourcis directs vers les premiers documents liés et la page Deezer quand ils existent.
+**Écran liste** : compteur (total, abouties, en création), recherche titre/album, filtre de statut en multi-sélection (§ 5.2), et par carte : icône, titre, durée, album, auteurs/compositeurs, aperçu de la grille d'accords, badge de statut. En bout de ligne, des raccourcis directs vers les premiers documents liés.
 
 # 6. Fonctionnalités — Module Phase de choix
 
@@ -899,7 +892,11 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 
 - **Feuille "Imprimer le set" — mobile** (§ 7.4) : dimensionnement pour tenir sur une page appliqué aussi sur mobile ; sur mobile, plus d'impression automatique — un bouton "Enregistrer en PDF" et un "Retour au concert", avec fermeture automatique de l'onglet après enregistrement.
 
-- **Nouvel onglet Compos** (§ 5.4, § 3.9) : répertoire des morceaux originaux du groupe, séparé du Répertoire des reprises. Titre, durée, statut (En création / Abouti), album, auteur·rice·s et compositeur·rice·s (multi-sélection de membres) ; paroles, grille d'accords et maquette sous forme de **liens externes** (Drive…), pas de fichiers hébergés. Lien Deezer pour les compos publiées → récupération de la pochette et de l'indice de popularité `rank`, remise à jour automatique à chaque ouverture de l'onglet (nouvel endpoint `api/deezer-track`, `api/search-deezer` renvoie désormais l'`id` de piste). Nouvelle table `compos`, nouveau statut `compo_status`. Au passage, les fenêtres modales (`Modal`) sont désormais rendues via un portail sur `<body>` : elles passaient sous le bandeau supérieur car piégées dans le contexte d'empilement de `<main>`.
+- **Nouvel onglet Compos** (§ 5.4, § 3.9) : répertoire des morceaux originaux du groupe, séparé du Répertoire des reprises, centré sur les créations en cours. Titre, durée, statut (En création / Abouti), album, auteur·rice·s et compositeur·rice·s (multi-sélection de membres), grille d'accords (texte dans l'app), et **documents liés** — liste de liens typés (nom + URL de partage), autant que nécessaire, en remplacement des anciens champs paroles/maquette. Nouvelles tables `compos` (statut `compo_status`) et `settings` (clé/valeur ; clé `band_drive_url` = raccourci vers le dossier Drive partagé du groupe, § 5.4).
+
+- **Indice de popularité Deezer dans le Répertoire** (§ 5.2) : le `rank` Deezer de chaque morceau lié est affiché sur sa ligne et rafraîchi en arrière-plan à chaque ouverture du Répertoire (identifiant de piste extrait de `links.deezer_url`, endpoint `api/deezer-track`, séquentiel/throttlé, 6 h de fenêtre, 40 max/ouverture). `api/search-deezer` renvoie désormais l'`id` de piste. *(La fonctionnalité, d'abord placée dans l'onglet Compos, y a été retirée : Compos se concentre sur les créations en cours.)*
+
+- Les fenêtres modales (`Modal`) sont désormais rendues via un portail sur `<body>` : elles passaient sous le bandeau supérieur car piégées dans le contexte d'empilement de `<main>` (`position: relative; z-index: 1`).
 
 # 17. Références
 

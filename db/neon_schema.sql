@@ -70,7 +70,7 @@ create table songs (
   added_by_user_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  links jsonb not null default '{}'::jsonb,   -- { custom_url, deezer_url, cover_url, ... }
+  links jsonb not null default '{}'::jsonb,   -- { custom_url, deezer_url, cover_url, deezer_rank, deezer_synced_at }
   constraint songs_pkey primary key (id),
   constraint songs_added_by_fkey foreign key (added_by_user_id) references members(id)
 );
@@ -175,9 +175,10 @@ create index comments_event_id_idx on comments(event_id);
 create index comments_concert_id_idx on comments(concert_id);
 
 -- 10. Compos — répertoire des morceaux originaux du groupe (distinct du
--- répertoire de reprises « songs »). Paroles, grille d'accords et maquette
--- sont des LIENS externes (Drive…), pas des fichiers stockés. Le lien Deezer
--- (piste) alimente pochette + indicateur de popularité (rank).
+-- répertoire de reprises « songs »), centré sur les créations en cours.
+-- Grille d'accords en clair ; documents = liens externes typés (Drive…),
+-- pas de fichiers stockés. Pas de lien Deezer ici (l'indice de popularité
+-- Deezer vit dans « songs », voir § 5.2).
 create table compos (
   id uuid not null default gen_random_uuid(),
   title text not null,
@@ -188,11 +189,6 @@ create table compos (
   composer_ids jsonb not null default '[]'::jsonb,   -- compositeur(s) (membres)
   chords text,                                       -- grille d'accords, saisie libre (quelques accords)
   documents jsonb not null default '[]'::jsonb,      -- liens typés : [{ id, name, url }] (paroles, maquette, partition…)
-  deezer_track_id text,                              -- id de la piste Deezer si le morceau y est
-  deezer_url text,
-  cover_url text,                                    -- pochette récupérée de Deezer
-  deezer_rank integer,                              -- indicateur de popularité Deezer (rank)
-  deezer_synced_at timestamptz,
   created_by_user_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

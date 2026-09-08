@@ -6,7 +6,7 @@ import {
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
   Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer,
-  Disc3, FileText, Music4, TrendingUp, RefreshCw, Unlink, Link2, Paperclip, FolderOpen
+  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -185,6 +185,16 @@ function listenUrl(song) {
   if (song.links && song.links.deezer_url) return song.links.deezer_url;
   const q = encodeURIComponent(`${song.title} ${song.artist}`);
   return `https://www.deezer.com/search/${q}`;
+}
+
+// Identifiant de piste extrait d'une URL Deezer (…/track/123456…).
+function deezerTrackIdFromUrl(url) {
+  const m = /deezer\.com\/(?:[a-z]{2}\/)?track\/(\d+)/i.exec(String(url || ''));
+  return m ? m[1] : null;
+}
+
+function formatDeezerRank(rank) {
+  return typeof rank === 'number' ? rank.toLocaleString('fr-FR') : null;
 }
 
 // Stockage personnel léger (qui es-tu sur cet appareil) — localStorage classique,
@@ -742,6 +752,50 @@ export default function App() {
       console.error('Erreur en supprimant le morceau', e);
     }
   }, []);
+
+  // Rafraîchissement en arrière-plan de l'indice de popularité Deezer des
+  // morceaux, à chaque ouverture du Répertoire. Séquentiel et throttlé (~1
+  // requête / 150 ms — limites de débit Deezer), on saute les morceaux
+  // synchronisés depuis moins de 6 h et on plafonne à 40 par ouverture (les
+  // plus anciens d'abord) : un premier passage complet s'étale sur quelques
+  // ouvertures. Silencieux ; `updateSongs` n'écrit que la ligne concernée.
+  const songsRef = useRef(songs);
+  songsRef.current = songs;
+  useEffect(() => {
+    if (tab !== 'repertoire') return;
+    let cancelled = false;
+    const SIX_H = 6 * 3600 * 1000;
+    const now = Date.now();
+    const targets = songsRef.current
+      .map((s) => ({ id: s.id, tid: deezerTrackIdFromUrl(s.links?.deezer_url), syncedAt: s.links?.deezer_synced_at }))
+      .filter((x) => x.tid && (!x.syncedAt || now - new Date(x.syncedAt).getTime() > SIX_H))
+      .sort((a, b) => new Date(a.syncedAt || 0) - new Date(b.syncedAt || 0))
+      .slice(0, 40);
+    if (targets.length === 0) return;
+    (async () => {
+      for (const target of targets) {
+        if (cancelled) return;
+        try {
+          const dz = await fetchDeezerTrack(target.tid);
+          if (cancelled) return;
+          const current = songsRef.current.find((s) => s.id === target.id);
+          if (current) {
+            const newRank = typeof dz.rank === 'number' ? dz.rank : null;
+            const prevRank = typeof current.links?.deezer_rank === 'number' ? current.links.deezer_rank : null;
+            const patch = { deezer_synced_at: new Date().toISOString() };
+            if (newRank !== prevRank) patch.deezer_rank = newRank;
+            updateSongs((prev) => prev.map((s) => (s.id === current.id
+              ? { ...s, links: { ...(s.links || {}), ...patch } }
+              : s)));
+          }
+        } catch (e) {
+          // silencieux : Deezer indisponible / rate limit -> on garde la valeur connue
+        }
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tab, updateSongs]);
 
   const saveCompo = useCallback(async (compo) => {
     setCompos((prev) => {
@@ -2241,7 +2295,14 @@ function SongRow({ song, members, onEdit }) {
 
       <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 15 }}>{song.title}</div>
-        <div style={{ fontSize: 13, color: '#9A958C' }}>{song.artist}{song.album ? ` · ${song.album}` : ''}</div>
+        <div style={{ fontSize: 13, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>{song.artist}{song.album ? ` · ${song.album}` : ''}</span>
+          {typeof song.links?.deezer_rank === 'number' && (
+            <span className="clx-mono" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#6B6862' }} title="Indice de popularité Deezer (rank, mis à jour en arrière-plan)">
+              <TrendingUp size={11} /> {formatDeezerRank(song.links.deezer_rank)}
+            </span>
+          )}
+        </div>
         {author && <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 4 }}>Proposé par {author.name} ({author.instrument})</div>}
       </div>
 
@@ -2570,55 +2631,10 @@ function Modal({ onClose, title, icon: Icon, children, wide }) {
 /*  COMPOS — répertoire des morceaux originaux du groupe               */
 /* ------------------------------------------------------------------ */
 
-function formatDeezerRank(rank) {
-  return typeof rank === 'number' ? rank.toLocaleString('fr-FR') : null;
-}
-
 function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushNotification, bandDriveUrl, onSetBandDriveUrl }) {
   const [editing, setEditing] = useState(null); // 'new' | objet compo | null
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(() => new Set(['wip', 'done']));
-
-  // À chaque ouverture de l'onglet, on réinterroge Deezer pour les compos
-  // liées et on met à jour l'indice de popularité (et la pochette) s'il a
-  // bougé. En arrière-plan, séquentiel (limites de débit Deezer), silencieux :
-  // en cas d'échec on garde la valeur stockée. `saveCompo` n'écrit en base que
-  // les compos réellement modifiées.
-  const composRef = useRef(compos);
-  composRef.current = compos;
-  useEffect(() => {
-    const linked = composRef.current.filter((c) => c.deezer_track_id);
-    if (linked.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      for (const linkedCompo of linked) {
-        try {
-          const t = await fetchDeezerTrack(linkedCompo.deezer_track_id);
-          if (cancelled) return;
-          // Version la plus fraîche (une édition a pu passer entre-temps).
-          const c = composRef.current.find((x) => x.id === linkedCompo.id);
-          if (!c) continue;
-          const newRank = typeof t.rank === 'number' ? t.rank : null;
-          const newCover = t.cover_url || c.cover_url || null;
-          const newUrl = t.deezer_url || c.deezer_url || null;
-          if (newRank !== c.deezer_rank || newCover !== c.cover_url || newUrl !== c.deezer_url) {
-            const nowIso = new Date().toISOString();
-            await saveCompo({
-              ...c,
-              deezer_rank: newRank,
-              cover_url: newCover,
-              deezer_url: newUrl,
-              deezer_synced_at: nowIso,
-              updated_at: nowIso,
-            });
-          }
-        } catch (e) {
-          // silencieux : Deezer indisponible ou piste supprimée -> on garde la valeur connue
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   const toggleStatus = (s) => setStatusFilter((prev) => {
     const next = new Set(prev);
@@ -2734,12 +2750,8 @@ function CompoRow({ compo, members, onEdit }) {
   const names = (ids) => (ids || []).map((id) => members.find((m) => m.id === id)?.name).filter(Boolean);
   const authors = names(compo.author_ids);
   const composers = names(compo.composer_ids);
-  const rank = formatDeezerRank(compo.deezer_rank);
   const docs = Array.isArray(compo.documents) ? compo.documents.filter((d) => d && d.url) : [];
-  const quickLinks = [
-    ...docs.slice(0, 3).map((d) => ({ href: d.url, icon: FileText, title: d.name || 'Document' })),
-    compo.deezer_url && { href: compo.deezer_url, icon: Radio, title: 'Ouvrir sur Deezer' },
-  ].filter(Boolean);
+  const quickLinks = docs.slice(0, 4).map((d) => ({ href: d.url, icon: FileText, title: d.name || 'Document' }));
 
   return (
     <div className="clx-card clx-row" style={{ display: 'flex', alignItems: 'stretch' }}>
@@ -2751,19 +2763,14 @@ function CompoRow({ compo, members, onEdit }) {
         }}
         title="Modifier la compo"
       >
-        {compo.cover_url ? (
-          <img src={compo.cover_url} alt="" style={{ width: 48, height: 48, borderRadius: 5, objectFit: 'cover', flexShrink: 0 }} />
-        ) : (
-          <div style={{ width: 48, height: 48, borderRadius: 5, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Music4 size={16} color="#6B6862" />
-          </div>
-        )}
+        <div style={{ width: 48, height: 48, borderRadius: 5, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Music4 size={16} color="#6B6862" />
+        </div>
         <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{compo.title}</div>
           <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
             {compo.duration_seconds ? <span className="clx-mono">{formatSongDuration(compo.duration_seconds)}</span> : null}
             {compo.album && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Disc3 size={11} /> {compo.album}</span>}
-            {rank && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Indice de popularité Deezer (rank)"><TrendingUp size={11} /> {rank}</span>}
           </div>
           {(authors.length > 0 || composers.length > 0) && (
             <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 4 }}>
@@ -2814,69 +2821,10 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
   const [docName, setDocName] = useState('');
   const [docUrl, setDocUrl] = useState('');
   const [docError, setDocError] = useState('');
-  const [deezer, setDeezer] = useState(
-    compo && compo.deezer_track_id
-      ? { id: String(compo.deezer_track_id), url: compo.deezer_url, cover_url: compo.cover_url, rank: compo.deezer_rank, synced_at: compo.deezer_synced_at }
-      : null,
-  );
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [deezerError, setDeezerError] = useState('');
-  const [linking, setLinking] = useState(false);
-  const debounceRef = useRef(null);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim().length < 2) { setResults([]); setSearching(false); return; }
-    setSearching(true);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        setResults(await searchDeezer(query.trim()));
-        setDeezerError('');
-      } catch (err) {
-        setDeezerError(err.message || 'Recherche indisponible.');
-        setResults([]);
-      } finally {
-        setSearching(false);
-      }
-    }, 400);
-    return () => clearTimeout(debounceRef.current);
-  }, [query]);
-
   const toggleId = (setter) => (id) => setter((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-
-  const linkTrack = async (r) => {
-    if (!r.id) { setDeezerError('Résultat Deezer sans identifiant.'); return; }
-    setLinking(true); setDeezerError('');
-    try {
-      const t = await fetchDeezerTrack(r.id);
-      setDeezer({ id: String(t.id), url: t.deezer_url, cover_url: t.cover_url, rank: t.rank, synced_at: new Date().toISOString() });
-      if (!duration && t.duration_seconds) setDuration(formatSongDuration(t.duration_seconds));
-      if (!album.trim() && t.album_title) setAlbum(t.album_title);
-      setResults([]); setQuery('');
-    } catch (e) {
-      setDeezerError(e.message || 'Lien Deezer impossible.');
-    } finally {
-      setLinking(false);
-    }
-  };
-
-  const refreshDeezer = async () => {
-    if (!deezer) return;
-    setLinking(true); setDeezerError('');
-    try {
-      const t = await fetchDeezerTrack(deezer.id);
-      setDeezer({ id: deezer.id, url: t.deezer_url, cover_url: t.cover_url, rank: t.rank, synced_at: new Date().toISOString() });
-    } catch (e) {
-      setDeezerError(e.message || 'Rafraîchissement impossible.');
-    } finally {
-      setLinking(false);
-    }
-  };
 
   const addDocument = () => {
     const u = docUrl.trim();
@@ -2905,11 +2853,6 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
       documents: documents
         .filter((d) => d.url && d.url.trim())
         .map((d) => ({ id: d.id, name: (d.name || '').trim() || 'Document', url: d.url.trim() })),
-      deezer_track_id: deezer?.id || null,
-      deezer_url: deezer?.url || null,
-      cover_url: deezer?.cover_url || null,
-      deezer_rank: deezer && typeof deezer.rank === 'number' ? deezer.rank : null,
-      deezer_synced_at: deezer?.synced_at || null,
       created_by_user_id: compo?.created_by_user_id || currentUser.id,
       created_at: compo?.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -3041,74 +2984,6 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
               <> — <a href={bandDriveUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#F2A93B' }}>ouvrir le dossier Drive du groupe</a> pour récupérer le lien d'un fichier.</>
             )}
           </div>
-        </div>
-
-        <div className="clx-card" style={{ padding: 12, background: '#101012' }}>
-          <div className="clx-display" style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Radio size={14} color="#F2A93B" /> Lien Deezer
-          </div>
-
-          {deezer ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              {deezer.cover_url && <img src={deezer.cover_url} alt="" style={{ width: 46, height: 46, borderRadius: 4, objectFit: 'cover', flexShrink: 0 }} />}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="clx-mono" style={{ fontSize: 12 }}>
-                  Popularité : {formatDeezerRank(deezer.rank) || '—'}
-                </div>
-                <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862' }}>
-                  {deezer.synced_at ? `synchronisé le ${formatConcertDate(String(deezer.synced_at).slice(0, 10), { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
-                  {deezer.url ? ' · ' : ''}
-                  {deezer.url && <a href={deezer.url} target="_blank" rel="noopener noreferrer" style={{ color: '#F2A93B' }}>ouvrir</a>}
-                </div>
-              </div>
-              <button onClick={refreshDeezer} disabled={linking} className="clx-btn clx-btn-ghost" style={{ padding: '6px 10px', borderRadius: 6, fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
-                {linking ? <Loader2 size={12} className="clx-spin" /> : <RefreshCw size={12} />} Rafraîchir
-              </button>
-              <button onClick={() => setDeezer(null)} className="clx-btn clx-btn-ghost" style={{ padding: '6px 10px', borderRadius: 6, fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, color: '#C1454B' }}>
-                <Unlink size={12} /> Délier
-              </button>
-            </div>
-          ) : (
-            <>
-              <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginBottom: 6 }}>
-                Pour les morceaux déjà sur Deezer : récupère la pochette et l'indice de popularité.
-              </div>
-              <div style={{ position: 'relative' }}>
-                <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6862' }} />
-                <input
-                  className="clx-input"
-                  style={{ paddingLeft: 32 }}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Chercher la piste sur Deezer…"
-                />
-                {(searching || linking) && <Loader2 size={14} className="clx-spin" style={{ position: 'absolute', right: 11, top: 11, color: '#6B6862' }} />}
-              </div>
-              {results.length > 0 && (
-                <div className="clx-scrollbar" style={{ maxHeight: 200, overflowY: 'auto', marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {results.map((r, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => linkTrack(r)}
-                      disabled={linking}
-                      className="clx-btn"
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 8, borderRadius: 6, background: 'transparent', border: 'none', textAlign: 'left', color: '#F5F1E8' }}
-                    >
-                      {r.cover_url
-                        ? <img src={r.cover_url} alt="" style={{ width: 34, height: 34, borderRadius: 4, flexShrink: 0, objectFit: 'cover' }} />
-                        : <div style={{ width: 34, height: 34, borderRadius: 4, flexShrink: 0, background: '#16161A', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Music2 size={13} color="#6B6862" /></div>}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
-                        <div style={{ fontSize: 10, color: '#9A958C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.artist}{r.album ? ` · ${r.album}` : ''}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-          {deezerError && <div style={{ color: '#C1454B', fontSize: 11, marginTop: 6 }}>{deezerError}</div>}
         </div>
 
         {error && <div style={{ color: '#C1454B', fontSize: 12 }}>{error}</div>}
