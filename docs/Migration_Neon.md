@@ -4,6 +4,8 @@ Statut : **Bascule en production faite le 6 septembre 2026** (Phases 0→5). `ma
 
 **Reste — Phase 6 (nettoyage), à faire après ~2 semaines sans incident (≈ 20 septembre 2026)** : supprimer le dossier `supabase/`, les branches Supabase de `src/App.jsx` et le point de commutation `const BACKEND`, les scripts/fichiers de migration devenus inutiles, puis le projet Supabase lui-même ; retirer `pg` des dépendances ; finaliser la doc technique (retirer les rappels « ère Supabase »).
 
+**Note (2026-09-10)** : contrairement à ce que prévoyait le plan (§ 5), aucun projet Neon « définitif » distinct n'a été créé — le projet initialement monté pour la Phase 0 (« pilote ») a été conservé et est devenu la production (mot de passe régénéré, schéma final appliqué). Base `neondb`, rôle `neondb_owner`, endpoint `ep-blue-glade-b2ugsmcp` (région `c-6.eu-central-1.aws`). Le **nom de projet** affiché dans le dashboard Neon peut être renommé sans impact (la chaîne de connexion ne le contient pas).
+
 Chemin B retenu (§ 4). Historique d'exécution ci-dessous conservé pour référence.
 
 Motivation : le plan gratuit Supabase plafonne à 2 projets actifs ; le plan gratuit Neon en autorise ~100. L'objectif est d'avoir un socle unique (Neon + Vercel) réutilisable pour les autres projets à venir. Ce document ne concerne que `calyxter-set-manager`.
