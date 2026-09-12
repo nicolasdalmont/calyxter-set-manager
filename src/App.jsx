@@ -1924,10 +1924,22 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
   return (
     <header style={{ borderBottom: '1px solid #2A2A2E', position: 'sticky', top: 0, zIndex: 10, background: '#0B0B0Cee', backdropFilter: 'blur(6px)' }}>
       <div style={{ maxWidth: 880, margin: '0 auto', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div className="clx-display" style={{ fontSize: 26, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button
+          onClick={() => setTab('accueil')}
+          className="clx-display clx-btn"
+          title="Retour à l'accueil"
+          style={{
+            fontSize: 26, display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none',
+            padding: 0, color: 'inherit', cursor: 'pointer',
+            // Explicite : .clx-btn (déclarée après .clx-display dans la
+            // feuille de style) impose sinon sa police Inter, écrasant le
+            // Bebas Neue du logo à spécificité CSS égale.
+            fontFamily: "'Bebas Neue', sans-serif", letterSpacing: '0.04em',
+          }}
+        >
           <img src="/logo.png" alt="" aria-hidden="true" style={{ height: '1em', width: 'auto', display: 'block', flexShrink: 0 }} />
           CALYXTER
-        </div>
+        </button>
 
         {/* Sous 640px, cette nav disparaît (voir .clx-topnav) au profit de
             BottomTabBar, toujours affichée en pied d'écran. */}
@@ -3496,6 +3508,31 @@ function ToastStack({ toasts, onDismiss }) {
   );
 }
 
+// Confirmation destructrice/irréversible, rendue via le Modal maison plutôt
+// que window.confirm — sur les deux actions les plus critiques de l'appli
+// (clôturer une phase, supprimer un concert), pour ne plus faire sortir ces
+// gestes-là de la charte visuelle (boîte de dialogue grise du navigateur,
+// mise en page différente selon l'OS). `message` accepte les sauts de ligne.
+function ConfirmDialog({ title, message, confirmLabel, danger, onConfirm, onCancel }) {
+  return (
+    <Modal onClose={onCancel} title={title} icon={danger ? Trash2 : AlertTriangle}>
+      <div style={{ fontSize: 13, color: '#F5F1E8', whiteSpace: 'pre-wrap', marginBottom: 20 }}>{message}</div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+        <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>
+          Annuler
+        </button>
+        <button
+          onClick={onConfirm}
+          className={`clx-btn ${danger ? 'clx-btn-danger' : 'clx-btn-primary'}`}
+          style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  COMPOS — répertoire des morceaux originaux du groupe               */
 /* ------------------------------------------------------------------ */
@@ -4662,6 +4699,7 @@ function ResultStep({ songs, members, currentUser, phase, phaseHistory, updatePh
 
   const myTieVote = (phase.tie_break_votes || []).find((v) => v.user_id === currentUser.id);
   const [copied, setCopied] = useState(false);
+  const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
 
   const castTieVote = async (songId) => {
     await updatePhase((p) => ({
@@ -4689,8 +4727,8 @@ function ResultStep({ songs, members, currentUser, phase, phaseHistory, updatePh
 
   const finalize = async () => {
     if (!quota.finalTop3) return;
+    setShowFinalizeConfirm(false);
     const names = quota.finalTop3.map((s) => `« ${s.title} »`).join(', ');
-    if (!window.confirm(`Finaliser et clôturer la phase ?\n\n${names} passeront au statut « À préparer » et la phase rejoindra l'historique. Action irréversible.`)) return;
     const winnerIds = quota.finalTop3.map((s) => s.id);
     await updateSongs((prev) => prev.map((s) => (winnerIds.includes(s.id) ? { ...s, status: 'to_prepare' } : s)));
     await pushNotification(`🏆 ${currentUser.name} a clôturé la phase : ${names} passent en préparation !${quota.quotaApplied ? ' (quota francophone appliqué)' : ''}`, 'result');
@@ -4794,10 +4832,20 @@ function ResultStep({ songs, members, currentUser, phase, phaseHistory, updatePh
             </div>
           )}
 
-          <button onClick={finalize} className="clx-btn clx-btn-primary" style={{ padding: '10px 20px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={() => setShowFinalizeConfirm(true)} className="clx-btn clx-btn-primary" style={{ padding: '10px 20px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
             <Sparkles size={15} /> Finaliser et clôturer la phase
           </button>
         </>
+      )}
+
+      {showFinalizeConfirm && quota.finalTop3 && (
+        <ConfirmDialog
+          title="Clôturer la phase"
+          message={`Finaliser et clôturer la phase ?\n\n${quota.finalTop3.map((s) => `« ${s.title} »`).join(', ')} passeront au statut « À préparer » et la phase rejoindra l'historique. Action irréversible.`}
+          confirmLabel="Finaliser et clôturer"
+          onConfirm={finalize}
+          onCancel={() => setShowFinalizeConfirm(false)}
+        />
       )}
 
       <details style={{ marginTop: 22 }}>
@@ -5530,6 +5578,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const dragIndex = useRef(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
@@ -5699,9 +5748,8 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   };
 
   const handleDelete = () => {
-    if (window.confirm(`Supprimer définitivement le concert « ${concert.name} » ? Cette action est irréversible.`)) {
-      onDelete(concert.id, concert.name);
-    }
+    setShowDeleteConfirm(false);
+    onDelete(concert.id, concert.name);
   };
 
   return (
@@ -5983,7 +6031,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {isEdit ? (
           <button
-            onClick={handleDelete}
+            onClick={() => setShowDeleteConfirm(true)}
             className="clx-btn"
             style={{ padding: '9px 12px', borderRadius: 6, fontSize: 13, background: 'transparent', color: '#C1454B', border: '1px solid #C1454B55', display: 'flex', alignItems: 'center', gap: 6 }}
           >
@@ -6002,6 +6050,17 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
           </button>
         </div>
       </div>
+
+      {showDeleteConfirm && (
+        <ConfirmDialog
+          title="Supprimer le concert"
+          message={`Supprimer définitivement le concert « ${concert.name} » ? Cette action est irréversible.`}
+          confirmLabel="Supprimer"
+          danger
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
     </div>
   );
 }
