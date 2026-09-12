@@ -619,6 +619,40 @@ export default function App() {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [membersError, setMembersError] = useState('');
 
+  // Notifications éphémères (toasts) confirmant ou signalant l'échec d'un
+  // enregistrement — pour ne plus jamais laisser un échec réseau silencieux
+  // (voir dbInsert/dbUpdateById/upsertRows/dbDelete plus haut, dont les
+  // erreurs n'étaient jusqu'ici que journalisées en console). Distinct du
+  // journal d'activité (table "notifications") : celui-ci est un historique
+  // partagé et persistant, le toast est un retour immédiat et personnel.
+  const [toasts, setToasts] = useState([]);
+  const toastTimers = useRef({});
+
+  const dismissToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+    if (toastTimers.current[id]) { clearTimeout(toastTimers.current[id]); delete toastTimers.current[id]; }
+  }, []);
+
+  // Un doublon (même message, même nature) rafraîchit juste le délai du
+  // toast déjà affiché plutôt que d'en empiler un second — évite une pile de
+  // toasts identiques si, par exemple, plusieurs sauvegardes échouent coup
+  // sur coup pendant une coupure réseau (glisser-déposer du vote compris).
+  const pushToast = useCallback((message, opts = {}) => {
+    const kind = opts.kind || 'success';
+    const duration = opts.duration ?? (kind === 'error' ? 6000 : 2800);
+    setToasts((prev) => {
+      const dup = prev.find((t) => t.message === message && t.kind === kind);
+      if (dup) {
+        if (toastTimers.current[dup.id]) clearTimeout(toastTimers.current[dup.id]);
+        if (duration) toastTimers.current[dup.id] = setTimeout(() => dismissToast(dup.id), duration);
+        return prev;
+      }
+      const id = uid();
+      if (duration) toastTimers.current[id] = setTimeout(() => dismissToast(id), duration);
+      return [...prev.slice(-2), { id, message, kind }];
+    });
+  }, [dismissToast]);
+
   const [tab, setTab] = useState('accueil');
   const [search, setSearch] = useState('');
   // Filtre par statut : multi-sélection libre parmi les 4 statuts. Par défaut
@@ -630,53 +664,61 @@ export default function App() {
   const [editingSong, setEditingSong] = useState(null);
   const [showNotifLog, setShowNotifLog] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [supaMembers, s, p, n, c, ev, ph, id, cp, st, cm] = await Promise.all([
-          withTimeout(fetchMembersFromSupabase(), 8000, null),
-          withTimeout(loadSongs(), 8000, []),
-          withTimeout(fetchActivePhase(), 8000, null),
-          withTimeout(fetchNotifications(), 8000, []),
-          withTimeout(fetchConcerts(), 8000, []),
-          withTimeout(fetchEvents(), 8000, []),
-          withTimeout(fetchPhaseHistory(), 8000, []),
-          withTimeout(fetchIdeas(), 8000, []),
-          withTimeout(fetchCompos(), 8000, []),
-          withTimeout(fetchSettings(), 8000, {}),
-          withTimeout(fetchComments(), 8000, []),
-        ]);
-        if (cancelled) return;
-        if (supaMembers) {
-          setMembers(supaMembers);
-        } else {
-          setMembersError("Impossible de charger les membres depuis Supabase — vérifie la connexion.");
-        }
-        setSongs(s);
-        setPhase(p);
-        setNotifications(n);
-        setConcerts(c);
-        setEvents(ev);
-        setPhaseHistory(ph);
-        setIdeas(id);
-        setCompos(cp);
-        setSettings(st || {});
-        setComments(cm);
-        setCurrentUserId(loadPersonal('current-member-id'));
-      } catch (e) {
-        console.error('Failed to load app data', e);
-        if (cancelled) return;
-        setMembersError("Impossible de charger les données depuis Supabase — vérifie la connexion.");
-        setSongs([]);
-        setPhase(null);
-        setNotifications([]);
-      } finally {
-        if (!cancelled) setLoading(false);
+  // Extrait en fonction nommée (plutôt qu'IIFE anonyme dans l'effet) pour
+  // pouvoir la rejouer depuis le bouton "Réessayer" de l'écran de connexion
+  // en cas d'échec du chargement initial (voir MemberPicker) — sans ce
+  // bouton, cet écran était un cul-de-sac obligeant à recharger la page.
+  const loadAll = useCallback(async (cancelledRef) => {
+    setLoading(true);
+    setMembersError('');
+    try {
+      const [supaMembers, s, p, n, c, ev, ph, id, cp, st, cm] = await Promise.all([
+        withTimeout(fetchMembersFromSupabase(), 8000, null),
+        withTimeout(loadSongs(), 8000, []),
+        withTimeout(fetchActivePhase(), 8000, null),
+        withTimeout(fetchNotifications(), 8000, []),
+        withTimeout(fetchConcerts(), 8000, []),
+        withTimeout(fetchEvents(), 8000, []),
+        withTimeout(fetchPhaseHistory(), 8000, []),
+        withTimeout(fetchIdeas(), 8000, []),
+        withTimeout(fetchCompos(), 8000, []),
+        withTimeout(fetchSettings(), 8000, {}),
+        withTimeout(fetchComments(), 8000, []),
+      ]);
+      if (cancelledRef && cancelledRef.current) return;
+      if (supaMembers) {
+        setMembers(supaMembers);
+      } else {
+        setMembersError('Impossible de charger les données — vérifie ta connexion.');
       }
-    })();
-    return () => { cancelled = true; };
+      setSongs(s);
+      setPhase(p);
+      setNotifications(n);
+      setConcerts(c);
+      setEvents(ev);
+      setPhaseHistory(ph);
+      setIdeas(id);
+      setCompos(cp);
+      setSettings(st || {});
+      setComments(cm);
+      setCurrentUserId(loadPersonal('current-member-id'));
+    } catch (e) {
+      console.error('Failed to load app data', e);
+      if (cancelledRef && cancelledRef.current) return;
+      setMembersError('Impossible de charger les données — vérifie ta connexion.');
+      setSongs([]);
+      setPhase(null);
+      setNotifications([]);
+    } finally {
+      if (!cancelledRef || !cancelledRef.current) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    const cancelledRef = { current: false };
+    loadAll(cancelledRef);
+    return () => { cancelledRef.current = true; };
+  }, [loadAll]);
 
   const currentUser = useMemo(() => members.find((m) => m.id === currentUserId) || null, [members, currentUserId]);
 
@@ -720,7 +762,14 @@ export default function App() {
     }
   }, []);
 
-  const updateSongs = useCallback(async (updater) => {
+  // `silent` : coupe aussi bien le toast d'erreur que le futur toast de succès
+  // — réservé aux écritures qui ne viennent pas d'une action explicite (ex.
+  // rafraîchissement d'arrière-plan de l'indice Deezer, volontairement
+  // silencieux, voir plus bas). `successMessage` n'est fourni que par les
+  // quelques appelants pour qui un message précis a du sens (ajout/édition
+  // d'un morceau) — les autres usages (veto, promotion des gagnants…) ont
+  // déjà leur propre retour visuel et n'ont pas besoin d'un toast générique.
+  const updateSongs = useCallback(async (updater, { silent, successMessage } = {}) => {
     let prevSongs;
     let next;
     setSongs((prev) => {
@@ -739,19 +788,26 @@ export default function App() {
       if (changed.length > 0) {
         await upsertRows('songs', changed);
       }
+      if (successMessage && !silent) pushToast(successMessage, { kind: 'success' });
+      return true;
     } catch (e) {
       console.error('Erreur en enregistrant les morceaux', e);
+      if (!silent) pushToast("Impossible d'enregistrer le morceau — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const deleteSong = useCallback(async (songId) => {
     setSongs((prev) => prev.filter((s) => s.id !== songId));
     try {
       await dbDelete('songs', [['id', 'eq', songId]]);
+      return true;
     } catch (e) {
       console.error('Erreur en supprimant le morceau', e);
+      pushToast("Impossible de supprimer le morceau — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   // Rafraîchissement en arrière-plan de l'indice de popularité Deezer des
   // morceaux, à chaque ouverture du Répertoire. Séquentiel et throttlé (~1
@@ -786,7 +842,7 @@ export default function App() {
             if (newRank !== prevRank) patch.deezer_rank = newRank;
             updateSongs((prev) => prev.map((s) => (s.id === current.id
               ? { ...s, links: { ...(s.links || {}), ...patch } }
-              : s)));
+              : s)), { silent: true });
           }
         } catch (e) {
           // silencieux : Deezer indisponible / rate limit -> on garde la valeur connue
@@ -804,29 +860,40 @@ export default function App() {
     });
     try {
       await upsertRows('compos', [compo]);
+      pushToast(`« ${compo.title} » enregistrée.`, { kind: 'success' });
+      return true;
     } catch (e) {
       console.error('Erreur en enregistrant la compo', e);
+      pushToast("Impossible d'enregistrer la compo — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const deleteCompo = useCallback(async (compoId) => {
     setCompos((prev) => prev.filter((c) => c.id !== compoId));
     try {
       await dbDelete('compos', [['id', 'eq', compoId]]);
+      return true;
     } catch (e) {
       console.error('Erreur en supprimant la compo', e);
+      pushToast("Impossible de supprimer la compo — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const saveSetting = useCallback(async (key, value) => {
     const v = (value || '').trim();
     setSettings((prev) => ({ ...prev, [key]: v }));
     try {
       await upsertRows('settings', [{ id: key, value: v || null, updated_at: new Date().toISOString() }]);
+      pushToast('Réglage enregistré.', { kind: 'success' });
+      return true;
     } catch (e) {
       console.error('Erreur en enregistrant le réglage', e);
+      pushToast("Impossible d'enregistrer ce réglage — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const saveConcert = useCallback(async (concert) => {
     setConcerts((prev) => {
@@ -835,10 +902,14 @@ export default function App() {
     });
     try {
       await upsertRows('concerts', [concert]);
+      pushToast(`Concert « ${concert.name} » enregistré.`, { kind: 'success' });
+      return true;
     } catch (e) {
       console.error('Erreur en enregistrant le concert', e);
+      pushToast("Impossible d'enregistrer le concert — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const deleteConcert = useCallback(async (concertId) => {
     setConcerts((prev) => prev.filter((c) => c.id !== concertId));
@@ -850,10 +921,13 @@ export default function App() {
       // violation de contrainte de clé étrangère.
       await dbDelete('comments', [['concert_id', 'eq', concertId]]);
       await dbDelete('concerts', [['id', 'eq', concertId]]);
+      return true;
     } catch (e) {
       console.error('Erreur en supprimant le concert', e);
+      pushToast("Impossible de supprimer le concert — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const saveEvent = useCallback(async (event) => {
     setEvents((prev) => {
@@ -862,10 +936,14 @@ export default function App() {
     });
     try {
       await upsertRows('events', [event]);
+      pushToast(`Rendez-vous « ${event.subject} » enregistré.`, { kind: 'success' });
+      return true;
     } catch (e) {
       console.error('Erreur en enregistrant le rendez-vous', e);
+      pushToast("Impossible d'enregistrer le rendez-vous — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const deleteEvent = useCallback(async (eventId) => {
     setEvents((prev) => prev.filter((e) => e.id !== eventId));
@@ -877,51 +955,79 @@ export default function App() {
       // une violation de contrainte de clé étrangère.
       await dbDelete('comments', [['event_id', 'eq', eventId]]);
       await dbDelete('events', [['id', 'eq', eventId]]);
+      return true;
     } catch (e) {
       console.error('Erreur en supprimant le rendez-vous', e);
+      pushToast("Impossible de supprimer le rendez-vous — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
-  const saveIdea = useCallback(async (idea) => {
+  // `silent` : passé lors d'un simple changement de statut (menu déroulant
+  // dans IdeaCard) — la puce colorée change déjà sous les yeux, un toast de
+  // succès en plus serait redondant. Une nouvelle idée, elle, n'a aucun
+  // autre retour que la fermeture du champ de saisie : elle garde le toast.
+  const saveIdea = useCallback(async (idea, { silent } = {}) => {
     setIdeas((prev) => {
       const exists = prev.some((i) => i.id === idea.id);
       return exists ? prev.map((i) => (i.id === idea.id ? idea : i)) : [idea, ...prev];
     });
     try {
       await upsertRows('ideas', [idea]);
+      if (!silent) pushToast('Idée enregistrée.', { kind: 'success' });
+      return true;
     } catch (e) {
       console.error("Erreur en enregistrant l'idée", e);
+      pushToast("Impossible d'enregistrer l'idée — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const deleteIdea = useCallback(async (ideaId) => {
     setIdeas((prev) => prev.filter((i) => i.id !== ideaId));
     try {
       await dbDelete('ideas', [['id', 'eq', ideaId]]);
+      return true;
     } catch (e) {
       console.error("Erreur en supprimant l'idée", e);
+      pushToast("Impossible de supprimer l'idée — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const saveComment = useCallback(async (comment) => {
     setComments((prev) => [...prev, comment]);
     try {
       await upsertRows('comments', [comment]);
+      pushToast('Commentaire publié.', { kind: 'success' });
+      return true;
     } catch (e) {
       console.error('Erreur en enregistrant le commentaire', e);
+      pushToast("Le commentaire n'a pas pu être publié — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   const deleteComment = useCallback(async (commentId) => {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
     try {
       await dbDelete('comments', [['id', 'eq', commentId]]);
+      return true;
     } catch (e) {
       console.error('Erreur en supprimant le commentaire', e);
+      pushToast("Impossible de supprimer le commentaire — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
-  const updatePhase = useCallback(async (updater, closingExtra) => {
+  // `silent` : coupe le toast d'erreur — réservé au brouillon de vote
+  // (VoteStep.persist), réenregistré à chaque geste de glisser-déposer : un
+  // toast à chaque coup pendant une coupure réseau serait envahissant, même
+  // dédoublonné. Toutes les autres écritures de phase (lancement, veto,
+  // validation du bulletin, passage à l'étape suivante, clôture...) restent
+  // couvertes par défaut : un échec y est rare mais ne doit jamais rester
+  // silencieux.
+  const updatePhase = useCallback(async (updater, closingExtra, { silent } = {}) => {
     let prevPhase;
     let next;
     setPhase((prev) => {
@@ -945,10 +1051,13 @@ export default function App() {
         // l'historique consultable dans l'onglet Phase de choix.
         setPhaseHistory((prev) => [{ ...prevPhase, ...closingFields }, ...prev]);
       }
+      return true;
     } catch (e) {
       console.error('Erreur en enregistrant la phase', e);
+      if (!silent) pushToast("Impossible d'enregistrer la phase de choix — vérifie ta connexion.", { kind: 'error' });
+      return false;
     }
-  }, []);
+  }, [pushToast]);
 
   // Annulation d'une phase en cours, à tout moment, par n'importe quel
   // membre : contrairement à une clôture normale (updatePhase(null)), la
@@ -970,8 +1079,9 @@ export default function App() {
       await dbDelete('phases', [['id', 'eq', currentPhase.id]]);
     } catch (e) {
       console.error('Erreur en annulant la phase', e);
+      pushToast("Impossible d'annuler la phase — vérifie ta connexion.", { kind: 'error' });
     }
-  }, [updateSongs]);
+  }, [updateSongs, pushToast]);
 
   // Lancement d'une phase de choix — déclenchable depuis le Répertoire par
   // n'importe quel membre. Bascule automatiquement vers l'onglet Phase de
@@ -1031,7 +1141,7 @@ export default function App() {
     return (
       <div className="calyxter-app" style={{ minHeight: '100vh' }}>
         <GlobalStyle />
-        <MemberPicker members={members} onAuthenticated={onAuthenticated} error={membersError} />
+        <MemberPicker members={members} onAuthenticated={onAuthenticated} error={membersError} onRetry={() => loadAll()} />
       </div>
     );
   }
@@ -1039,6 +1149,7 @@ export default function App() {
   return (
     <div className="calyxter-app">
       <GlobalStyle />
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
 
       <TopBar
         currentUser={currentUser}
@@ -1171,7 +1282,7 @@ export default function App() {
           existingSongs={songs}
           onClose={() => setShowAdd(false)}
           onAdd={async (song) => {
-            await updateSongs((prev) => [...prev, song]);
+            await updateSongs((prev) => [...prev, song], { successMessage: `« ${song.title} » ajouté au répertoire.` });
             await pushNotification(`🎵 « ${song.title} » ajouté au répertoire par ${currentUser.name}.`, 'info');
             setShowAdd(false);
           }}
@@ -1187,7 +1298,7 @@ export default function App() {
           onAdd={async (updatedSong) => {
             const previousStatus = editingSong.status;
             const statusChanged = updatedSong.status !== previousStatus;
-            await updateSongs((prev) => prev.map((s) => (s.id === updatedSong.id ? updatedSong : s)));
+            await updateSongs((prev) => prev.map((s) => (s.id === updatedSong.id ? updatedSong : s)), { successMessage: `« ${updatedSong.title} » enregistré.` });
             if (statusChanged) {
               await pushNotification(`🔧 ${currentUser.name} a changé manuellement le statut de « ${updatedSong.title} » : ${STATUS[previousStatus].label} → ${STATUS[updatedSong.status].label}.`, 'info');
             } else {
@@ -1485,7 +1596,7 @@ function GlobalStyle() {
 /*  MEMBER PICKER (stand-in for auth in the prototype)                 */
 /* ------------------------------------------------------------------ */
 
-function MemberPicker({ members, onAuthenticated, error }) {
+function MemberPicker({ members, onAuthenticated, error, onRetry }) {
   const [selected, setSelected] = useState(null);
   const [mode, setMode] = useState('picker'); // 'picker' | 'login' | 'create'
   const [password, setPassword] = useState('');
@@ -1624,7 +1735,14 @@ function MemberPicker({ members, onAuthenticated, error }) {
       </div>
 
       {error && (
-        <div style={{ color: '#C1454B', fontSize: 12, marginBottom: 16, textAlign: 'center', maxWidth: 380 }}>{error}</div>
+        <div style={{ marginBottom: 16, textAlign: 'center', maxWidth: 380 }}>
+          <div style={{ color: '#C1454B', fontSize: 12, marginBottom: 10 }}>{error}</div>
+          {onRetry && (
+            <button onClick={onRetry} className="clx-btn clx-btn-ghost" style={{ padding: '7px 14px', borderRadius: 6, fontSize: 12 }}>
+              Réessayer
+            </button>
+          )}
+        </div>
       )}
 
       {members.length === 0 && !error && (
@@ -2628,6 +2746,53 @@ function Modal({ onClose, title, icon: Icon, children, wide }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  TOASTS — retour succès/échec des enregistrements                   */
+/* ------------------------------------------------------------------ */
+
+// Rendu via portail sur <body>, comme Modal : sinon un toast ouvert pendant
+// une modale se retrouverait piégé sous elle (même souci de contexte
+// d'empilement, voir le commentaire de Modal ci-dessus).
+function ToastStack({ toasts, onDismiss }) {
+  if (toasts.length === 0) return null;
+  return createPortal(
+    <div
+      aria-live="polite"
+      style={{
+        position: 'fixed', left: '50%', bottom: 18, transform: 'translateX(-50%)', zIndex: 200,
+        display: 'flex', flexDirection: 'column', gap: 8, width: 'min(92vw, 420px)',
+      }}
+    >
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          role={t.kind === 'error' ? 'alert' : 'status'}
+          className="clx-card"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px',
+            borderColor: t.kind === 'error' ? '#C1454B88' : '#6FA28788',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+          }}
+        >
+          {t.kind === 'error'
+            ? <AlertTriangle size={15} color="#C1454B" style={{ flexShrink: 0 }} />
+            : <Check size={15} color="#6FA287" style={{ flexShrink: 0 }} />}
+          <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>{t.message}</div>
+          <button
+            onClick={() => onDismiss(t.id)}
+            className="clx-btn clx-btn-ghost"
+            style={{ padding: 5, borderRadius: 5, display: 'flex', flexShrink: 0 }}
+            aria-label="Fermer"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  COMPOS — répertoire des morceaux originaux du groupe               */
 /* ------------------------------------------------------------------ */
 
@@ -3427,7 +3592,7 @@ function ProposalStep({ songs, members, currentUser, phase, phaseHistory, update
           existingSongs={songs}
           onClose={() => setShowAdd(false)}
           onAdd={async (song) => {
-            await updateSongs((prev) => [...prev, song]);
+            await updateSongs((prev) => [...prev, song], { successMessage: `« ${song.title} » ajouté au répertoire.` });
             await pushNotification(`🎵 ${currentUser.name} propose « ${song.title} » pour cette phase.`, 'info');
             setShowAdd(false);
           }}
@@ -3442,7 +3607,7 @@ function ProposalStep({ songs, members, currentUser, phase, phaseHistory, update
           onAdd={async (updatedSong) => {
             const previousStatus = editingSong.status;
             const statusChanged = updatedSong.status !== previousStatus;
-            await updateSongs((prev) => prev.map((s) => (s.id === updatedSong.id ? updatedSong : s)));
+            await updateSongs((prev) => prev.map((s) => (s.id === updatedSong.id ? updatedSong : s)), { successMessage: `« ${updatedSong.title} » enregistré.` });
             if (statusChanged) {
               await pushNotification(`🔧 ${currentUser.name} a changé manuellement le statut de « ${updatedSong.title} » : ${STATUS[previousStatus].label} → ${STATUS[updatedSong.status].label}.`, 'info');
             } else {
@@ -3588,10 +3753,13 @@ function VoteStep({ songs, members, currentUser, phase, updatePhase }) {
   const pointsFor = (index) => (index < Math.min(rankedUpTo, N) ? N - index : null);
 
   const persist = async (newOrder, newRankedUpTo) => {
+    // silent: ce brouillon se réenregistre à chaque glisser-déposer — un
+    // toast d'erreur à chaque geste serait envahissant en cas de coupure
+    // réseau prolongée pendant le classement.
     await updatePhase((p) => ({
       ...p,
       vote_drafts: { ...(p.vote_drafts || {}), [currentUser.id]: { order: newOrder, rankedUpTo: newRankedUpTo } },
-    }));
+    }), undefined, { silent: true });
   };
 
   // Move a song from one position to another. A song entering the ranked zone
@@ -5792,7 +5960,7 @@ function IdeasTab({ ideas, members, currentUser, saveIdea, deleteIdea, pushNotif
 
   const changeStatus = async (idea, newStatus) => {
     if (newStatus === idea.status) return;
-    await saveIdea({ ...idea, status: newStatus, updated_at: new Date().toISOString() });
+    await saveIdea({ ...idea, status: newStatus, updated_at: new Date().toISOString() }, { silent: true });
     if (newStatus === 'done') {
       await pushNotification(`✅ Idée marquée comme terminée : « ${idea.content.slice(0, 90)}${idea.content.length > 90 ? '…' : ''} ».`, 'info');
     }
