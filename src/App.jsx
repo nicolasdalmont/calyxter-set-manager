@@ -6,7 +6,7 @@ import {
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
   Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer,
-  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen, MoreHorizontal
+  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen, MoreHorizontal, LogOut
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -1825,8 +1825,8 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
           <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C', padding: '0 4px' }}>
             {currentUser.name} · {currentUser.instrument}
           </div>
-          <button onClick={onSignOut} title="Changer de compte" className="clx-btn clx-btn-ghost" style={{ padding: '7px 10px', borderRadius: 6, fontSize: 12 }}>
-            Changer de compte
+          <button onClick={onSignOut} title="Changer de compte" aria-label="Changer de compte" className="clx-btn clx-btn-ghost" style={{ padding: 8, borderRadius: 6, display: 'flex' }}>
+            <LogOut size={15} />
           </button>
         </div>
       </div>
