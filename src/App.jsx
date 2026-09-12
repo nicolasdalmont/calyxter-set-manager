@@ -1163,7 +1163,7 @@ export default function App() {
         <ActivePhaseBanner phase={phase} onOpen={() => setTab('phase')} />
       )}
 
-      <main style={{ maxWidth: 880, margin: '0 auto', padding: '20px 16px 64px', position: 'relative', zIndex: 1 }}>
+      <main className="clx-main" style={{ maxWidth: 880, margin: '0 auto', padding: '20px 16px 64px', position: 'relative', zIndex: 1 }}>
         {tab === 'accueil' && (
           <AccueilTab
             currentUser={currentUser}
@@ -1275,6 +1275,8 @@ export default function App() {
           <NotificationLog notifications={notifications} />
         )}
       </main>
+
+      <BottomTabBar tab={tab} setTab={setTab} phaseActive={!!phase} />
 
       {showAdd && (
         <AddSongModal
@@ -1484,13 +1486,12 @@ function GlobalStyle() {
       .clx-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
       .clx-scrollbar::-webkit-scrollbar-thumb { background: #2A2A2E; border-radius: 3px; }
 
-      /* Barre d'onglets : jamais coupée, quel que soit l'appareil.
-         En dessous de 640px, la nav prend toute la largeur et passe en
-         icônes seules (label masqué, conservé pour lecteurs d'écran via
-         aria-label et en info-bulle via title) : les 4 onglets tiennent
-         alors sur un seul écran de smartphone. Dans tous les cas, la nav
-         reste défilable horizontalement en filet de sécurité (grande
-         police, zoom d'accessibilité…). */
+      /* Barre d'onglets du bandeau supérieur (bureau/tablette large) : jamais
+         coupée, reste défilable horizontalement en filet de sécurité (grande
+         police, zoom d'accessibilité…). Sous 640px elle laisse la place à la
+         barre du bas (.clx-bottomnav ci-dessous, toujours affichée en pied
+         d'écran plutôt que défilante avec la page — pattern d'appli mobile
+         à onglets, ex. Ma Bédéthèque). */
       .clx-topnav {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
@@ -1498,10 +1499,21 @@ function GlobalStyle() {
       }
       .clx-topnav::-webkit-scrollbar { display: none; }
 
+      .clx-bottomnav { display: none; }
+
       @media (max-width: 640px) {
-        .clx-topnav { width: 100%; justify-content: center; }
-        .clx-tab-label { display: none; }
-        .clx-tab-btn { padding: 9px 10px; }
+        .clx-topnav { display: none; }
+        .clx-bottomnav {
+          display: flex;
+          position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+          background: #0B0B0Cee; backdrop-filter: blur(6px);
+          border-top: 1px solid #2A2A2E;
+          padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+        }
+        /* Réserve la hauteur de la barre du bas (+ zone de sécurité iOS) sous
+           le contenu, sinon la dernière carte de chaque écran se retrouve
+           masquée derrière elle. */
+        .clx-main { padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important; }
       }
 
       .clx-home-grid {
@@ -1781,48 +1793,6 @@ const MORE_TABS = [
 ];
 
 function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [moreRect, setMoreRect] = useState(null);
-  const moreBtnRef = useRef(null);
-  const moreMenuRef = useRef(null);
-  const moreActive = MORE_TABS.some((t) => t.key === tab);
-
-  // Se referme tout seul si l'onglet actif change par un autre biais (ex.
-  // "Voir la phase de choix" depuis l'écran d'accueil) pendant qu'il était
-  // resté ouvert.
-  useEffect(() => { setMoreOpen(false); }, [tab]);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    const onDocMouseDown = (e) => {
-      if (moreBtnRef.current?.contains(e.target)) return;
-      if (moreMenuRef.current?.contains(e.target)) return;
-      setMoreOpen(false);
-    };
-    const onKeyDown = (e) => { if (e.key === 'Escape') setMoreOpen(false); };
-    // Le menu est positionné une fois à l'ouverture (coordonnées du bouton) :
-    // un défilement ou un redimensionnement le désynchroniserait de son
-    // ancre, on le referme plutôt que de le laisser flotter au mauvais
-    // endroit (`capture: true` pour intercepter aussi le défilement propre
-    // à la barre d'onglets, horizontale et scrollable sur mobile).
-    const onScrollOrResize = () => setMoreOpen(false);
-    document.addEventListener('mousedown', onDocMouseDown);
-    document.addEventListener('keydown', onKeyDown);
-    window.addEventListener('resize', onScrollOrResize);
-    window.addEventListener('scroll', onScrollOrResize, true);
-    return () => {
-      document.removeEventListener('mousedown', onDocMouseDown);
-      document.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('resize', onScrollOrResize);
-      window.removeEventListener('scroll', onScrollOrResize, true);
-    };
-  }, [moreOpen]);
-
-  const toggleMore = () => {
-    if (!moreOpen && moreBtnRef.current) setMoreRect(moreBtnRef.current.getBoundingClientRect());
-    setMoreOpen((v) => !v);
-  };
-
   return (
     <header style={{ borderBottom: '1px solid #2A2A2E', position: 'sticky', top: 0, zIndex: 10, background: '#0B0B0Cee', backdropFilter: 'blur(6px)' }}>
       <div style={{ maxWidth: 880, margin: '0 auto', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -1831,20 +1801,21 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
           CALYXTER
         </div>
 
+        {/* Sous 640px, cette nav disparaît (voir .clx-topnav) au profit de
+            BottomTabBar, toujours affichée en pied d'écran. */}
         <nav className="clx-topnav" style={{ display: 'flex', gap: 4 }}>
           <TabButton icon={Home} label="Accueil" active={tab === 'accueil'} onClick={() => setTab('accueil')} />
           <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} pulse={phaseActive} />
           <TabButton icon={Disc3} label="Compos" active={tab === 'compos'} onClick={() => setTab('compos')} />
           <TabButton icon={Calendar} label="Rendez-vous" active={tab === 'rendezvous'} onClick={() => setTab('rendezvous')} />
           <TabButton icon={Mic2} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
-          <TabButton
-            innerRef={moreBtnRef}
-            icon={MoreHorizontal}
-            label="Plus"
-            active={moreOpen || moreActive}
-            onClick={toggleMore}
-            aria-haspopup="menu"
-            aria-expanded={moreOpen}
+          <MoreMenuButton
+            tab={tab}
+            setTab={setTab}
+            placement="below"
+            renderTrigger={({ innerRef, active, onClick, expanded }) => (
+              <TabButton innerRef={innerRef} icon={MoreHorizontal} label="Plus" active={active} onClick={onClick} aria-haspopup="menu" aria-expanded={expanded} />
+            )}
           />
         </nav>
 
@@ -1857,25 +1828,86 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
           </button>
         </div>
       </div>
-
-      {moreOpen && (
-        <TopBarMoreMenu
-          rect={moreRect}
-          activeTab={tab}
-          onSelect={(key) => { setTab(key); setMoreOpen(false); }}
-          menuRef={moreMenuRef}
-        />
-      )}
     </header>
   );
 }
 
+// Bouton "Plus" (idées + journal d'activité) partagé par la nav du bandeau
+// supérieur (bureau/tablette) et la barre du bas (mobile) : même état, même
+// comportement d'ouverture/fermeture, seul le déclencheur visuel diffère
+// selon le contexte d'appel (`renderTrigger`) et le popover s'ouvre vers le
+// bas ou vers le haut selon la position de la barre (`placement`).
+function MoreMenuButton({ tab, setTab, placement, renderTrigger }) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+  const active = MORE_TABS.some((t) => t.key === tab);
+
+  // Se referme tout seul si l'onglet actif change par un autre biais (ex.
+  // "Voir la phase de choix" depuis l'écran d'accueil) pendant qu'il était
+  // resté ouvert.
+  useEffect(() => { setOpen(false); }, [tab]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocMouseDown = (e) => {
+      if (btnRef.current?.contains(e.target)) return;
+      if (menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKeyDown = (e) => { if (e.key === 'Escape') setOpen(false); };
+    // Le menu est positionné une fois à l'ouverture (coordonnées du bouton) :
+    // un défilement ou un redimensionnement le désynchroniserait de son
+    // ancre, on le referme plutôt que de le laisser flotter au mauvais
+    // endroit (`capture: true` pour intercepter aussi le défilement propre
+    // à la barre d'onglets du bandeau supérieur, horizontale et scrollable).
+    const onScrollOrResize = () => setOpen(false);
+    document.addEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onScrollOrResize);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onScrollOrResize);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (!open && btnRef.current) setRect(btnRef.current.getBoundingClientRect());
+    setOpen((v) => !v);
+  };
+
+  return (
+    <>
+      {renderTrigger({ innerRef: btnRef, active: open || active, onClick: toggle, expanded: open })}
+      {open && (
+        <MoreMenuPopover
+          rect={rect}
+          placement={placement}
+          activeTab={tab}
+          onSelect={(key) => { setTab(key); setOpen(false); }}
+          menuRef={menuRef}
+        />
+      )}
+    </>
+  );
+}
+
 // Rendu via portail sur <body>, comme Modal et ToastStack : le bouton "Plus"
-// vit dans .clx-topnav, dont le défilement horizontal (overflow-x: auto)
-// calcule aussi overflow-y à "auto" — un menu positionné normalement s'y
-// retrouverait rogné au lieu de flotter par-dessus la page.
-function TopBarMoreMenu({ rect, activeTab, onSelect, menuRef }) {
+// vit dans une barre à défilement/positionnement contraint (.clx-topnav en
+// haut, .clx-bottomnav en bas) — un menu positionné normalement s'y
+// retrouverait rogné au lieu de flotter par-dessus la page. `placement`
+// choisit le sens d'ouverture : vers le bas depuis le bandeau supérieur,
+// vers le haut depuis la barre du bas (sinon le menu s'ouvrirait sous le
+// bord de l'écran).
+function MoreMenuPopover({ rect, placement, activeTab, onSelect, menuRef }) {
   if (!rect) return null;
+  const vertical = placement === 'above'
+    ? { bottom: window.innerHeight - rect.top + 6 }
+    : { top: rect.bottom + 6 };
   return createPortal(
     <div
       ref={menuRef}
@@ -1883,7 +1915,7 @@ function TopBarMoreMenu({ rect, activeTab, onSelect, menuRef }) {
       className="clx-card"
       style={{
         position: 'fixed', zIndex: 50,
-        top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right),
+        right: Math.max(8, window.innerWidth - rect.right), ...vertical,
         minWidth: 200, padding: 6, display: 'flex', flexDirection: 'column', gap: 2,
       }}
     >
@@ -1905,6 +1937,53 @@ function TopBarMoreMenu({ rect, activeTab, onSelect, menuRef }) {
       ))}
     </div>,
     document.body,
+  );
+}
+
+// Barre d'onglets du bas, seule nav visible sous 640px (voir .clx-bottomnav) :
+// icône + libellé court, toujours affichée en pied d'écran plutôt que
+// défilante avec la page — pattern d'appli mobile à onglets (ex. Ma
+// Bédéthèque) plus facile à atteindre au pouce qu'une barre collée en haut.
+function BottomTabBar({ tab, setTab, phaseActive }) {
+  return (
+    <nav className="clx-bottomnav" aria-label="Navigation principale">
+      <BottomTabButton icon={Home} label="Accueil" active={tab === 'accueil'} onClick={() => setTab('accueil')} />
+      <BottomTabButton icon={ListMusic} label="Répert." active={tab === 'repertoire'} onClick={() => setTab('repertoire')} pulse={phaseActive} />
+      <BottomTabButton icon={Disc3} label="Compos" active={tab === 'compos'} onClick={() => setTab('compos')} />
+      <BottomTabButton icon={Calendar} label="RDV" active={tab === 'rendezvous'} onClick={() => setTab('rendezvous')} />
+      <BottomTabButton icon={Mic2} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
+      <MoreMenuButton
+        tab={tab}
+        setTab={setTab}
+        placement="above"
+        renderTrigger={({ innerRef, active, onClick, expanded }) => (
+          <BottomTabButton innerRef={innerRef} icon={MoreHorizontal} label="Plus" active={active} onClick={onClick} aria-haspopup="menu" aria-expanded={expanded} />
+        )}
+      />
+    </nav>
+  );
+}
+
+function BottomTabButton({ icon: Icon, label, active, onClick, pulse, innerRef, ...rest }) {
+  return (
+    <button
+      ref={innerRef}
+      onClick={onClick}
+      title={label}
+      className="clx-btn"
+      style={{
+        flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        gap: 3, padding: '6px 2px', borderRadius: 8, background: 'transparent', border: '1px solid transparent',
+        color: active ? '#F2A93B' : '#9A958C', position: 'relative',
+      }}
+      {...rest}
+    >
+      <Icon size={19} style={{ flexShrink: 0 }} />
+      <span className="clx-mono" style={{ fontSize: 9.5, letterSpacing: '0.01em', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {label}
+      </span>
+      {pulse && <span style={{ position: 'absolute', top: 3, right: '28%', width: 6, height: 6, borderRadius: '50%', background: '#C1454B' }} />}
+    </button>
   );
 }
 
