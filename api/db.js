@@ -25,8 +25,10 @@ const IDENT_RE = /^[a-z_][a-z0-9_]*$/;
 
 // Colonnes jamais renvoyées au client (member-auth les gère).
 const HIDDEN_COLUMNS = { members: ['password_hash'] };
-// Colonnes que le client ne peut jamais écrire via /api/db.
-const READONLY_COLUMNS = { members: new Set(['password_hash', 'last_activity_at']) };
+// Colonnes que le client ne peut jamais écrire via /api/db — le cycle de vie
+// du mot de passe (y compris l'indicateur de réinitialisation forcée) reste
+// entièrement dans api/member-auth.js.
+const READONLY_COLUMNS = { members: new Set(['password_hash', 'last_activity_at', 'must_reset_password']) };
 
 export function ident(name) {
   if (typeof name !== 'string' || !IDENT_RE.test(name)) {

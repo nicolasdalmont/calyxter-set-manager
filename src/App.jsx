@@ -6,7 +6,8 @@ import {
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
   Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer,
-  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen, MoreHorizontal, LogOut, Bell
+  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen, MoreHorizontal, LogOut, Bell,
+  Shield, KeyRound, UserPlus, UserX, RotateCcw
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -336,7 +337,7 @@ async function dbDelete(table, where) {
 
 async function fetchMembersFromSupabase() {
   return dbSelect('members', {
-    columns: ['id', 'name', 'instrument', 'created_at', 'last_activity_at'],
+    columns: ['id', 'name', 'instrument', 'created_at', 'last_activity_at', 'is_admin', 'must_reset_password', 'active'],
     order: [['name', 'asc']],
   });
 }
@@ -455,8 +456,8 @@ function commentsForTarget(comments, targetType, targetId) {
   return comments.filter((c) => (targetType === 'event' ? c.event_id === targetId : c.concert_id === targetId));
 }
 
-async function callMemberAuth(action, memberId, password) {
-  const body = JSON.stringify({ action, member_id: memberId, password });
+async function callMemberAuth(action, memberId, password, extra) {
+  const body = JSON.stringify({ action, member_id: memberId, password, ...(extra || {}) });
   if (BACKEND === 'neon') {
     const res = await fetch('/api/member-auth', {
       method: 'POST',
@@ -721,7 +722,15 @@ export default function App() {
     return () => { cancelledRef.current = true; };
   }, [loadAll]);
 
-  const currentUser = useMemo(() => members.find((m) => m.id === currentUserId) || null, [members, currentUserId]);
+  // Un membre désactivé (voir onglet Administration) redevient introuvable
+  // ici même si son identifiant est resté mémorisé sur l'appareil (voir
+  // current-member-id ci-dessous) : App() retombe alors sur MemberPicker,
+  // qui filtre lui aussi les profils désactivés — pas de session persistante
+  // à révoquer explicitement, il suffit qu'il n'y ait plus de currentUser.
+  const currentUser = useMemo(
+    () => members.find((m) => m.id === currentUserId && m.active !== false) || null,
+    [members, currentUserId],
+  );
 
   // Capture, une seule fois par session, le last_activity_at connu à
   // l'arrivée sur l'appli — avant que l'effet ci-dessous ne l'écrase avec
@@ -762,6 +771,59 @@ export default function App() {
     setCurrentUserId(null);
     deletePersonal('current-member-id');
   }, []);
+
+  // Gestion des membres (onglet Administration, réservé aux is_admin) —
+  // name/instrument/active passent par les helpers dbX génériques comme le
+  // reste de l'appli ; le mot de passe (admin_reset) passe exclusivement par
+  // member-auth, seul endroit autorisé à toucher password_hash/
+  // must_reset_password (voir api/db.js § READONLY_COLUMNS).
+  const addMember = useCallback(async (name, instrument) => {
+    const member = { id: uid(), name: name.trim(), instrument: instrument.trim(), created_at: new Date().toISOString() };
+    setMembers((prev) => [...prev, member].sort((a, b) => a.name.localeCompare(b.name, 'fr')));
+    try {
+      await dbInsert('members', [member]);
+      pushToast(`« ${member.name} » ajouté·e.`, { kind: 'success' });
+      return true;
+    } catch (e) {
+      console.error('Erreur en ajoutant le membre', e);
+      setMembers((prev) => prev.filter((m) => m.id !== member.id));
+      pushToast("Impossible d'ajouter ce membre — vérifie ta connexion.", { kind: 'error' });
+      return false;
+    }
+  }, [pushToast]);
+
+  const setMemberActive = useCallback(async (memberId, active) => {
+    setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, active } : m)));
+    try {
+      await dbUpdateById('members', memberId, { active });
+      pushToast(active ? 'Profil réactivé.' : 'Profil désactivé.', { kind: 'success' });
+      return true;
+    } catch (e) {
+      console.error('Erreur en modifiant le statut du membre', e);
+      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, active: !active } : m)));
+      pushToast("Impossible d'enregistrer ce changement — vérifie ta connexion.", { kind: 'error' });
+      return false;
+    }
+  }, [pushToast]);
+
+  // Renvoie le mot de passe temporaire en clair (affiché une seule fois côté
+  // Administration, à relayer de vive voix/par message à la personne
+  // concernée) ou null en cas d'échec.
+  const resetMemberPassword = useCallback(async (memberId, adminId) => {
+    try {
+      const res = await callMemberAuth('admin_reset', memberId, undefined, { admin_id: adminId });
+      if (res.error) {
+        pushToast(res.error, { kind: 'error' });
+        return null;
+      }
+      setMembers((prev) => prev.map((m) => (m.id === memberId ? { ...m, must_reset_password: true } : m)));
+      return res.temp_password;
+    } catch (e) {
+      console.error('Erreur en réinitialisant le mot de passe', e);
+      pushToast('Impossible de réinitialiser ce mot de passe — vérifie ta connexion.', { kind: 'error' });
+      return null;
+    }
+  }, [pushToast]);
 
   const pushNotification = useCallback(async (text, kind) => {
     const entry = { id: uid(), text, kind: kind || 'info', created_at: new Date().toISOString() };
@@ -1287,9 +1349,19 @@ export default function App() {
         {tab === 'notifications' && (
           <NotificationLog notifications={notifications} />
         )}
+
+        {tab === 'admin' && currentUser.is_admin && (
+          <AdminTab
+            members={members}
+            currentUser={currentUser}
+            addMember={addMember}
+            setMemberActive={setMemberActive}
+            resetMemberPassword={resetMemberPassword}
+          />
+        )}
       </main>
 
-      <BottomTabBar tab={tab} setTab={setTab} phaseActive={!!phase} />
+      <BottomTabBar tab={tab} setTab={setTab} phaseActive={!!phase} isAdmin={currentUser.is_admin} />
 
       {showAdd && (
         <AddSongModal
@@ -1625,11 +1697,17 @@ function GlobalStyle() {
 
 function MemberPicker({ members, onAuthenticated, error, onRetry }) {
   const [selected, setSelected] = useState(null);
-  const [mode, setMode] = useState('picker'); // 'picker' | 'login' | 'create'
+  const [mode, setMode] = useState('picker'); // 'picker' | 'login' | 'create' | 'forced-reset'
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Profils désactivés (voir onglet Administration) : masqués ici, mais pas
+  // retirés de la liste `members` elle-même — le reste de l'appli continue
+  // d'afficher leur nom sur ce qu'ils ont laissé (morceaux proposés,
+  // commentaires...).
+  const activeMembers = members.filter((m) => m.active !== false);
 
   const selectMember = (m) => {
     setSelected(m);
@@ -1658,6 +1736,11 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
         setFormError('');
       } else if (res.error) {
         setFormError(res.error);
+      } else if (res.must_reset_password) {
+        setMode('forced-reset');
+        setPassword('');
+        setConfirmPassword('');
+        setFormError('');
       } else {
         onAuthenticated(res.member);
       }
@@ -1685,6 +1768,26 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
     }
   };
 
+  // Enchaîne directement après un 'verify' réussi avec le mot de passe
+  // temporaire (voir submitLogin) : pas besoin de le redemander, ce
+  // 'verify' venait déjà de le confirmer.
+  const submitForcedReset = async (e) => {
+    e.preventDefault();
+    if (password.length < 6) { setFormError('Le mot de passe doit contenir au moins 6 caractères.'); return; }
+    if (password !== confirmPassword) { setFormError('Les mots de passe ne correspondent pas.'); return; }
+    setSubmitting(true);
+    setFormError('');
+    try {
+      const res = await callMemberAuth('confirm_reset', selected.id, password);
+      if (res.error) { setFormError(res.error); }
+      else { onAuthenticated(res.member); }
+    } catch (err) {
+      setFormError(err.message || 'Erreur de connexion.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // En-tête de marque, partagé par les deux écrans (choix du profil et
   // mot de passe) : le logo du groupe au-dessus du nom du groupe.
   const brandHeader = (
@@ -1699,12 +1802,14 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
     </>
   );
 
-  if (mode === 'login' || mode === 'create') {
+  if (mode === 'login' || mode === 'create' || mode === 'forced-reset') {
+    const needsConfirm = mode === 'create' || mode === 'forced-reset';
+    const submitHandler = mode === 'login' ? submitLogin : mode === 'create' ? submitCreate : submitForcedReset;
     return (
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative', zIndex: 1 }}>
         {brandHeader}
 
-        <form onSubmit={mode === 'login' ? submitLogin : submitCreate} className="clx-card" style={{ padding: 24, width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form onSubmit={submitHandler} className="clx-card" style={{ padding: 24, width: '100%', maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div className="clx-tape" style={{ background: `${avatarColorFor(selected.name)}D9` }} />
           <div className="clx-display" style={{ fontSize: 24 }}>{selected.name}</div>
           <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginTop: -8, marginBottom: 4 }}>{selected.instrument}</div>
@@ -1714,11 +1819,16 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
               Aucun mot de passe n'est encore défini pour ce profil — crée-le maintenant.
             </div>
           )}
+          {mode === 'forced-reset' && (
+            <div className="clx-mono" style={{ fontSize: 11, color: '#E8B04B' }}>
+              Un·e administrateur·rice a réinitialisé ton mot de passe — choisis-en un nouveau pour continuer.
+            </div>
+          )}
 
-          <Field label="Mot de passe">
+          <Field label={mode === 'forced-reset' ? 'Nouveau mot de passe' : 'Mot de passe'}>
             <input
               type="password"
-              autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
+              autoComplete={needsConfirm ? 'new-password' : 'current-password'}
               className="clx-input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -1727,7 +1837,7 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
             />
           </Field>
 
-          {mode === 'create' && (
+          {needsConfirm && (
             <Field label="Confirme le mot de passe">
               <input
                 type="password"
@@ -1743,7 +1853,7 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
           {formError && <div style={{ color: '#C1454B', fontSize: 12 }}>{formError}</div>}
 
           <button type="submit" disabled={submitting} className="clx-btn clx-btn-primary" style={{ padding: '10px 16px', borderRadius: 6, fontSize: 13, opacity: submitting ? 0.6 : 1 }}>
-            {submitting ? '…' : mode === 'create' ? 'Créer mon mot de passe' : 'Se connecter'}
+            {submitting ? '…' : mode === 'create' ? 'Créer mon mot de passe' : mode === 'forced-reset' ? 'Valider mon nouveau mot de passe' : 'Se connecter'}
           </button>
           <button type="button" onClick={back} className="clx-btn clx-btn-ghost" style={{ padding: '8px 16px', borderRadius: 6, fontSize: 12 }}>
             ← Choisir un autre profil
@@ -1777,7 +1887,7 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, width: '100%', maxWidth: 460 }}>
-        {members.map((m) => (
+        {activeMembers.map((m) => (
           <button
             key={m.id}
             onClick={() => selectMember(m)}
@@ -1806,6 +1916,9 @@ const MORE_TABS = [
   { key: 'ideas', label: 'Boîte à idées', icon: Lightbulb },
   { key: 'notifications', label: "Journal d'activité", icon: MessageCircle },
 ];
+// Variante pour les membres administrateur·rice·s (is_admin) : un seul
+// onglet de plus, jamais visible ni accessible aux autres membres.
+const ADMIN_MORE_TABS = [...MORE_TABS, { key: 'admin', label: 'Administration', icon: Shield }];
 
 function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
   return (
@@ -1828,6 +1941,7 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
             tab={tab}
             setTab={setTab}
             placement="below"
+            extraTabs={currentUser.is_admin ? ADMIN_MORE_TABS : MORE_TABS}
             renderTrigger={({ innerRef, active, onClick, expanded }) => (
               <TabButton innerRef={innerRef} icon={MoreHorizontal} label="Plus" active={active} onClick={onClick} aria-haspopup="menu" aria-expanded={expanded} />
             )}
@@ -1852,12 +1966,12 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
 // comportement d'ouverture/fermeture, seul le déclencheur visuel diffère
 // selon le contexte d'appel (`renderTrigger`) et le popover s'ouvre vers le
 // bas ou vers le haut selon la position de la barre (`placement`).
-function MoreMenuButton({ tab, setTab, placement, renderTrigger }) {
+function MoreMenuButton({ tab, setTab, placement, renderTrigger, extraTabs = MORE_TABS }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState(null);
   const btnRef = useRef(null);
   const menuRef = useRef(null);
-  const active = MORE_TABS.some((t) => t.key === tab);
+  const active = extraTabs.some((t) => t.key === tab);
 
   // Se referme tout seul si l'onglet actif change par un autre biais (ex.
   // "Voir la phase de choix" depuis l'écran d'accueil) pendant qu'il était
@@ -1905,6 +2019,7 @@ function MoreMenuButton({ tab, setTab, placement, renderTrigger }) {
           activeTab={tab}
           onSelect={(key) => { setTab(key); setOpen(false); }}
           menuRef={menuRef}
+          tabs={extraTabs}
         />
       )}
     </>
@@ -1918,7 +2033,7 @@ function MoreMenuButton({ tab, setTab, placement, renderTrigger }) {
 // choisit le sens d'ouverture : vers le bas depuis le bandeau supérieur,
 // vers le haut depuis la barre du bas (sinon le menu s'ouvrirait sous le
 // bord de l'écran).
-function MoreMenuPopover({ rect, placement, activeTab, onSelect, menuRef }) {
+function MoreMenuPopover({ rect, placement, activeTab, onSelect, menuRef, tabs = MORE_TABS }) {
   if (!rect) return null;
   const vertical = placement === 'above'
     ? { bottom: window.innerHeight - rect.top + 6 }
@@ -1934,7 +2049,7 @@ function MoreMenuPopover({ rect, placement, activeTab, onSelect, menuRef }) {
         minWidth: 200, padding: 6, display: 'flex', flexDirection: 'column', gap: 2,
       }}
     >
-      {MORE_TABS.map(({ key, label, icon: Icon }) => (
+      {tabs.map(({ key, label, icon: Icon }) => (
         <button
           key={key}
           role="menuitem"
@@ -1959,7 +2074,7 @@ function MoreMenuPopover({ rect, placement, activeTab, onSelect, menuRef }) {
 // icône + libellé court, toujours affichée en pied d'écran plutôt que
 // défilante avec la page — pattern d'appli mobile à onglets (ex. Ma
 // Bédéthèque) plus facile à atteindre au pouce qu'une barre collée en haut.
-function BottomTabBar({ tab, setTab, phaseActive }) {
+function BottomTabBar({ tab, setTab, phaseActive, isAdmin }) {
   return (
     <nav className="clx-bottomnav" aria-label="Navigation principale">
       <BottomTabButton icon={Home} label="Accueil" active={tab === 'accueil'} onClick={() => setTab('accueil')} />
@@ -1971,6 +2086,7 @@ function BottomTabBar({ tab, setTab, phaseActive }) {
         tab={tab}
         setTab={setTab}
         placement="above"
+        extraTabs={isAdmin ? ADMIN_MORE_TABS : MORE_TABS}
         renderTrigger={({ innerRef, active, onClick, expanded }) => (
           <BottomTabButton innerRef={innerRef} icon={MoreHorizontal} label="Plus" active={active} onClick={onClick} aria-haspopup="menu" aria-expanded={expanded} />
         )}
@@ -2327,13 +2443,6 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
 
   const hasVoted = !!(phase && phase.votes || []).some((v) => v.user_id === currentUser.id);
 
-  const lastSeenSorted = [...members].sort((a, b) => {
-    if (!a.last_activity_at && !b.last_activity_at) return a.name.localeCompare(b.name, 'fr');
-    if (!a.last_activity_at) return 1;
-    if (!b.last_activity_at) return -1;
-    return b.last_activity_at.localeCompare(a.last_activity_at);
-  });
-
   const NUDGE = {
     proposal: { color: '#7C8BA8', text: "Pense à partager tes propositions si tu ne l'as pas encore fait." },
     veto: { color: '#C1454B', text: "Pense à écouter les propositions pour te faire une idée, tu as le droit de mettre un veto sur les morceaux que tu ne veux pas jouer." },
@@ -2497,18 +2606,200 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  ADMINISTRATION TAB (réservé aux membres is_admin)                   */
+/* ------------------------------------------------------------------ */
+
+function AdminTab({ members, currentUser, addMember, setMemberActive, resetMemberPassword }) {
+  const [name, setName] = useState('');
+  const [instrument, setInstrument] = useState('');
+  const [adding, setAdding] = useState(false);
+  const [pendingResetId, setPendingResetId] = useState(null);
+  // { memberId, memberName, tempPassword } — affiché une seule fois juste
+  // après un reset, le temps que l'admin le relaie ; jamais récupérable
+  // ensuite (le serveur ne le renvoie qu'à cet instant précis).
+  const [resetResult, setResetResult] = useState(null);
+
+  // Défense en profondeur : le bouton d'accès (menu "Plus") n'apparaît déjà
+  // que pour un membre is_admin, mais on ne fait jamais confiance au seul
+  // affichage conditionnel de la nav pour une action de gestion de compte.
+  // Après les hooks : un retour anticipé avant eux romprait les règles des
+  // hooks (nombre d'appels qui doit rester identique à chaque rendu).
+  if (!currentUser.is_admin) {
+    return <EmptyState text="Réservé aux membres administrateur·rice·s." />;
+  }
+
+  const activeMembers = [...members].filter((m) => m.active !== false).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const inactiveMembers = [...members].filter((m) => m.active === false).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const lastSeenSorted = [...activeMembers].sort((a, b) => {
+    if (!a.last_activity_at && !b.last_activity_at) return a.name.localeCompare(b.name, 'fr');
+    if (!a.last_activity_at) return 1;
+    if (!b.last_activity_at) return -1;
+    return b.last_activity_at.localeCompare(a.last_activity_at);
+  });
+
+  const submitAdd = async (e) => {
+    e.preventDefault();
+    if (!name.trim() || !instrument.trim()) return;
+    setAdding(true);
+    try {
+      const ok = await addMember(name, instrument);
+      if (ok) { setName(''); setInstrument(''); }
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleReset = async (member) => {
+    if (!window.confirm(`Réinitialiser le mot de passe de ${member.name} ? Il/elle devra en choisir un nouveau à sa prochaine connexion.`)) return;
+    setPendingResetId(member.id);
+    try {
+      const tempPassword = await resetMemberPassword(member.id, currentUser.id);
+      if (tempPassword) setResetResult({ memberId: member.id, memberName: member.name, tempPassword });
+    } finally {
+      setPendingResetId(null);
+    }
+  };
+
+  const handleDeactivate = (member) => {
+    if (window.confirm(`Désactiver le profil de ${member.name} ? Il/elle ne pourra plus se connecter, mais tout ce qu'il/elle a déjà ajouté (morceaux, commentaires...) reste intact. Réversible à tout moment depuis cet écran.`)) {
+      setMemberActive(member.id, false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="clx-display" style={{ fontSize: 24, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <Shield size={20} color="#F2A93B" /> Administration
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div className="section-label">
+          <UserPlus size={12} /> Ajouter un membre
+        </div>
+        <form onSubmit={submitAdd} className="clx-card" style={{ padding: 16, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="clx-tape" />
+          <Field label="Nom" style={{ flex: '1 1 160px' }}>
+            <input className="clx-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Sam" />
+          </Field>
+          <Field label="Instrument" style={{ flex: '1 1 160px' }}>
+            <input className="clx-input" value={instrument} onChange={(e) => setInstrument(e.target.value)} placeholder="Ex. Guitare" />
+          </Field>
+          <button
+            type="submit"
+            disabled={adding || !name.trim() || !instrument.trim()}
+            className="clx-btn clx-btn-primary"
+            style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: (adding || !name.trim() || !instrument.trim()) ? 0.5 : 1 }}
+          >
+            <UserPlus size={14} /> Ajouter
+          </button>
+        </form>
+        <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 6 }}>
+          Le nouveau profil n'a pas encore de mot de passe : il/elle en choisira un à sa toute première connexion, comme les membres existants à l'origine.
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div className="section-label">
+          <Users size={12} /> Membres actifs
+        </div>
+        <div className="clx-card clx-scrollbar" style={{ padding: '6px 16px' }}>
+          <div className="clx-tape" />
+          {activeMembers.map((m, i) => (
+            <div key={m.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22', flexWrap: 'wrap' }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: avatarColorFor(m.name) }}>
+                  <MemberAvatarIcon member={m} size={16} />
+                </div>
+                <div style={{ flex: '1 1 140px', minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {m.name} {m.id === currentUser.id && <span style={{ color: '#9A958C', fontWeight: 400 }}>— toi</span>}
+                    {m.is_admin && <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>ADMIN</span>}
+                    {m.must_reset_password && <span className="clx-badge" style={{ background: '#E8B04B22', color: '#E8B04B', border: '1px solid #E8B04B55' }}>RESET EN ATTENTE</span>}
+                  </div>
+                  <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C' }}>{m.instrument}</div>
+                </div>
+                <button
+                  onClick={() => handleReset(m)}
+                  disabled={pendingResetId === m.id}
+                  className="clx-btn clx-btn-ghost"
+                  style={{ padding: '6px 10px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, opacity: pendingResetId === m.id ? 0.5 : 1 }}
+                  title="Réinitialiser le mot de passe"
+                >
+                  {pendingResetId === m.id ? <Loader2 size={13} className="clx-spin" /> : <KeyRound size={13} />} Réinitialiser
+                </button>
+                {m.id !== currentUser.id && (
+                  <button
+                    onClick={() => handleDeactivate(m)}
+                    className="clx-btn clx-btn-ghost"
+                    style={{ padding: 7, borderRadius: 6, display: 'flex', color: '#C1454B' }}
+                    title="Désactiver ce profil"
+                  >
+                    <UserX size={14} />
+                  </button>
+                )}
+              </div>
+              {resetResult?.memberId === m.id && (
+                <div className="clx-card" style={{ padding: '12px 14px', margin: '0 0 10px', borderColor: '#F2A93B55', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <KeyRound size={15} color="#F2A93B" style={{ flexShrink: 0 }} />
+                  <div style={{ flex: '1 1 200px', fontSize: 12 }}>
+                    Mot de passe temporaire pour <strong>{resetResult.memberName}</strong> :{' '}
+                    <span className="clx-mono" style={{ fontSize: 14, color: '#F2A93B', letterSpacing: '0.06em' }}>{resetResult.tempPassword}</span>
+                    <br />Communique-le lui de vive voix ou par message — il/elle devra en choisir un nouveau à la connexion.
+                  </div>
+                  <button onClick={() => setResetResult(null)} className="clx-btn clx-btn-ghost" style={{ padding: 6, borderRadius: 5, display: 'flex', flexShrink: 0 }} title="Masquer">
+                    <X size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {inactiveMembers.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div className="section-label">
+            <UserX size={12} /> Membres désactivés
+          </div>
+          <div className="clx-card" style={{ padding: '6px 16px' }}>
+            <div className="clx-tape" />
+            {inactiveMembers.map((m, i) => (
+              <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22', opacity: 0.7 }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: avatarColorFor(m.name) }}>
+                  <MemberAvatarIcon member={m} size={16} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{m.name}</div>
+                  <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C' }}>{m.instrument}</div>
+                </div>
+                <button
+                  onClick={() => setMemberActive(m.id, true)}
+                  className="clx-btn clx-btn-ghost"
+                  style={{ padding: '6px 10px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+                  title="Réactiver ce profil"
+                >
+                  <RotateCcw size={13} /> Réactiver
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div>
         <div className="section-label">
-          <Users size={12} /> Dernières connexions
+          <Clock size={12} /> Dernières connexions
         </div>
         <div className="clx-card" style={{ padding: '6px 16px' }}>
           <div className="clx-tape" />
           {lastSeenSorted.map((m, i) => (
             <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22' }}>
-              <div
-                style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: avatarColorFor(m.name) }}
-              >
+              <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: avatarColorFor(m.name) }}>
                 <MemberAvatarIcon member={m} size={16} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>

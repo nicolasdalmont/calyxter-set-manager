@@ -55,6 +55,9 @@ create table members (
   created_at timestamptz not null default now(),
   password_hash text,                    -- géré exclusivement par api/member-auth
   last_activity_at timestamptz,          -- tamponnée exclusivement par api/member-auth (écran Accueil)
+  is_admin boolean not null default false,          -- accès à l'onglet Administration
+  must_reset_password boolean not null default false, -- géré exclusivement par api/member-auth (reset admin en attente)
+  active boolean not null default true,             -- false = désactivé (masqué à la connexion, réactivable)
   constraint members_pkey primary key (id)
 );
 
