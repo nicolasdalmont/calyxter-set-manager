@@ -2899,7 +2899,41 @@ function DurationSelect({ value, onChange }) {
   );
 }
 
+// Fait en sorte que le geste/bouton "retour" (Android, notamment en PWA
+// installée en mode standalone, sans barre de navigateur ni bouton retour
+// propre) referme cet écran plutôt que de quitter directement l'application
+// — un souci concret sur les modales à action destructrice (suppression
+// d'un morceau, d'un concert...) ouvertes accidentellement.
+//
+// Repose sur l'historique du navigateur : une entrée est poussée à
+// l'ouverture (montage du composant — chaque modale/éditeur concerné n'est
+// monté ici que pendant qu'il est affiché) et consommée à la fermeture,
+// qu'elle vienne du bouton retour ou d'une action de l'interface (Annuler,
+// croix, sauvegarde...) — sans quoi l'historique du navigateur accumulerait
+// une entrée fantôme à chaque modale ouverte puis fermée normalement.
+function useBackableOverlay(onClose) {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const closedByBackRef = useRef(false);
+
+  useEffect(() => {
+    window.history.pushState({ clxOverlay: true }, '');
+    const onPopState = () => {
+      closedByBackRef.current = true;
+      onCloseRef.current();
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      if (!closedByBackRef.current) {
+        window.history.back();
+      }
+    };
+  }, []);
+}
+
 function Modal({ onClose, title, icon: Icon, children, wide }) {
+  useBackableOverlay(onClose);
   // Rendu via un portail sur <body> : sinon le calque est piégé dans le
   // contexte d'empilement de <main> (position: relative; z-index: 1) et passe
   // SOUS le bandeau supérieur (position: sticky; z-index: 10). Le wrapper
@@ -4984,6 +5018,7 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
 }
 
 function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave, onDelete }) {
+  useBackableOverlay(onCancel);
   const isEdit = !!concert;
   const [name, setName] = useState(concert?.name || '');
   const [eventDate, setEventDate] = useState(concert?.event_date || '');
@@ -5803,6 +5838,7 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
 }
 
 function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCancel, onSave, onDelete, onDeleteOccurrence }) {
+  useBackableOverlay(onCancel);
   const isEdit = !!event;
   const [kind, setKind] = useState(event?.kind || 'repetition');
   const [subject, setSubject] = useState(event?.subject || '');
