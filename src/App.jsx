@@ -2776,7 +2776,11 @@ function ToastStack({ toasts, onDismiss }) {
           {t.kind === 'error'
             ? <AlertTriangle size={15} color="#C1454B" style={{ flexShrink: 0 }} />
             : <Check size={15} color="#6FA287" style={{ flexShrink: 0 }} />}
-          <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>{t.message}</div>
+          {/* Couleur posée explicitement : ce portail est monté directement sur
+              <body>, hors de .calyxter-app, donc sans son `color` hérité — sans
+              cette ligne le texte retombe au noir par défaut du navigateur,
+              illisible sur la carte sombre. */}
+          <div style={{ flex: 1, fontSize: 13, minWidth: 0, color: t.kind === 'error' ? '#F5F1E8' : '#6FA287' }}>{t.message}</div>
           <button
             onClick={() => onDismiss(t.id)}
             className="clx-btn clx-btn-ghost"
