@@ -2280,6 +2280,7 @@ function HomeAgendaCard({ item, onOpen, members }) {
 const HOME_NOTIF_KIND_INFO = {
   concert: { Icon: Mic2, color: '#2E9FB8' },
   rendezvous: { Icon: Calendar, color: '#7C8BA8' },
+  assignment: { Icon: Users, color: '#9884C4' },
   proposal: { Icon: Music2, color: '#7C8BA8' },
   veto: { Icon: Ban, color: '#C1454B' },
   launch: { Icon: Sparkles, color: '#F2A93B' },
@@ -5078,7 +5079,7 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
             isNew
               ? `🎤 ${currentUser.name} a créé le concert « ${concert.name} » (${formatConcertDate(concert.event_date, { day: 'numeric', month: 'long', year: 'numeric' })}).`
               : `🛠️ ${currentUser.name} a mis à jour le set du concert « ${concert.name} ».`,
-            isNew ? 'concert' : 'info'
+            'concert'
           );
           setEditingConcert(undefined);
         }}
@@ -5859,8 +5860,26 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
             isNew
               ? `🗓️ ${currentUser.name} a ajouté un rendez-vous : « ${event.subject} » (${formatConcertDate(event.event_date, { day: 'numeric', month: 'long', year: 'numeric' })}).`
               : `🛠️ ${currentUser.name} a modifié le rendez-vous « ${event.subject} ».`,
-            isNew ? 'rendezvous' : 'info'
+            'rendezvous'
           );
+          // Notification dédiée pour les changements de participants — un
+          // ajout/retrait passerait autrement inaperçu, noyé dans le
+          // libellé générique "a modifié le rendez-vous" ci-dessus.
+          // `editingEvent` (portée englobante) est encore l'événement AVANT
+          // modification ; `event` est déjà le nouvel état enregistré.
+          if (!isNew) {
+            const nameFor = (id) => members.find((m) => m.id === id)?.name;
+            const prevIds = new Set(editingEvent?.participant_ids || []);
+            const nextIds = new Set(event.participant_ids || []);
+            const added = [...nextIds].filter((id) => !prevIds.has(id)).map(nameFor).filter(Boolean);
+            const removed = [...prevIds].filter((id) => !nextIds.has(id)).map(nameFor).filter(Boolean);
+            if (added.length > 0 || removed.length > 0) {
+              const parts = [];
+              if (added.length > 0) parts.push(`+ ${added.join(', ')}`);
+              if (removed.length > 0) parts.push(`− ${removed.join(', ')}`);
+              await pushNotification(`👥 ${currentUser.name} a modifié les participants du rendez-vous « ${event.subject} » : ${parts.join(' · ')}.`, 'assignment');
+            }
+          }
           setEditingEvent(undefined);
           setEditingOccurrenceDate(null);
         }}
