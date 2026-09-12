@@ -38,7 +38,7 @@ const LANGUAGE_TAG = {
   FR: { short: 'FR', color: '#F2A93B' },
   EN: { short: 'EN', color: '#7C8BA8' },
   INSTRUMENTAL: { short: 'INSTR', color: '#6FA287' },
-  OTHER: { short: '?', color: '#6B6862' },
+  OTHER: { short: '?', color: '#9A958C' },
 };
 
 const STEP_ORDER = ['proposal', 'veto', 'vote', 'result'];
@@ -56,8 +56,9 @@ const EVENT_KIND = {
   // pour ne pas se confondre avec l'ambre d'accent #F2A93B (badge "PROCHAIN",
   // surbrillance, bandeau de phase) — l'ancien #E8B04B en était trop proche.
   residence:  { label: 'Résidence',          badge: 'RÉSIDENCE', color: '#F0CE8A' },
-  // Violet doux : couleur à part entière (l'ancien taupe #6B6862, qui est le
-  // gris neutre d'UI de l'app, faisait lire un rendez-vous "Autre" comme un
+  // Violet doux : couleur à part entière (l'ancien taupe #6B6862, qui servait
+  // alors de gris neutre d'UI de l'app — depuis éclairci en #9A958C pour le
+  // contraste, voir plus bas — faisait lire un rendez-vous "Autre" comme un
   // événement passé ou désactivé), non spécifique — adapté à une catégorie
   // fourre-tout — et distinct des autres types comme du turquoise du concert.
   autre:      { label: 'Autre',              badge: 'AUTRE',     color: '#9884C4' },
@@ -1444,7 +1445,7 @@ function GlobalStyle() {
         overflow: hidden;
       }
       .clx-input:focus { border-color: #F2A93B; box-shadow: 0 0 0 3px #F2A93B22; }
-      .clx-input::placeholder { color: #6B6862; }
+      .clx-input::placeholder { color: #9A958C; }
       /* iOS Safari zoome la page au focus d'un champ dont la police fait
          moins de 16px et ne dézoome pas toujours ensuite (on arrive alors
          sur l'app zoomé et décalé après avoir tapé le mot de passe). On
@@ -1564,7 +1565,7 @@ function GlobalStyle() {
         background: none;
         border: none;
         border-left: 1px solid #2A2A2E;
-        color: #6B6862;
+        color: #9A958C;
         cursor: pointer;
         flex-shrink: 0;
         text-decoration: none;
@@ -1592,7 +1593,7 @@ function GlobalStyle() {
         padding: 6px 13px;
         background: none;
         border: none;
-        color: #6B6862;
+        color: #9A958C;
         cursor: pointer;
         font: inherit;
       }
@@ -1744,7 +1745,7 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, position: 'relative', zIndex: 1 }}>
       {brandHeader}
 
-      <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginBottom: 14, textAlign: 'center', maxWidth: 380 }}>
+      <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 14, textAlign: 'center', maxWidth: 380 }}>
         Choisis ton profil pour continuer.
       </div>
 
@@ -1760,7 +1761,7 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
       )}
 
       {members.length === 0 && !error && (
-        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862' }}>Chargement des membres…</div>
+        <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C' }}>Chargement des membres…</div>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, width: '100%', maxWidth: 460 }}>
@@ -2095,13 +2096,13 @@ function formatRelativeTime(iso) {
 
 // Vert (<1h), ambre (<24h), gris au-delà ou si aucune activité enregistrée.
 function lastSeenDotColor(iso) {
-  if (!iso) return '#6B6862';
+  if (!iso) return '#9A958C';
   const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '#6B6862';
+  if (Number.isNaN(date.getTime())) return '#9A958C';
   const diffH = (Date.now() - date.getTime()) / 3600000;
   if (diffH < 1) return '#6FA287';
   if (diffH < 24) return '#E8B04B';
-  return '#6B6862';
+  return '#9A958C';
 }
 
 // Icône par membre, en lien avec son instrument (couleur de fond = avatar
@@ -2235,10 +2236,10 @@ function HomeAgendaCard({ item, onOpen, members }) {
         <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: kindInfo.color }}>
           {formatConcertDate(item.event_date, { day: 'numeric' })}
         </div>
-        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+        <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#9A958C', marginTop: 2 }}>
           {formatConcertDate(item.event_date, { month: 'short' })}
         </div>
-        <div style={{ fontSize: 9, color: '#6B6862', marginTop: 1 }}>
+        <div style={{ fontSize: 9, color: '#9A958C', marginTop: 1 }}>
           {formatConcertDate(item.event_date, { year: 'numeric' })}
         </div>
       </div>
@@ -2251,7 +2252,7 @@ function HomeAgendaCard({ item, onOpen, members }) {
             {[timeLabel, durationLabel, item.venue].filter(Boolean).join(' · ')}
           </div>
         )}
-        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
+        <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
           <Users size={11} style={{ flexShrink: 0 }} /> {participantNames}
         </div>
       </div>
@@ -2402,12 +2403,12 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
           <div style={{ flex: '1 1 160px', background: '#101012', border: '1px solid #2A2A2E', borderRadius: 6, padding: '14px 16px' }}>
             <div className="clx-mono" style={{ fontSize: 30, fontWeight: 700, color: '#6FA287', textShadow: '0 0 14px rgba(111,162,135,0.35)' }}>{readyCount}</div>
             <div style={{ fontSize: 12, color: '#9A958C', marginTop: 2 }}>morceau{readyCount > 1 ? 'x' : ''} prêt{readyCount > 1 ? 's' : ''}</div>
-            <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginTop: 6 }}>Durée théorique : {formatTotalDuration(readySeconds)}</div>
+            <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginTop: 6 }}>Durée théorique : {formatTotalDuration(readySeconds)}</div>
           </div>
           <div style={{ flex: '1 1 160px', background: '#101012', border: '1px solid #2A2A2E', borderRadius: 6, padding: '14px 16px' }}>
             <div className="clx-mono" style={{ fontSize: 30, fontWeight: 700, color: '#E8B04B', textShadow: '0 0 14px rgba(232,176,75,0.35)' }}>{toPrepareCount}</div>
             <div style={{ fontSize: 12, color: '#9A958C', marginTop: 2 }}>en préparation</div>
-            <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginTop: 6 }}>Durée théorique : {formatTotalDuration(toPrepareSeconds)}</div>
+            <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginTop: 6 }}>Durée théorique : {formatTotalDuration(toPrepareSeconds)}</div>
           </div>
           <button onClick={() => setTab('repertoire')} className="clx-mono" style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#F2A93B', display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', marginLeft: 'auto' }}>
             Voir le répertoire <ChevronRight size={13} />
@@ -2430,9 +2431,9 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  {m.name} {m.id === currentUser.id && <span style={{ color: '#6B6862', fontWeight: 400 }}>— toi</span>}
+                  {m.name} {m.id === currentUser.id && <span style={{ color: '#9A958C', fontWeight: 400 }}>— toi</span>}
                 </div>
-                <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862' }}>{m.instrument}</div>
+                <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C' }}>{m.instrument}</div>
               </div>
               <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lastSeenDotColor(m.last_activity_at) }} />
               <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', width: 90, textAlign: 'right', flexShrink: 0 }}>{formatRelativeTime(m.last_activity_at)}</div>
@@ -2504,14 +2505,14 @@ function Repertoire({ songs, allSongsCount, totalSeconds, search, setSearch, sta
       <div className="clx-counter" style={{ padding: '16px 18px', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
         <div style={{ fontSize: 14 }}>
           <span style={{ fontWeight: 700 }}>{songs.length}</span> morceau{songs.length > 1 ? 'x' : ''} affiché{songs.length > 1 ? 's' : ''}
-          {songs.length !== allSongsCount && <span style={{ color: '#6B6862' }}> / {allSongsCount}</span>}
+          {songs.length !== allSongsCount && <span style={{ color: '#9A958C' }}> / {allSongsCount}</span>}
         </div>
         <div style={{ fontSize: 20, fontWeight: 700 }}>Total : {formatTotalDuration(totalSeconds)}</div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: '1 1 220px' }}>
-          <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6862' }} />
+          <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#9A958C' }} />
           <input
             className="clx-input"
             style={{ paddingLeft: 32 }}
@@ -2569,7 +2570,7 @@ function Chip({ active, onClick, children }) {
 
 function EmptyState({ text }) {
   return (
-    <div className="clx-card" style={{ padding: '32px 20px', textAlign: 'center', color: '#6B6862' }}>
+    <div className="clx-card" style={{ padding: '32px 20px', textAlign: 'center', color: '#9A958C' }}>
       <Music2 size={22} style={{ marginBottom: 8, opacity: 0.6 }} />
       <div className="clx-mono" style={{ fontSize: 12 }}>{text}</div>
     </div>
@@ -2595,7 +2596,7 @@ function SongRow({ song, members, onEdit }) {
         />
       ) : (
         <div className="clx-row-cover" style={{ width: 54, height: 54, borderRadius: 6, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Music2 size={20} color="#6B6862" />
+          <Music2 size={20} color="#9A958C" />
         </div>
       )}
 
@@ -2604,12 +2605,12 @@ function SongRow({ song, members, onEdit }) {
         <div style={{ fontSize: 13, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span>{song.artist}{song.album ? ` · ${song.album}` : ''}</span>
           {typeof song.links?.deezer_rank === 'number' && (
-            <span className="clx-mono" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#6B6862' }} title="Indice de popularité Deezer (rank, mis à jour en arrière-plan)">
+            <span className="clx-mono" style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#9A958C' }} title="Indice de popularité Deezer (rank, mis à jour en arrière-plan)">
               <TrendingUp size={11} /> {formatDeezerRank(song.links.deezer_rank)}
             </span>
           )}
         </div>
-        {author && <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 4 }}>Proposé par {author.name} ({author.instrument})</div>}
+        {author && <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 4 }}>Proposé par {author.name} ({author.instrument})</div>}
       </div>
 
       <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
@@ -2622,7 +2623,7 @@ function SongRow({ song, members, onEdit }) {
           <div className="clx-mono" style={{ fontSize: 13, color: song.duration_seconds ? '#9A958C' : '#C1454B', width: 46, textAlign: 'right' }}>
             {formatSongDuration(song.duration_seconds)}
           </div>
-          {onEdit && <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />}
+          {onEdit && <Pencil size={14} color="#9A958C" style={{ flexShrink: 0 }} />}
         </div>
       </div>
     </>
@@ -2773,7 +2774,7 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <Field label="Rechercher sur Deezer (auto-complétion)">
           <div style={{ position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6862' }} />
+            <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#9A958C' }} />
             <input
               className="clx-input"
               style={{ paddingLeft: 32 }}
@@ -2781,7 +2782,7 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Titre, artiste…"
             />
-            {searching && <Loader2 size={14} className="clx-spin" style={{ position: 'absolute', right: 11, top: 11, color: '#6B6862' }} />}
+            {searching && <Loader2 size={14} className="clx-spin" style={{ position: 'absolute', right: 11, top: 11, color: '#9A958C' }} />}
           </div>
         </Field>
 
@@ -2801,20 +2802,20 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
                   <img src={r.cover_url} alt="" style={{ width: 36, height: 36, borderRadius: 4, flexShrink: 0, objectFit: 'cover' }} />
                 ) : (
                   <div style={{ width: 36, height: 36, borderRadius: 4, flexShrink: 0, background: '#101012', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Music2 size={14} color="#6B6862" />
+                    <Music2 size={14} color="#9A958C" />
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.title}</div>
                   <div style={{ fontSize: 11, color: '#9A958C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.artist}{r.album ? ` · ${r.album}` : ''}</div>
                 </div>
-                <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', flexShrink: 0 }}>{formatSongDuration(r.duration_seconds)}</div>
+                <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', flexShrink: 0 }}>{formatSongDuration(r.duration_seconds)}</div>
               </button>
             ))}
           </div>
         )}
 
-        <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862' }}>
+        <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C' }}>
           Clique un résultat pour préremplir la fiche — ou complète tout manuellement ci-dessous (compositions, démos…).
         </div>
 
@@ -3054,7 +3055,7 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
       </div>
 
       <div className="clx-mono" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#9A958C', marginBottom: 12, flexWrap: 'wrap' }}>
-        <FolderOpen size={13} color="#6B6862" style={{ flexShrink: 0 }} />
+        <FolderOpen size={13} color="#9A958C" style={{ flexShrink: 0 }} />
         {bandDriveUrl ? (
           <>
             <a href={bandDriveUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#F2A93B' }}>Ouvrir le dossier Drive du groupe</a>
@@ -3066,7 +3067,7 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
       </div>
 
       <div style={{ position: 'relative', marginBottom: 10 }}>
-        <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6862' }} />
+        <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#9A958C' }} />
         <input
           className="clx-input"
           style={{ paddingLeft: 32 }}
@@ -3126,7 +3127,7 @@ function CompoRow({ compo, members, onEdit }) {
         title="Modifier la compo"
       >
         <div style={{ width: 48, height: 48, borderRadius: 5, flexShrink: 0, background: '#101012', border: '1px solid #2A2A2E', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Music4 size={16} color="#6B6862" />
+          <Music4 size={16} color="#9A958C" />
         </div>
         <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{compo.title}</div>
@@ -3135,21 +3136,21 @@ function CompoRow({ compo, members, onEdit }) {
             {compo.album && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Disc3 size={11} /> {compo.album}</span>}
           </div>
           {(authors.length > 0 || composers.length > 0) && (
-            <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 4 }}>
+            <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 4 }}>
               {authors.length > 0 && `Paroles : ${authors.join(', ')}`}
               {authors.length > 0 && composers.length > 0 && ' · '}
               {composers.length > 0 && `Musique : ${composers.join(', ')}`}
             </div>
           )}
           {compo.chords && (
-            <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               🎸 {compo.chords.replace(/\s*\n\s*/g, ' · ')}
             </div>
           )}
         </div>
         <div className="clx-row-meta" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="clx-badge" style={{ background: `${st.color}22`, color: st.color, border: `1px solid ${st.color}55` }}>{st.label}</span>
-          <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+          <Pencil size={14} color="#9A958C" style={{ flexShrink: 0 }} />
         </div>
       </button>
 
@@ -3340,7 +3341,7 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
             <Link2 size={13} /> Lier un document
           </button>
           {docError && <div style={{ color: '#C1454B', fontSize: 11, marginTop: 6 }}>{docError}</div>}
-          <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 6 }}>
+          <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 6 }}>
             Colle un lien de partage (Drive, doc, SoundCloud privé…). Autant de documents que nécessaire.
             {bandDriveUrl && (
               <> — <a href={bandDriveUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#F2A93B' }}>ouvrir le dossier Drive du groupe</a> pour récupérer le lien d'un fichier.</>
@@ -3430,7 +3431,7 @@ function CommentsModal({ target, comments, members, onAdd, onDelete, onClose }) 
                   </button>
                 </div>
                 <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', marginTop: 8 }}>{c.content}</div>
-                <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 6 }}>{when}</div>
+                <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 6 }}>{when}</div>
               </div>
             );
           })}
@@ -3468,7 +3469,7 @@ function NotificationLog({ notifications }) {
   return (
     <div>
       <div className="clx-display" style={{ fontSize: 22, marginBottom: 4 }}>Journal d'activité</div>
-      <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginBottom: 18 }}>
+      <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 18 }}>
         Journal des événements : ajouts, votes, changements de statut, concerts…
       </div>
       {notifications.length === 0 ? (
@@ -3478,7 +3479,7 @@ function NotificationLog({ notifications }) {
           {notifications.map((n) => (
             <div key={n.id} className="clx-card" style={{ padding: '10px 14px' }}>
               <div style={{ fontSize: 13 }}>{n.text}</div>
-              <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 3 }}>
+              <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 3 }}>
                 {new Date(n.created_at).toLocaleString('fr-FR')}
               </div>
             </div>
@@ -3551,7 +3552,7 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
           Historique des phases
         </button>
       </div>
-      <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginBottom: 18 }}>
+      <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 18 }}>
         Lancée par {initiator ? initiator.name : '—'} · {new Date(phase.created_at).toLocaleDateString('fr-FR')}
       </div>
 
@@ -3669,7 +3670,7 @@ function PhaseHistoryView({ phaseHistory, members, onBack }) {
                 </div>
 
                 <div style={{ marginTop: 12 }}>
-                  <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
                     <Crown size={11} color="#F2A93B" /> Résultat
                   </div>
                   {hasResult ? (
@@ -3682,7 +3683,7 @@ function PhaseHistoryView({ phaseHistory, members, onBack }) {
                       ))}
                     </div>
                   ) : (
-                    <div className="clx-mono" style={{ fontSize: 12, color: '#6B6862' }}>—</div>
+                    <div className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>—</div>
                   )}
                 </div>
               </div>
@@ -3710,14 +3711,14 @@ function Stepper({ current, stats }) {
               width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12, fontWeight: 700,
               background: i < idx ? '#6FA28733' : i === idx ? '#F2A93B' : '#16161A',
-              color: i < idx ? '#6FA287' : i === idx ? '#16130A' : '#6B6862',
+              color: i < idx ? '#6FA287' : i === idx ? '#16130A' : '#9A958C',
               border: i === idx ? 'none' : '1px solid #2A2A2E',
             }}>
               {i < idx ? <Check size={14} /> : i + 1}
             </div>
-            <div style={{ fontSize: 11, color: i === idx ? '#F2A93B' : '#6B6862', textAlign: 'center' }}>{STEP_LABEL[step]}</div>
+            <div style={{ fontSize: 11, color: i === idx ? '#F2A93B' : '#9A958C', textAlign: 'center' }}>{STEP_LABEL[step]}</div>
             {stats && stats[step] !== undefined && (
-              <div className="clx-mono" style={{ fontSize: 9, color: '#6B6862', textAlign: 'center' }}>
+              <div className="clx-mono" style={{ fontSize: 9, color: '#9A958C', textAlign: 'center' }}>
                 {STEP_STAT_TEXT[step](stats[step])}
               </div>
             )}
@@ -3897,7 +3898,7 @@ function VetoStep({ songs, members, currentUser, phase, updateSongs, updatePhase
                   style={{
                     padding: '8px 14px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6,
                     background: vetoedByMe ? '#2A2A2E' : '#C1454B22',
-                    color: vetoedByMe ? '#6B6862' : '#C1454B',
+                    color: vetoedByMe ? '#9A958C' : '#C1454B',
                     border: `1px solid ${vetoedByMe ? '#2A2A2E' : '#C1454B55'}`,
                     cursor: vetoedByMe ? 'default' : 'pointer',
                   }}
@@ -4036,7 +4037,7 @@ function VoteStep({ songs, members, currentUser, phase, updatePhase }) {
       <div style={{ fontSize: 13, color: '#9A958C', marginBottom: 4 }}>
         Les morceaux n'ont pas de note au départ. Glisse un morceau en haut de la liste pour lui donner la meilleure note ({N}), ou insère-le juste sous un morceau déjà noté pour qu'il prenne la note juste en dessous — celui-ci et tous ceux en dessous rétrogradent d'un cran.
       </div>
-      <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', marginBottom: 14 }}>{votedCount}/{members.length} membres ont validé leur bulletin</div>
+      <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 14 }}>{votedCount}/{members.length} membres ont validé leur bulletin</div>
 
       {submitted && (
         <div className="clx-card" style={{ padding: '10px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, borderColor: '#6FA28755' }}>
@@ -4080,12 +4081,12 @@ function VoteStep({ songs, members, currentUser, phase, updatePhase }) {
                 cursor: 'grab',
               }}
             >
-              <GripVertical size={15} color="#6B6862" style={{ flexShrink: 0 }} />
+              <GripVertical size={15} color="#9A958C" style={{ flexShrink: 0 }} />
               <div className="clx-mono" style={{
                 width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 12, fontWeight: 700, flexShrink: 0,
                 background: points ? '#F2A93B' : '#16161A',
-                color: points ? '#16130A' : '#6B6862',
+                color: points ? '#16130A' : '#9A958C',
                 border: points ? 'none' : '1px solid #2A2A2E',
               }}>
                 {points ?? '—'}
@@ -4228,7 +4229,7 @@ function ResultStep({ songs, members, currentUser, phase, phaseHistory, updatePh
                   </button>
                 ))}
               </div>
-              <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 8 }}>
+              <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 8 }}>
                 {(phase.tie_break_votes || []).length}/{members.length} votes de départage enregistrés
               </div>
             </>
@@ -4284,7 +4285,7 @@ function ResultStep({ songs, members, currentUser, phase, phaseHistory, updatePh
       )}
 
       <details style={{ marginTop: 22 }}>
-        <summary className="clx-mono" style={{ fontSize: 11, color: '#6B6862', cursor: 'pointer' }}>Voir le classement complet</summary>
+        <summary className="clx-mono" style={{ fontSize: 11, color: '#9A958C', cursor: 'pointer' }}>Voir le classement complet</summary>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 10 }}>
           {scored.map((s, i) => (
             <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '6px 10px', background: '#101012', borderRadius: 4 }}>
@@ -4928,10 +4929,10 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
           <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : CONCERT_EVENT_KIND.color }}>
             {formatConcertDate(concert.event_date, { day: 'numeric' })}
           </div>
-          <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+          <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#9A958C', marginTop: 2 }}>
             {formatConcertDate(concert.event_date, { month: 'short' })}
           </div>
-          <div style={{ fontSize: 9, color: '#6B6862', marginTop: 1 }}>
+          <div style={{ fontSize: 9, color: '#9A958C', marginTop: 1 }}>
             {formatConcertDate(concert.event_date, { year: 'numeric' })}
           </div>
         </div>
@@ -4946,7 +4947,7 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
             {durationLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Hourglass size={11} /> {durationLabel}</span>}
             {concert.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {concert.venue}</span>}
           </div>
-          <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+          <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
             <ListMusic size={11} /> {setSongs.length} morceau{setSongs.length > 1 ? 'x' : ''} · {formatTotalDuration(totalSeconds)}
           </div>
         </div>
@@ -4957,7 +4958,7 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
               <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>PROCHAIN</span>
             )}
           </div>
-          <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+          <Pencil size={14} color="#9A958C" style={{ flexShrink: 0 }} />
         </div>
       </button>
 
@@ -5319,7 +5320,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
                       background: '#141417', cursor: 'grab',
                     }}
                   >
-                    <GripVertical size={15} color="#6B6862" style={{ flexShrink: 0 }} />
+                    <GripVertical size={15} color="#9A958C" style={{ flexShrink: 0 }} />
                     <Megaphone size={14} color="#C4A24C" style={{ flexShrink: 0 }} />
                     <input
                       className="clx-input"
@@ -5356,7 +5357,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
                     cursor: 'grab',
                   }}
                 >
-                  <GripVertical size={15} color="#6B6862" style={{ flexShrink: 0 }} />
+                  <GripVertical size={15} color="#9A958C" style={{ flexShrink: 0 }} />
                   <div className="clx-mono" style={{
                     width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 12, fontWeight: 700, flexShrink: 0, background: '#16161A', color: '#F2A93B', border: '1px solid #2A2A2E',
@@ -5404,7 +5405,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ position: 'relative', flex: '1 1 220px' }}>
-          <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#6B6862' }} />
+          <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#9A958C' }} />
           <input
             className="clx-input"
             style={{ paddingLeft: 32 }}
@@ -5738,10 +5739,10 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
           <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1, color: past ? '#9A958C' : kindInfo.color }}>
             {formatConcertDate(item.event_date, { day: 'numeric' })}
           </div>
-          <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#6B6862', marginTop: 2 }}>
+          <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#9A958C', marginTop: 2 }}>
             {formatConcertDate(item.event_date, { month: 'short' })}
           </div>
-          <div style={{ fontSize: 9, color: '#6B6862', marginTop: 1 }}>
+          <div style={{ fontSize: 9, color: '#9A958C', marginTop: 1 }}>
             {formatConcertDate(item.event_date, { year: 'numeric' })}
           </div>
         </div>
@@ -5756,11 +5757,11 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
             {durationLabel && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Hourglass size={11} /> {durationLabel}</span>}
             {item.venue && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={11} /> {item.venue}</span>}
           </div>
-          <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
+          <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
             <Users size={11} /> {participantNames}
           </div>
           {recurrenceLabel && (
-            <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 3 }}>{recurrenceLabel}</div>
+            <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 3 }}>{recurrenceLabel}</div>
           )}
         </div>
 
@@ -5776,7 +5777,7 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
             )}
             <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
           </div>
-          <Pencil size={14} color="#6B6862" style={{ flexShrink: 0 }} />
+          <Pencil size={14} color="#9A958C" style={{ flexShrink: 0 }} />
         </div>
       </button>
 
@@ -6056,7 +6057,7 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
               <input type="date" className="clx-input" value={recurrenceUntil} min={eventDate || undefined} onChange={(e) => setRecurrenceUntil(e.target.value)} />
             </Field>
             {isEdit && (
-              <div className="clx-mono" style={{ fontSize: 10, color: '#6B6862', marginTop: 8 }}>
+              <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 8 }}>
                 Toute modification de ce rendez-vous s'applique à l'ensemble des occurrences de la série (sauf celles supprimées individuellement).
               </div>
             )}
@@ -6228,7 +6229,7 @@ function IdeaCard({ idea, members, onChangeStatus, onDelete }) {
     <div className="clx-card" style={{ padding: '14px 16px' }}>
       <div style={{ fontSize: 14, whiteSpace: 'pre-wrap', marginBottom: 10 }}>{idea.content}</div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <div className="clx-mono" style={{ fontSize: 11, color: '#6B6862' }}>
+        <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C' }}>
           Par {creator ? creator.name : 'membre inconnu'} · {when}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
