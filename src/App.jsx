@@ -2705,39 +2705,47 @@ function AdminTab({ members, currentUser, addMember, setMemberActive, resetMembe
           <div className="clx-tape" />
           {activeMembers.map((m, i) => (
             <div key={m.id}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22', flexWrap: 'wrap' }}>
-                <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: avatarColorFor(m.name) }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22' }}>
+                <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: avatarColorFor(m.name), marginTop: 1 }}>
                   <MemberAvatarIcon member={m} size={16} />
                 </div>
-                <div style={{ flex: '1 1 140px', minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    {m.name} {m.id === currentUser.id && <span style={{ color: '#9A958C', fontWeight: 400 }}>— toi</span>}
-                    {m.is_admin && <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>ADMIN</span>}
-                    {m.must_reset_password && <span className="clx-badge" style={{ background: '#E8B04B22', color: '#E8B04B', border: '1px solid #E8B04B55' }}>RESET EN ATTENTE</span>}
+                <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {/* 1re ligne : nom + badges à gauche, actions calées à droite (plus faciles d'accès au pouce). */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 }}>
+                      {m.name} {m.id === currentUser.id && <span style={{ color: '#9A958C', fontWeight: 400 }}>— toi</span>}
+                      {m.is_admin && <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>ADMIN</span>}
+                      {m.must_reset_password && <span className="clx-badge" style={{ background: '#E8B04B22', color: '#E8B04B', border: '1px solid #E8B04B55' }}>RESET EN ATTENTE</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      <button
+                        onClick={() => handleReset(m)}
+                        disabled={pendingResetId === m.id}
+                        className="clx-btn clx-btn-ghost"
+                        style={{ padding: 7, borderRadius: 6, display: 'flex', flexShrink: 0, opacity: pendingResetId === m.id ? 0.5 : 1 }}
+                        title="Réinitialiser le mot de passe"
+                      >
+                        {pendingResetId === m.id ? <Loader2 size={14} className="clx-spin" /> : <KeyRound size={14} />}
+                      </button>
+                      {m.id !== currentUser.id && (
+                        <button
+                          onClick={() => handleDeactivate(m)}
+                          className="clx-btn clx-btn-ghost"
+                          style={{ padding: 7, borderRadius: 6, display: 'flex', flexShrink: 0, color: '#C1454B' }}
+                          title="Désactiver ce profil"
+                        >
+                          <UserX size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C' }}>{m.instrument}</div>
+                  {/* 2e ligne : instrument + dernière activité, calés à gauche. */}
+                  <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>{m.instrument}</span>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: lastSeenDotColor(m.last_activity_at) }} />
+                    <span>{formatRelativeTime(m.last_activity_at)}</span>
+                  </div>
                 </div>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lastSeenDotColor(m.last_activity_at) }} title={`Dernière activité : ${formatRelativeTime(m.last_activity_at)}`} />
-                <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', width: 78, textAlign: 'right', flexShrink: 0 }}>{formatRelativeTime(m.last_activity_at)}</div>
-                <button
-                  onClick={() => handleReset(m)}
-                  disabled={pendingResetId === m.id}
-                  className="clx-btn clx-btn-ghost"
-                  style={{ padding: 7, borderRadius: 6, display: 'flex', flexShrink: 0, opacity: pendingResetId === m.id ? 0.5 : 1 }}
-                  title="Réinitialiser le mot de passe"
-                >
-                  {pendingResetId === m.id ? <Loader2 size={14} className="clx-spin" /> : <KeyRound size={14} />}
-                </button>
-                {m.id !== currentUser.id && (
-                  <button
-                    onClick={() => handleDeactivate(m)}
-                    className="clx-btn clx-btn-ghost"
-                    style={{ padding: 7, borderRadius: 6, display: 'flex', flexShrink: 0, color: '#C1454B' }}
-                    title="Désactiver ce profil"
-                  >
-                    <UserX size={14} />
-                  </button>
-                )}
               </div>
               {resetResult?.memberId === m.id && (
                 <div className="clx-card" style={{ padding: '12px 14px', margin: '0 0 10px', borderColor: '#F2A93B55', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
