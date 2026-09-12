@@ -6,7 +6,7 @@ import {
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
   Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer,
-  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen
+  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen, MoreHorizontal
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -1771,7 +1771,58 @@ function MemberPicker({ members, onAuthenticated, error, onRetry }) {
 /*  TOP BAR                                                             */
 /* ------------------------------------------------------------------ */
 
+// Onglets secondaires regroupés sous "Plus" : les moins consultés au
+// quotidien, pour que la barre tienne sur un seul écran de smartphone sans
+// dépendre du seul défilement horizontal pour les atteindre (§ audit UX,
+// « deux onglets invisibles sur téléphone »).
+const MORE_TABS = [
+  { key: 'ideas', label: 'Boîte à idées', icon: Lightbulb },
+  { key: 'notifications', label: "Journal d'activité", icon: MessageCircle },
+];
+
 function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreRect, setMoreRect] = useState(null);
+  const moreBtnRef = useRef(null);
+  const moreMenuRef = useRef(null);
+  const moreActive = MORE_TABS.some((t) => t.key === tab);
+
+  // Se referme tout seul si l'onglet actif change par un autre biais (ex.
+  // "Voir la phase de choix" depuis l'écran d'accueil) pendant qu'il était
+  // resté ouvert.
+  useEffect(() => { setMoreOpen(false); }, [tab]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDocMouseDown = (e) => {
+      if (moreBtnRef.current?.contains(e.target)) return;
+      if (moreMenuRef.current?.contains(e.target)) return;
+      setMoreOpen(false);
+    };
+    const onKeyDown = (e) => { if (e.key === 'Escape') setMoreOpen(false); };
+    // Le menu est positionné une fois à l'ouverture (coordonnées du bouton) :
+    // un défilement ou un redimensionnement le désynchroniserait de son
+    // ancre, on le referme plutôt que de le laisser flotter au mauvais
+    // endroit (`capture: true` pour intercepter aussi le défilement propre
+    // à la barre d'onglets, horizontale et scrollable sur mobile).
+    const onScrollOrResize = () => setMoreOpen(false);
+    document.addEventListener('mousedown', onDocMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onScrollOrResize);
+    window.addEventListener('scroll', onScrollOrResize, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocMouseDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onScrollOrResize);
+      window.removeEventListener('scroll', onScrollOrResize, true);
+    };
+  }, [moreOpen]);
+
+  const toggleMore = () => {
+    if (!moreOpen && moreBtnRef.current) setMoreRect(moreBtnRef.current.getBoundingClientRect());
+    setMoreOpen((v) => !v);
+  };
+
   return (
     <header style={{ borderBottom: '1px solid #2A2A2E', position: 'sticky', top: 0, zIndex: 10, background: '#0B0B0Cee', backdropFilter: 'blur(6px)' }}>
       <div style={{ maxWidth: 880, margin: '0 auto', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
@@ -1786,8 +1837,15 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
           <TabButton icon={Disc3} label="Compos" active={tab === 'compos'} onClick={() => setTab('compos')} />
           <TabButton icon={Calendar} label="Rendez-vous" active={tab === 'rendezvous'} onClick={() => setTab('rendezvous')} />
           <TabButton icon={Mic2} label="Concerts" active={tab === 'concerts'} onClick={() => setTab('concerts')} />
-          <TabButton icon={Lightbulb} label="Boîte à idées" active={tab === 'ideas'} onClick={() => setTab('ideas')} />
-          <TabButton icon={MessageCircle} label="Journal d'activité" active={tab === 'notifications'} onClick={() => setTab('notifications')} />
+          <TabButton
+            innerRef={moreBtnRef}
+            icon={MoreHorizontal}
+            label="Plus"
+            active={moreOpen || moreActive}
+            onClick={toggleMore}
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+          />
         </nav>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1799,7 +1857,54 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
           </button>
         </div>
       </div>
+
+      {moreOpen && (
+        <TopBarMoreMenu
+          rect={moreRect}
+          activeTab={tab}
+          onSelect={(key) => { setTab(key); setMoreOpen(false); }}
+          menuRef={moreMenuRef}
+        />
+      )}
     </header>
+  );
+}
+
+// Rendu via portail sur <body>, comme Modal et ToastStack : le bouton "Plus"
+// vit dans .clx-topnav, dont le défilement horizontal (overflow-x: auto)
+// calcule aussi overflow-y à "auto" — un menu positionné normalement s'y
+// retrouverait rogné au lieu de flotter par-dessus la page.
+function TopBarMoreMenu({ rect, activeTab, onSelect, menuRef }) {
+  if (!rect) return null;
+  return createPortal(
+    <div
+      ref={menuRef}
+      role="menu"
+      className="clx-card"
+      style={{
+        position: 'fixed', zIndex: 50,
+        top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right),
+        minWidth: 200, padding: 6, display: 'flex', flexDirection: 'column', gap: 2,
+      }}
+    >
+      {MORE_TABS.map(({ key, label, icon: Icon }) => (
+        <button
+          key={key}
+          role="menuitem"
+          onClick={() => onSelect(key)}
+          className="clx-btn"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px', borderRadius: 6,
+            fontSize: 13, textAlign: 'left', border: 'none',
+            background: activeTab === key ? '#1B1B1F' : 'transparent',
+            color: activeTab === key ? '#F2A93B' : '#F5F1E8',
+          }}
+        >
+          <Icon size={14} style={{ flexShrink: 0 }} /> {label}
+        </button>
+      ))}
+    </div>,
+    document.body,
   );
 }
 
@@ -1825,9 +1930,10 @@ function ActivePhaseBanner({ phase, onOpen }) {
   );
 }
 
-function TabButton({ icon: Icon, label, active, onClick, pulse }) {
+function TabButton({ icon: Icon, label, active, onClick, pulse, innerRef, ...rest }) {
   return (
     <button
+      ref={innerRef}
       onClick={onClick}
       title={label}
       aria-label={label}
@@ -1839,6 +1945,7 @@ function TabButton({ icon: Icon, label, active, onClick, pulse }) {
         border: active ? '1px solid #2A2A2E' : '1px solid transparent',
         fontSize: 13, position: 'relative', flexShrink: 0, whiteSpace: 'nowrap',
       }}
+      {...rest}
     >
       <Icon size={14} style={{ flexShrink: 0 }} />
       <span className="clx-tab-label">{label}</span>
@@ -2760,6 +2867,11 @@ function ToastStack({ toasts, onDismiss }) {
       style={{
         position: 'fixed', left: '50%', bottom: 18, transform: 'translateX(-50%)', zIndex: 200,
         display: 'flex', flexDirection: 'column', gap: 8, width: 'min(92vw, 420px)',
+        // Même cause que la couleur ci-dessous : hors de .calyxter-app, ce
+        // portail n'hérite pas non plus de sa police (Inter) et retombe sur
+        // la police par défaut du navigateur — posée ici explicitement,
+        // hérite ensuite normalement vers le texte du message.
+        fontFamily: "'Inter', sans-serif",
       }}
     >
       {toasts.map((t) => (
