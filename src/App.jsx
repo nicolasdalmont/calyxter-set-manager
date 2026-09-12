@@ -2635,12 +2635,6 @@ function AdminTab({ members, currentUser, addMember, setMemberActive, resetMembe
 
   const activeMembers = [...members].filter((m) => m.active !== false).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const inactiveMembers = [...members].filter((m) => m.active === false).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  const lastSeenSorted = [...activeMembers].sort((a, b) => {
-    if (!a.last_activity_at && !b.last_activity_at) return a.name.localeCompare(b.name, 'fr');
-    if (!a.last_activity_at) return 1;
-    if (!b.last_activity_at) return -1;
-    return b.last_activity_at.localeCompare(a.last_activity_at);
-  });
 
   const submitAdd = async (e) => {
     e.preventDefault();
@@ -2716,27 +2710,29 @@ function AdminTab({ members, currentUser, addMember, setMemberActive, resetMembe
                   <MemberAvatarIcon member={m} size={16} />
                 </div>
                 <div style={{ flex: '1 1 140px', minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     {m.name} {m.id === currentUser.id && <span style={{ color: '#9A958C', fontWeight: 400 }}>— toi</span>}
                     {m.is_admin && <span className="clx-badge" style={{ background: '#F2A93B22', color: '#F2A93B', border: '1px solid #F2A93B55' }}>ADMIN</span>}
                     {m.must_reset_password && <span className="clx-badge" style={{ background: '#E8B04B22', color: '#E8B04B', border: '1px solid #E8B04B55' }}>RESET EN ATTENTE</span>}
                   </div>
                   <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C' }}>{m.instrument}</div>
                 </div>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lastSeenDotColor(m.last_activity_at) }} title={`Dernière activité : ${formatRelativeTime(m.last_activity_at)}`} />
+                <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', width: 78, textAlign: 'right', flexShrink: 0 }}>{formatRelativeTime(m.last_activity_at)}</div>
                 <button
                   onClick={() => handleReset(m)}
                   disabled={pendingResetId === m.id}
                   className="clx-btn clx-btn-ghost"
-                  style={{ padding: '6px 10px', borderRadius: 6, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, opacity: pendingResetId === m.id ? 0.5 : 1 }}
+                  style={{ padding: 7, borderRadius: 6, display: 'flex', flexShrink: 0, opacity: pendingResetId === m.id ? 0.5 : 1 }}
                   title="Réinitialiser le mot de passe"
                 >
-                  {pendingResetId === m.id ? <Loader2 size={13} className="clx-spin" /> : <KeyRound size={13} />} Réinitialiser
+                  {pendingResetId === m.id ? <Loader2 size={14} className="clx-spin" /> : <KeyRound size={14} />}
                 </button>
                 {m.id !== currentUser.id && (
                   <button
                     onClick={() => handleDeactivate(m)}
                     className="clx-btn clx-btn-ghost"
-                    style={{ padding: 7, borderRadius: 6, display: 'flex', color: '#C1454B' }}
+                    style={{ padding: 7, borderRadius: 6, display: 'flex', flexShrink: 0, color: '#C1454B' }}
                     title="Désactiver ce profil"
                   >
                     <UserX size={14} />
@@ -2790,30 +2786,6 @@ function AdminTab({ members, currentUser, addMember, setMemberActive, resetMembe
           </div>
         </div>
       )}
-
-      <div>
-        <div className="section-label">
-          <Clock size={12} /> Dernières connexions
-        </div>
-        <div className="clx-card" style={{ padding: '6px 16px' }}>
-          <div className="clx-tape" />
-          {lastSeenSorted.map((m, i) => (
-            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22' }}>
-              <div style={{ width: 34, height: 34, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: avatarColorFor(m.name) }}>
-                <MemberAvatarIcon member={m} size={16} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  {m.name} {m.id === currentUser.id && <span style={{ color: '#9A958C', fontWeight: 400 }}>— toi</span>}
-                </div>
-                <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C' }}>{m.instrument}</div>
-              </div>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: lastSeenDotColor(m.last_activity_at) }} />
-              <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', width: 90, textAlign: 'right', flexShrink: 0 }}>{formatRelativeTime(m.last_activity_at)}</div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
