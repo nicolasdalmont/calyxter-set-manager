@@ -6,7 +6,7 @@ import {
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
   Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer,
-  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen, MoreHorizontal, LogOut
+  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen, MoreHorizontal, LogOut, Bell
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -723,6 +723,16 @@ export default function App() {
 
   const currentUser = useMemo(() => members.find((m) => m.id === currentUserId) || null, [members, currentUserId]);
 
+  // Capture, une seule fois par session, le last_activity_at connu à
+  // l'arrivée sur l'appli — avant que l'effet ci-dessous ne l'écrase avec
+  // l'heure courante. Sert de repère "depuis ta dernière connexion" pour les
+  // notifications de l'écran d'accueil (voir AccueilTab) : à lire pendant le
+  // rendu (pas dans un effet, qui s'exécuterait après cette écrasure).
+  const previousLastActivityAtRef = useRef(undefined);
+  if (currentUser && previousLastActivityAtRef.current === undefined) {
+    previousLastActivityAtRef.current = currentUser.last_activity_at || null;
+  }
+
   const onAuthenticated = useCallback((member) => {
     setCurrentUserId(member.id);
     savePersonal('current-member-id', member.id);
@@ -1174,6 +1184,8 @@ export default function App() {
             phaseHistory={phaseHistory}
             events={events}
             concerts={concerts}
+            notifications={notifications}
+            sinceLastVisit={previousLastActivityAtRef.current}
             setTab={setTab}
           />
         )}
@@ -1286,7 +1298,7 @@ export default function App() {
           onClose={() => setShowAdd(false)}
           onAdd={async (song) => {
             await updateSongs((prev) => [...prev, song], { successMessage: `« ${song.title} » ajouté au répertoire.` });
-            await pushNotification(`🎵 « ${song.title} » ajouté au répertoire par ${currentUser.name}.`, 'info');
+            await pushNotification(`🎵 « ${song.title} » ajouté au répertoire par ${currentUser.name}.`, 'proposal');
             setShowAdd(false);
           }}
         />
@@ -2260,8 +2272,41 @@ function HomeAgendaCard({ item, onOpen, members }) {
   );
 }
 
-function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, concerts, setTab }) {
+// Catégories d'activité remontées sur l'écran d'accueil (au-dessus du
+// "Prochain rendez-vous") : un sous-ensemble volontairement restreint du
+// journal complet (onglet Journal d'activité, qui lui garde tout) — les
+// événements notables pour un membre qui revient après une absence, pas
+// les modifications mineures (éditions, suppressions de commentaires...).
+const HOME_NOTIF_KIND_INFO = {
+  concert: { Icon: Mic2, color: '#2E9FB8' },
+  rendezvous: { Icon: Calendar, color: '#7C8BA8' },
+  proposal: { Icon: Music2, color: '#7C8BA8' },
+  veto: { Icon: Ban, color: '#C1454B' },
+  launch: { Icon: Sparkles, color: '#F2A93B' },
+  compo: { Icon: Disc3, color: '#6FA287' },
+};
+const HOME_NOTIF_KINDS = Object.keys(HOME_NOTIF_KIND_INFO);
+
+function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, concerts, notifications, sinceLastVisit, setTab }) {
   const todayStr = toISODate(new Date());
+
+  // Lues/masquées : mémorisées par membre sur cet appareil (comme
+  // current-member-id) — pas de portée multi-appareil, mais pas besoin de
+  // toucher au schéma de la base pour une préférence purement personnelle
+  // d'affichage local.
+  const readKey = `home-notifs-read-${currentUser.id}`;
+  const [readIds, setReadIds] = useState(() => new Set(loadPersonal(readKey) || []));
+
+  const recentNotifs = sinceLastVisit
+    ? notifications.filter((n) => HOME_NOTIF_KINDS.includes(n.kind) && n.created_at > sinceLastVisit && !readIds.has(n.id))
+    : [];
+
+  const persistReadIds = (next) => {
+    setReadIds(next);
+    savePersonal(readKey, [...next]);
+  };
+  const markRead = (id) => persistReadIds(new Set(readIds).add(id));
+  const markAllRead = () => persistReadIds(new Set([...readIds, ...recentNotifs.map((n) => n.id)]));
 
   const nextEvent = mergeEventsAndConcerts(events, [])
     .find((item) => (item.end_date || item.event_date) >= todayStr) || null;
@@ -2315,6 +2360,42 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
           </div>
         </div>
       </div>
+
+      {recentNotifs.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div className="section-label" style={{ justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Bell size={12} /> Depuis ta dernière connexion</span>
+            <button
+              onClick={markAllRead}
+              className="clx-mono"
+              style={{ background: 'none', border: 'none', padding: 0, fontSize: 10, textTransform: 'none', letterSpacing: 0, color: '#F2A93B', cursor: 'pointer' }}
+            >
+              Tout marquer lu
+            </button>
+          </div>
+          <div className="clx-card" style={{ padding: '6px 16px' }}>
+            <div className="clx-tape" />
+            {recentNotifs.map((n, i) => {
+              const kindInfo = HOME_NOTIF_KIND_INFO[n.kind];
+              return (
+                <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22' }}>
+                  <kindInfo.Icon size={14} color={kindInfo.color} style={{ flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>{n.text}</div>
+                  <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', flexShrink: 0 }}>{formatRelativeTime(n.created_at)}</div>
+                  <button
+                    onClick={() => markRead(n.id)}
+                    className="clx-btn clx-btn-ghost"
+                    style={{ padding: 5, borderRadius: 5, display: 'flex', flexShrink: 0 }}
+                    title="Marquer comme lue"
+                  >
+                    <Check size={13} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="clx-home-grid" style={{ marginBottom: 20 }}>
         <div>
@@ -3175,7 +3256,7 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
       isNew
         ? `🎼 ${currentUser.name} a ajouté la compo « ${compo.title} ».`
         : `🎼 ${currentUser.name} a modifié la compo « ${compo.title} ».`,
-      'info',
+      isNew ? 'compo' : 'info',
     );
     setEditing(null);
   };
@@ -3944,7 +4025,7 @@ function ProposalStep({ songs, members, currentUser, phase, phaseHistory, update
           onClose={() => setShowAdd(false)}
           onAdd={async (song) => {
             await updateSongs((prev) => [...prev, song], { successMessage: `« ${song.title} » ajouté au répertoire.` });
-            await pushNotification(`🎵 ${currentUser.name} propose « ${song.title} » pour cette phase.`, 'info');
+            await pushNotification(`🎵 ${currentUser.name} propose « ${song.title} » pour cette phase.`, 'proposal');
             setShowAdd(false);
           }}
         />
@@ -4997,7 +5078,7 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
             isNew
               ? `🎤 ${currentUser.name} a créé le concert « ${concert.name} » (${formatConcertDate(concert.event_date, { day: 'numeric', month: 'long', year: 'numeric' })}).`
               : `🛠️ ${currentUser.name} a mis à jour le set du concert « ${concert.name} ».`,
-            'info'
+            isNew ? 'concert' : 'info'
           );
           setEditingConcert(undefined);
         }}
@@ -5778,7 +5859,7 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
             isNew
               ? `🗓️ ${currentUser.name} a ajouté un rendez-vous : « ${event.subject} » (${formatConcertDate(event.event_date, { day: 'numeric', month: 'long', year: 'numeric' })}).`
               : `🛠️ ${currentUser.name} a modifié le rendez-vous « ${event.subject} ».`,
-            'info'
+            isNew ? 'rendezvous' : 'info'
           );
           setEditingEvent(undefined);
           setEditingOccurrenceDate(null);
