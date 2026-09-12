@@ -1493,6 +1493,8 @@ function GlobalStyle() {
          d'écran plutôt que défilante avec la page — pattern d'appli mobile
          à onglets, ex. Ma Bédéthèque). */
       .clx-topnav {
+        display: flex;
+        gap: 4px;
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
         scrollbar-width: none;
@@ -1803,7 +1805,7 @@ function TopBar({ currentUser, onSignOut, tab, setTab, phaseActive }) {
 
         {/* Sous 640px, cette nav disparaît (voir .clx-topnav) au profit de
             BottomTabBar, toujours affichée en pied d'écran. */}
-        <nav className="clx-topnav" style={{ display: 'flex', gap: 4 }}>
+        <nav className="clx-topnav">
           <TabButton icon={Home} label="Accueil" active={tab === 'accueil'} onClick={() => setTab('accueil')} />
           <TabButton icon={ListMusic} label="Répertoire" active={tab === 'repertoire'} onClick={() => setTab('repertoire')} pulse={phaseActive} />
           <TabButton icon={Disc3} label="Compos" active={tab === 'compos'} onClick={() => setTab('compos')} />
