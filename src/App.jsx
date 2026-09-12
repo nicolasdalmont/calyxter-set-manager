@@ -2932,6 +2932,125 @@ function useBackableOverlay(onClose) {
   }, []);
 }
 
+// Glisser-déposer utilisable au doigt, en complément du glisser-déposer
+// HTML5 natif déjà en place sur la ligne entière (draggable/onDragStart/
+// onDragOver/onDrop) : celui-ci ne se déclenche jamais au toucher (Safari
+// iOS compris), qui est pourtant le terminal le plus probable pour voter ou
+// construire un set de concert.
+//
+// Ne s'active que pour un pointeur tactile/stylet (jamais la souris, laissée
+// au glisser-déposer HTML5 existant, cursor "grab" compris) et seulement
+// depuis la poignée dédiée (`handlePointerDown(index)` posé sur elle, pas
+// sur la ligne entière) : sans cette restriction, le moindre effleurement
+// n'importe où sur une ligne déclencherait un glisser-déposer au lieu de
+// laisser défiler normalement la liste au doigt.
+//
+// `onMove(from, to)` reprend exactement la sémantique déjà utilisée par le
+// dépôt HTML5 (déplacer l'élément vers la position de la ligne survolée) :
+// les fonctions moveSong/moveItem existantes n'ont pas à changer.
+function useTouchReorder({ listRef, itemCount, onMove }) {
+  const [dragIndex, setDragIndex] = useState(null);
+  const dragIndexRef = useRef(null);
+  const itemRefs = useRef([]);
+  const scrollTimer = useRef(null);
+  const onMoveRef = useRef(onMove);
+  onMoveRef.current = onMove;
+
+  const setItemRef = (index) => (el) => { itemRefs.current[index] = el; };
+
+  const stopAutoScroll = useCallback(() => {
+    if (scrollTimer.current) { clearInterval(scrollTimer.current); scrollTimer.current = null; }
+  }, []);
+
+  // Renvoie l'index de la ligne dont le rectangle contient clientY (même
+  // granularité "ligne entière" que le survol HTML5 existant), ou l'index
+  // courant du glisser si le pointeur est entre deux lignes / hors liste —
+  // pour ne rien changer plutôt que de sauter à une position hasardeuse.
+  const indexAtY = useCallback((clientY) => {
+    for (let i = 0; i < itemCount; i++) {
+      const el = itemRefs.current[i];
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (clientY >= r.top && clientY <= r.bottom) return i;
+    }
+    const first = itemRefs.current[0]?.getBoundingClientRect();
+    const last = itemRefs.current[itemCount - 1]?.getBoundingClientRect();
+    if (first && clientY < first.top) return 0;
+    if (last && clientY > last.bottom) return itemCount - 1;
+    return dragIndexRef.current;
+  }, [itemCount]);
+
+  const handlePointerMove = useCallback((e) => {
+    if (dragIndexRef.current === null) return;
+    e.preventDefault();
+    const container = listRef.current;
+    if (container) {
+      const rect = container.getBoundingClientRect();
+      const threshold = 56;
+      stopAutoScroll();
+      if (e.clientY < rect.top + threshold) {
+        scrollTimer.current = setInterval(() => { container.scrollTop -= 16; }, 30);
+      } else if (e.clientY > rect.bottom - threshold) {
+        scrollTimer.current = setInterval(() => { container.scrollTop += 16; }, 30);
+      }
+    }
+    const from = dragIndexRef.current;
+    const hovered = indexAtY(e.clientY);
+    if (hovered !== null && hovered !== from) {
+      // moveSong/moveItem(from, to) vise "juste avant la ligne to d'origine"
+      // quand to > from (décalage de -1 intégré, pensé pour un dépôt unique
+      // en fin de glisser) : pour un réordonnancement en direct où l'élément
+      // doit suivre le doigt ligne par ligne, on compense pour qu'il finisse
+      // exactement sous le pointeur, comme au relâchement.
+      onMoveRef.current(from, hovered > from ? hovered + 1 : hovered);
+      dragIndexRef.current = hovered;
+      setDragIndex(hovered);
+    }
+  }, [listRef, indexAtY, stopAutoScroll]);
+
+  const endDrag = useCallback(() => {
+    stopAutoScroll();
+    dragIndexRef.current = null;
+    setDragIndex(null);
+    window.removeEventListener('pointermove', handlePointerMove);
+    window.removeEventListener('pointerup', endDrag);
+    window.removeEventListener('pointercancel', endDrag);
+  }, [stopAutoScroll, handlePointerMove]);
+
+  const handlePointerDown = useCallback((index) => (e) => {
+    if (e.pointerType === 'mouse') return;
+    e.preventDefault();
+    dragIndexRef.current = index;
+    setDragIndex(index);
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
+  }, [handlePointerMove, endDrag]);
+
+  useEffect(() => stopAutoScroll, [stopAutoScroll]);
+
+  return { dragIndex, setItemRef, handlePointerDown };
+}
+
+// Poignée de glisser-déposer partagée par VoteStep et ConcertEditor : icône
+// GripVertical + zone tactile agrandie (32px, au-delà des 15px de l'icône
+// seule — cible trop petite pour le doigt) portant le déclenchement du
+// glisser tactile (voir useTouchReorder ci-dessus).
+function DragHandle({ onPointerDown }) {
+  return (
+    <span
+      onPointerDown={onPointerDown}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: 32, height: 32, marginLeft: -8, flexShrink: 0,
+        touchAction: 'none', cursor: 'grab',
+      }}
+    >
+      <GripVertical size={15} color="#9A958C" />
+    </span>
+  );
+}
+
 function Modal({ onClose, title, icon: Icon, children, wide }) {
   useBackableOverlay(onClose);
   // Rendu via un portail sur <body> : sinon le calque est piégé dans le
@@ -4020,7 +4139,16 @@ function VoteStep({ songs, members, currentUser, phase, updatePhase }) {
   };
 
   const moveUp = (index) => { if (index > 0) moveSong(index, index - 1); };
-  const moveDown = (index) => { if (index < order.length - 1) moveSong(index, index + 1); };
+  // index + 2, pas + 1 : moveSong(from, to) décale l'index d'insertion de -1
+  // quand to > from (il vise "juste avant la ligne to d'origine", pas "la
+  // position finale to") — un appel avec to = index + 1 s'annule donc tout
+  // seul et ce bouton ne faisait jamais rien. Vérifié : moveSong(i, i+2)
+  // aboutit bien à l'échange avec le voisin du dessous, comme moveUp avec i-1.
+  const moveDown = (index) => { if (index < order.length - 1) moveSong(index, index + 2); };
+
+  const { dragIndex: touchDragIndex, setItemRef, handlePointerDown } = useTouchReorder({
+    listRef, itemCount: order.length, onMove: moveSong,
+  });
 
   const stopAutoScroll = () => {
     if (scrollTimer.current) { clearInterval(scrollTimer.current); scrollTimer.current = null; }
@@ -4069,7 +4197,7 @@ function VoteStep({ songs, members, currentUser, phase, updatePhase }) {
   return (
     <div>
       <div style={{ fontSize: 13, color: '#9A958C', marginBottom: 4 }}>
-        Les morceaux n'ont pas de note au départ. Glisse un morceau en haut de la liste pour lui donner la meilleure note ({N}), ou insère-le juste sous un morceau déjà noté pour qu'il prenne la note juste en dessous — celui-ci et tous ceux en dessous rétrogradent d'un cran.
+        Les morceaux n'ont pas de note au départ. Fais glisser un morceau par sa poignée <GripVertical size={12} style={{ verticalAlign: 'text-bottom' }} /> en haut de la liste pour lui donner la meilleure note ({N}), ou juste sous un morceau déjà noté pour qu'il prenne la note en dessous — celui-ci et tous ceux plus bas rétrogradent d'un cran. Fonctionne au doigt comme à la souris ; les flèches à droite de chaque morceau permettent aussi un ajustement fin.
       </div>
       <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 14 }}>{votedCount}/{members.length} membres ont validé leur bulletin</div>
 
@@ -4102,6 +4230,7 @@ function VoteStep({ songs, members, currentUser, phase, updatePhase }) {
           return (
             <div
               key={songId}
+              ref={setItemRef(index)}
               draggable
               onDragStart={() => { dragIndex.current = index; }}
               onDragOver={(e) => { e.preventDefault(); setDragOverIndex(index); }}
@@ -4111,11 +4240,11 @@ function VoteStep({ songs, members, currentUser, phase, updatePhase }) {
               className="clx-card"
               style={{
                 padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
-                borderColor: dragOverIndex === index ? '#F2A93B' : undefined,
+                borderColor: (dragOverIndex === index || touchDragIndex === index) ? '#F2A93B' : undefined,
                 cursor: 'grab',
               }}
             >
-              <GripVertical size={15} color="#9A958C" style={{ flexShrink: 0 }} />
+              <DragHandle onPointerDown={handlePointerDown(index)} />
               <div className="clx-mono" style={{
                 width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 12, fontWeight: 700, flexShrink: 0,
@@ -5149,7 +5278,14 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   };
 
   const moveUp = (index) => { if (index > 0) moveItem(index, index - 1); };
-  const moveDown = (index) => { if (index < items.length - 1) moveItem(index, index + 1); };
+  // index + 2, pas + 1 : voir le commentaire équivalent dans VoteStep.moveDown
+  // — moveItem(from, to) vise "juste avant la ligne to d'origine" quand
+  // to > from, pas "la position finale to" ; +1 s'annulait donc tout seul.
+  const moveDown = (index) => { if (index < items.length - 1) moveItem(index, index + 2); };
+
+  const { dragIndex: touchDragIndex, setItemRef, handlePointerDown } = useTouchReorder({
+    listRef, itemCount: items.length, onMove: moveItem,
+  });
 
   const stopAutoScroll = () => {
     if (scrollTimer.current) { clearInterval(scrollTimer.current); scrollTimer.current = null; }
@@ -5312,6 +5448,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
             let songNo = 0;
             return items.map((it, index) => {
               const dragProps = {
+                ref: setItemRef(index),
                 draggable: true,
                 onDragStart: () => { dragIndex.current = index; },
                 onDragOver: (e) => { e.preventDefault(); setDragOverIndex(index); },
@@ -5319,6 +5456,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
                 onDrop: () => handleDrop(index),
                 onDragEnd: () => { stopAutoScroll(); dragIndex.current = null; setDragOverIndex(null); },
               };
+              const highlighted = dragOverIndex === index || touchDragIndex === index;
               const moveButtons = (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
                   <button
@@ -5351,11 +5489,11 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
                     style={{
                       padding: '7px 12px', display: 'flex', alignItems: 'center', gap: 10,
                       borderStyle: 'dashed',
-                      borderColor: dragOverIndex === index ? '#F2A93B' : '#3A3A40',
+                      borderColor: highlighted ? '#F2A93B' : '#3A3A40',
                       background: '#141417', cursor: 'grab',
                     }}
                   >
-                    <GripVertical size={15} color="#9A958C" style={{ flexShrink: 0 }} />
+                    <DragHandle onPointerDown={handlePointerDown(index)} />
                     <Megaphone size={14} color="#C4A24C" style={{ flexShrink: 0 }} />
                     <input
                       className="clx-input"
@@ -5388,11 +5526,11 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
                   className="clx-card"
                   style={{
                     padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10,
-                    borderColor: dragOverIndex === index ? '#F2A93B' : undefined,
+                    borderColor: highlighted ? '#F2A93B' : undefined,
                     cursor: 'grab',
                   }}
                 >
-                  <GripVertical size={15} color="#9A958C" style={{ flexShrink: 0 }} />
+                  <DragHandle onPointerDown={handlePointerDown(index)} />
                   <div className="clx-mono" style={{
                     width: 26, height: 26, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 12, fontWeight: 700, flexShrink: 0, background: '#16161A', color: '#F2A93B', border: '1px solid #2A2A2E',
