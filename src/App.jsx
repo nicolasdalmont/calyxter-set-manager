@@ -5150,9 +5150,11 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds, pageCount = 1)
     + ` · durée estimée ${esc(formatTotalDuration(totalSeconds))}`;
 
   // Découpage en 1 ou 2 pages : à effectif égal (la 1re page reçoit la ligne
-  // en trop si le total est impair), chaque page garde ensuite sa propre
+  // en trop si le total est impair), mais avec au moins 15 lignes sur la
+  // 1re page — sous ce seuil, mieux vaut une 2e page clairsemée qu'une
+  // 1re page qui semble sous-remplie. Chaque page garde ensuite sa propre
   // police ajustée indépendamment (voir fitSetFontSize).
-  const splitAt = Math.ceil(liList.length / 2);
+  const splitAt = Math.min(liList.length, Math.max(Math.ceil(liList.length / 2), 15));
   const pageLiLists = pageCount === 2 ? [liList.slice(0, splitAt), liList.slice(splitAt)] : [liList];
 
   return `<!doctype html>
