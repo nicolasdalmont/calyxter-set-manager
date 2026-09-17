@@ -3533,6 +3533,32 @@ function ConfirmDialog({ title, message, confirmLabel, danger, onConfirm, onCanc
   );
 }
 
+// Au-delà de 15 lignes (voir countPrintableSetLines), on laisse le choix
+// entre tasser le set sur une page (police réduite) ou le répartir sur 2
+// pages pleines avant d'ouvrir la fenêtre d'impression.
+function PrintPagesDialog({ lineCount, onChoose, onCancel }) {
+  return (
+    <Modal onClose={onCancel} title="Imprimer le set" icon={Printer}>
+      <div style={{ fontSize: 13, color: '#F5F1E8', marginBottom: 20 }}>
+        Ce set compte {lineCount} lignes : sur une page, le texte sera réduit
+        pour tout faire tenir. Sur 2 pages, il reste réparti en 2 moitiés
+        aussi grandes que possible.
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
+        <button onClick={onCancel} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>
+          Annuler
+        </button>
+        <button onClick={() => onChoose(1)} className="clx-btn clx-btn-ghost" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>
+          1 page
+        </button>
+        <button onClick={() => onChoose(2)} className="clx-btn clx-btn-primary" style={{ padding: '9px 16px', borderRadius: 6, fontSize: 13 }}>
+          2 pages
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  COMPOS — répertoire des morceaux originaux du groupe               */
 /* ------------------------------------------------------------------ */
@@ -5073,12 +5099,25 @@ function exportConcertToCalendar(concert, songs) {
 /*  EXPORT IMPRIMABLE — "Imprimer le set"                              */
 /* ------------------------------------------------------------------ */
 
+// Nombre de lignes qu'affichera réellement la feuille imprimable (morceaux
+// résolus + notes de transition non vides) — sert à proposer le choix
+// 1 page / 2 pages au-delà d'un certain seuil.
+function countPrintableSetLines(setItems, songs) {
+  if (!Array.isArray(setItems)) return 0;
+  return setItems.filter((it) => {
+    if (it && it.type === 'note') return String(it.text ?? '').trim().length > 0;
+    return !!(it && songs.some((s) => s.id === it.song_id));
+  }).length;
+}
+
 // Feuille de set imprimable, pensée pour être LUE DEPUIS LE SOL pendant le
 // concert : gros titres, forte lisibilité. Vise une page A4 (la police de la
-// liste se réduit si besoin, avec un plancher lisible ; au-delà, le set
-// déborde sur une 2e page plutôt que de devenir illisible).
+// liste se réduit si besoin, avec un plancher lisible). Au-delà de 15 lignes,
+// l'utilisateur peut choisir de répartir le set sur 2 pages (`pageCount`)
+// plutôt que de tout entasser sur une seule — chaque page reçoit alors une
+// moitié du set et sa propre police, ajustée pour occuper toute sa hauteur.
 // `meta` = { name, event_date, event_time, end_time, venue }.
-function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
+function buildConcertSetHTML(meta, setItems, songs, totalSeconds, pageCount = 1) {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
@@ -5092,7 +5131,7 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
   ].filter(Boolean).join('&nbsp;&nbsp;·&nbsp;&nbsp;');
 
   let songNo = 0;
-  const lines = (setItems || []).map((it) => {
+  const liList = (setItems || []).map((it) => {
     if (it && it.type === 'note') {
       const t = (it.text || '').trim();
       return t ? `<li class="note">${esc(t)}</li>` : '';
@@ -5102,13 +5141,19 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
     songNo += 1;
     return `<li class="song"><span class="n">${songNo}</span><span class="ti">${esc(s.title)}`
       + `<span class="ar">${esc(s.artist)}</span></span></li>`;
-  }).filter(Boolean).join('');
+  }).filter(Boolean);
 
   const songCount = songNo;
   const noteN = countSetNotes(setItems);
   const foot = `${songCount} morceau${songCount > 1 ? 'x' : ''}`
     + (noteN ? ` · ${noteN} transition${noteN > 1 ? 's' : ''}` : '')
     + ` · durée estimée ${esc(formatTotalDuration(totalSeconds))}`;
+
+  // Découpage en 1 ou 2 pages : à effectif égal (la 1re page reçoit la ligne
+  // en trop si le total est impair), chaque page garde ensuite sa propre
+  // police ajustée indépendamment (voir fitSetFontSize).
+  const splitAt = Math.ceil(liList.length / 2);
+  const pageLiLists = pageCount === 2 ? [liList.slice(0, splitAt), liList.slice(splitAt)] : [liList];
 
   return `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
@@ -5120,7 +5165,8 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
   .sheet { background: #fff; max-width: 190mm; margin: 12px auto; padding: 13mm 15mm; box-shadow: 0 1px 6px rgba(0,0,0,.15); }
   .brand { font-size: 10px; letter-spacing: .34em; color: #9a9a9a; margin-bottom: 4px; }
-  h1 { font-size: 27px; line-height: 1.1; margin: 0 0 3px; }
+  h1 { font-size: 27px; line-height: 1.1; margin: 0 0 3px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .pagebadge { font-size: 11px; letter-spacing: .08em; color: #9a9a9a; font-weight: 400; text-transform: uppercase; }
   .sub { font-size: 12px; color: #555; }
   .date { font-size: 12px; color: #555; margin-bottom: 10px; }
   ol.set { list-style: none; margin: 0; padding: 0; border-top: 3px solid #000; font-size: 26px; }
@@ -5157,18 +5203,19 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
     .bar { display: none; }
     ol.set li { padding: .2em 0; }
     ol.set li, li.note { break-inside: avoid; }
+    .sheet:not(:last-child) { break-after: page; page-break-after: always; }
     @page { size: A4; margin: 10mm; }
   }
 </style></head>
 <body>
-<div class="sheet" id="sheet">
+${pageLiLists.map((pageLines, idx) => `<div class="sheet" id="sheet${idx}">
   <div class="brand">CALYXTER</div>
-  <h1>${esc(meta.name || 'Concert')}</h1>
+  <h1>${esc(meta.name || 'Concert')}${pageLiLists.length > 1 ? ` <span class="pagebadge">Page ${idx + 1}/${pageLiLists.length}</span>` : ''}</h1>
   ${sub ? `<div class="sub">${sub}</div>` : ''}
   <div class="date">${esc(dateLabel)}</div>
-  <ol class="set">${lines || '<li class="note">Set vide</li>'}</ol>
-  <div class="foot">${foot}</div>
-</div>
+  <ol class="set">${pageLines.join('') || '<li class="note">Set vide</li>'}</ol>
+  <div class="foot">${idx === pageLiLists.length - 1 ? foot : `Suite page ${idx + 2}/${pageLiLists.length} →`}</div>
+</div>`).join('\n')}
 <div class="bar">
   <button class="save" onclick="window.print()">Enregistrer en PDF / Imprimer</button>
   <button class="back" onclick="window.close()">Retour au concert</button>
@@ -5185,10 +5232,11 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
     // (~800 px) : les moteurs d'impression mobiles ajoutent des marges
     // variables et, selon iOS/Android, le format Letter, plus court. La taille
     // retenue est posée en style inline (écran + impression), l'aperçu reflète
-    // donc la sortie.
-    function fitSetFontSize() {
-      var sheet = document.getElementById('sheet');
-      var ol = document.querySelector('ol.set');
+    // donc la sortie. Chaque page (id sheet0, sheet1…) est ajustée indépendamment,
+    // pour occuper toute sa hauteur même si le set est réparti sur 2 pages.
+    function fitSetFontSize(sheetId) {
+      var sheet = document.getElementById(sheetId);
+      var ol = sheet.querySelector('ol.set');
       var s = sheet.style, o = ol.style;
       var save = { w: s.width, mw: s.maxWidth, p: s.padding, m: s.margin, sh: s.boxShadow };
       s.width = '190mm'; s.maxWidth = 'none'; s.padding = '0'; s.margin = '0'; s.boxShadow = 'none';
@@ -5200,7 +5248,7 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
     }
 
     window.onload = function () {
-      try { fitSetFontSize(); } catch (e) {}
+      try { ${pageLiLists.map((_, idx) => `fitSetFontSize('sheet${idx}');`).join(' ')} } catch (e) {}
       if (coarse) {
         // Mobile : ne rien déclencher, afficher l'aide, laisser choisir
         // « Enregistrer en PDF » (le set est déjà dimensionné pour une page).
@@ -5218,14 +5266,14 @@ function buildConcertSetHTML(meta, setItems, songs, totalSeconds) {
 </body></html>`;
 }
 
-function openPrintableConcertSet(meta, setItems, songs, totalSeconds) {
+function openPrintableConcertSet(meta, setItems, songs, totalSeconds, pageCount = 1) {
   const w = window.open('', '_blank');
   if (!w) {
     window.alert("Pour imprimer le set, autorise l'ouverture des fenêtres (pop-up) pour cette application, puis réessaie.");
     return;
   }
   w.document.open();
-  w.document.write(buildConcertSetHTML(meta, setItems, songs, totalSeconds));
+  w.document.write(buildConcertSetHTML(meta, setItems, songs, totalSeconds, pageCount));
   w.document.close();
 }
 
@@ -5579,6 +5627,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showPrintChoice, setShowPrintChoice] = useState(false);
 
   const dragIndex = useRef(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
@@ -5776,13 +5825,16 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
           )}
           {name.trim() && (
             <button
-              onClick={() => openPrintableConcertSet(
-                { name: name.trim(), event_date: eventDate, event_time: eventTime || null, end_time: endTimeFrom(eventTime, durationMin), venue: venue.trim() },
-                items, songs, totalSeconds,
-              )}
+              onClick={() => {
+                if (countPrintableSetLines(items, songs) > 15) { setShowPrintChoice(true); return; }
+                openPrintableConcertSet(
+                  { name: name.trim(), event_date: eventDate, event_time: eventTime || null, end_time: endTimeFrom(eventTime, durationMin), venue: venue.trim() },
+                  items, songs, totalSeconds, 1,
+                );
+              }}
               className="clx-btn clx-btn-ghost"
               style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
-              title="Ouvrir une version imprimable du set sur une page (transitions comprises)"
+              title="Ouvrir une version imprimable du set (transitions comprises)"
             >
               <Printer size={14} /> Imprimer le set
             </button>
@@ -6059,6 +6111,20 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
           danger
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
+        />
+      )}
+
+      {showPrintChoice && (
+        <PrintPagesDialog
+          lineCount={countPrintableSetLines(items, songs)}
+          onChoose={(pageCount) => {
+            setShowPrintChoice(false);
+            openPrintableConcertSet(
+              { name: name.trim(), event_date: eventDate, event_time: eventTime || null, end_time: endTimeFrom(eventTime, durationMin), venue: venue.trim() },
+              items, songs, totalSeconds, pageCount,
+            );
+          }}
+          onCancel={() => setShowPrintChoice(false)}
         />
       )}
     </div>
