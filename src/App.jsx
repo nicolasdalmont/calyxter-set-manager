@@ -826,14 +826,17 @@ export default function App() {
   }, [pushToast]);
 
   const pushNotification = useCallback(async (text, kind) => {
-    const entry = { id: uid(), text, kind: kind || 'info', created_at: new Date().toISOString() };
+    // actor_id : l'auteur de l'action, pour que l'écran d'accueil (« Depuis
+    // ta dernière connexion ») puisse masquer à chacun ses propres actions —
+    // seules celles des autres membres doivent lui être signalées.
+    const entry = { id: uid(), text, kind: kind || 'info', actor_id: currentUserId, created_at: new Date().toISOString() };
     setNotifications((prev) => [entry, ...prev].slice(0, 40));
     try {
-      await dbInsert('notifications', [{ text: entry.text, kind: entry.kind }]);
+      await dbInsert('notifications', [{ text: entry.text, kind: entry.kind, actor_id: entry.actor_id }]);
     } catch (e) {
       console.error('Erreur en enregistrant la notification', e);
     }
-  }, []);
+  }, [currentUserId]);
 
   // `silent` : coupe aussi bien le toast d'erreur que le futur toast de succès
   // — réservé aux écritures qui ne viennent pas d'une action explicite (ex.
@@ -2427,7 +2430,7 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
   const [readIds, setReadIds] = useState(() => new Set(loadPersonal(readKey) || []));
 
   const recentNotifs = sinceLastVisit
-    ? notifications.filter((n) => HOME_NOTIF_KINDS.includes(n.kind) && n.created_at > sinceLastVisit && !readIds.has(n.id))
+    ? notifications.filter((n) => HOME_NOTIF_KINDS.includes(n.kind) && n.created_at > sinceLastVisit && !readIds.has(n.id) && n.actor_id !== currentUser.id)
     : [];
 
   const persistReadIds = (next) => {

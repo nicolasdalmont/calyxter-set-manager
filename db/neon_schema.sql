@@ -102,6 +102,7 @@ create table notifications (
   id uuid not null default gen_random_uuid(),
   text text not null,
   kind text not null default 'info',
+  actor_id uuid references members(id) on delete set null,
   created_at timestamptz not null default now(),
   constraint notifications_pkey primary key (id)
 );
