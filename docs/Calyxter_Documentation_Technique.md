@@ -4,9 +4,11 @@ SET MANAGER
 
 Documentation technique et fonctionnelle
 
-Version 1.11 — 17 septembre 2026
+Version 1.12 — 17 septembre 2026
 
 Statut : application déployée, en phase de test avec les 6 membres du groupe.
+
+Depuis la v1.11 : les notifications du bloc "Depuis ta dernière connexion" (§ 12.2) n'affichent plus à un membre ses propres actions — seules celles des autres membres du groupe lui sont désormais signalées. Nouvelle colonne `notifications.actor_id` (§ 3.4). Détail au § 17.12.
 
 Depuis la v1.10 : **export imprimable du set sur 2 pages** (§ 7.4) — au-delà de 15 lignes, une modale propose de répartir le set sur 2 pages pleines (police ajustée indépendamment pour chacune) plutôt que de tout tasser sur une seule ; la 1re page reçoit toujours au moins 15 lignes. Détail au § 17.11.
 
@@ -195,6 +197,7 @@ Une phase menée à son terme (résultat validé) voit sa ligne conservée avec 
 | id | uuid | Identifiant unique |
 | text | text | Contenu du message |
 | kind | text | Catégorie (`info`, `veto`, `launch`, `step`, `result`, `concert`, `rendezvous`, `assignment`, `proposal`, `compo`…) — les sept dernières valeurs sont celles reprises par le bloc "Notifications récentes" de l'écran d'accueil (§ 12.2), un sous-ensemble volontairement restreint |
+| actor_id | uuid | Référence vers `members.id`, membre auteur de l'action à l'origine de la notification. Nullable (colonne ajoutée en v1.12 : les notifications antérieures n'en portent pas) et non renseigné pour les événements sans auteur individuel. Sert uniquement à filtrer le bloc "Notifications récentes" de l'écran d'accueil (§ 12.2) ; le Journal d'activité complet (§ 10) l'ignore et continue d'afficher tout à tout le monde |
 | created_at | timestamptz | Horodatage |
 
 ## 3.5 Table concerts
@@ -636,6 +639,7 @@ Bloc "Depuis ta dernière connexion", affiché juste au-dessus de la carte "Proc
 - Chaque notification peut être marquée lue individuellement (elle disparaît aussitôt de la liste) ou toutes en bloc ("Tout marquer lu").
 - L'état lu/non-lu est mémorisé **localement, par membre, sur l'appareil** (comme l'identité de connexion mémorisée, § 4.1) — pas en base de données : une notification déjà marquée lue sur un appareil peut donc réapparaître comme non lue sur un autre appareil du même membre. Choix délibéré pour ne pas faire évoluer le schéma de la table `notifications` (§ 3.4) pour une simple préférence d'affichage.
 - Les notifications affichées ici sont un sous-ensemble des valeurs de `notifications.kind` (§ 3.4) : `concert`, `rendezvous`, `assignment`, `proposal`, `veto`, `launch`, `compo`. Les autres (générique `info`, changements mineurs) restent visibles uniquement dans le Journal d'activité complet (§ 10).
+- Un membre ne voit jamais ici ses propres actions (`notifications.actor_id` égal à son propre id, § 3.4) : seules celles des autres membres du groupe lui sont signalées — évite de se voir notifier ce qu'on vient soi-même de faire. Le Journal d'activité complet (§ 10), lui, n'applique aucun filtre par auteur.
 
 ## 12.3 Prochain rendez-vous et prochain concert
 
@@ -979,6 +983,10 @@ Chantier issu d'un audit UX complet de l'application (lecture intégrale de `src
 ## 17.11 Depuis la v1.10 (→ v1.11)
 
 - **Export imprimable du set sur 2 pages** (§ 7.4) : au-delà de 15 lignes (`countPrintableSetLines`), le bouton "Imprimer le set" ouvre désormais une modale (`PrintPagesDialog`) proposant "1 page" (texte réduit pour tout faire tenir, comportement inchangé) ou "2 pages". En 2 pages, `buildConcertSetHTML` reçoit un `pageCount` et coupe le set en deux moitiés aussi égales que possible, avec un plancher : la 1re page reçoit toujours au moins 15 lignes, pour ne jamais paraître sous-remplie à côté d'une 2de presque vide. Chaque page porte son propre en-tête (avec un repère "Page X/2"), sa propre police ajustée indépendamment pour occuper toute sa hauteur (même logique de mesure qu'en mode 1 page, appliquée par feuille), et un saut de page forcé à l'impression (`page-break-after`) les sépare. Le pied de page récapitulatif (morceaux, transitions, durée) reste réservé à la dernière page ; les précédentes affichent "Suite page X/2 →".
+
+## 17.12 Depuis la v1.11 (→ v1.12)
+
+- **Notifications d'accueil filtrées par auteur** (§ 12.2) : jusqu'ici, le bloc "Depuis ta dernière connexion" faisait remonter à un membre y compris ses propres actions (par exemple, se voir notifier son propre veto ou sa propre proposition). Nouvelle colonne `notifications.actor_id` (§ 3.4, référence vers `members.id`, nullable), renseignée par `pushNotification` avec l'auteur de l'action au moment de l'écriture. Le bloc d'accueil exclut désormais les notifications dont `actor_id` correspond au membre connecté ; le Journal d'activité complet (§ 10) reste inchangé, sans filtre par auteur. Les notifications créées avant ce changement n'ont pas d'`actor_id` et continuent donc d'apparaître à tout le monde, y compris à leur auteur.
 
 # 18. Références
 
