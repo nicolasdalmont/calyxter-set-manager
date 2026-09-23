@@ -2382,9 +2382,11 @@ function HomeAgendaCard({ item, onOpen, members }) {
         <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#9A958C', marginTop: 2 }}>
           {formatConcertDate(item.event_date, { month: 'short' })}
         </div>
-        <div style={{ fontSize: 9, color: '#9A958C', marginTop: 1 }}>
-          {formatConcertDate(item.event_date, { year: 'numeric' })}
-        </div>
+        {isOtherYear(item.event_date) && (
+          <div style={{ fontSize: 9, color: '#9A958C', marginTop: 1 }}>
+            {formatConcertDate(item.event_date, { year: 'numeric' })}
+          </div>
+        )}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <span className="clx-badge" style={{ background: `${kindInfo.color}22`, color: kindInfo.color, border: `1px solid ${kindInfo.color}55` }}>{kindInfo.badge}</span>
@@ -4911,6 +4913,14 @@ function formatConcertDate(dateStr, opts) {
   return d.toLocaleDateString('fr-FR', opts || { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 
+// Les bulles date (badge jour/mois/année) n'affichent l'année que si elle
+// diffère de l'année en cours, pour rester lisibles au quotidien.
+function isOtherYear(dateStr) {
+  const d = parseISODate(dateStr);
+  if (!d) return false;
+  return d.getFullYear() !== new Date().getFullYear();
+}
+
 function formatConcertTime(timeStr) {
   if (!timeStr) return null;
   return timeStr.slice(0, 5); // 'HH:MM:SS' -> 'HH:MM'
@@ -5549,9 +5559,11 @@ function ConcertCard({ concert, songs, onOpen, isNext, commentCount, onOpenComme
           <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#9A958C', marginTop: 2 }}>
             {formatConcertDate(concert.event_date, { month: 'short' })}
           </div>
-          <div style={{ fontSize: 9, color: '#9A958C', marginTop: 1 }}>
-            {formatConcertDate(concert.event_date, { year: 'numeric' })}
-          </div>
+          {isOtherYear(concert.event_date) && (
+            <div style={{ fontSize: 9, color: '#9A958C', marginTop: 1 }}>
+              {formatConcertDate(concert.event_date, { year: 'numeric' })}
+            </div>
+          )}
         </div>
 
         <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
@@ -6416,9 +6428,11 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
           <div style={{ fontSize: 9, textTransform: 'uppercase', color: '#9A958C', marginTop: 2 }}>
             {formatConcertDate(item.event_date, { month: 'short' })}
           </div>
-          <div style={{ fontSize: 9, color: '#9A958C', marginTop: 1 }}>
-            {formatConcertDate(item.event_date, { year: 'numeric' })}
-          </div>
+          {isOtherYear(item.event_date) && (
+            <div style={{ fontSize: 9, color: '#9A958C', marginTop: 1 }}>
+              {formatConcertDate(item.event_date, { year: 'numeric' })}
+            </div>
+          )}
         </div>
 
         <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
