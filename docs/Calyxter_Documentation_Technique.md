@@ -4,9 +4,11 @@ SET MANAGER
 
 Documentation technique et fonctionnelle
 
-Version 1.12 — 17 septembre 2026
+Version 1.13 — 23 septembre 2026
 
 Statut : application déployée, en phase de test avec les 6 membres du groupe.
+
+Depuis la v1.12 : la **pastille de date** (§ 14.3) n'affiche plus l'année que si elle diffère de l'année en cours — la date d'un concert ou d'un rendez-vous de cette année tient désormais sur deux lignes (jour, mois) plutôt que trois. Détail au § 17.13.
 
 Depuis la v1.11 : les notifications du bloc "Depuis ta dernière connexion" (§ 12.2) n'affichent plus à un membre ses propres actions — seules celles des autres membres du groupe lui sont désormais signalées. Nouvelle colonne `notifications.actor_id` (§ 3.4). Détail au § 17.12.
 
@@ -760,7 +762,7 @@ Les trois écrans présentant une liste de cartes (Répertoire, Concerts, Rendez
 
 - Actions secondaires en bout de ligne, séparées de la ligne par un filet vertical, avec le même comportement au survol : écouter un morceau sur le Répertoire ; sur Concerts et Rendez-vous, une colonne empilant l'ajout au calendrier de l'appareil (icône agenda, § 7.2) et les commentaires (§ 8.5) — empilement plutôt que juxtaposition pour ne consommer qu'une gouttière.
 
-- Vignette de gauche (pochette d'album ou pastille de date) au même gabarit sur les trois écrans. La pastille de date affiche le jour, le mois abrégé puis l'année, sur trois lignes — présentation identique sur les écrans Accueil (§ 12.3), Concerts (§ 7.1) et Rendez-vous (§ 8.3).
+- Vignette de gauche (pochette d'album ou pastille de date) au même gabarit sur les trois écrans. La pastille de date affiche le jour, le mois abrégé puis l'année, sur trois lignes — présentation identique sur les écrans Accueil (§ 12.3), Concerts (§ 7.1) et Rendez-vous (§ 8.3). La ligne d'année n'apparaît que si elle diffère de l'année en cours (`isOtherYear`), pour ne pas surcharger la pastille au quotidien.
 
 - Liste contenue dans un conteneur à hauteur limitée avec défilement interne, propre à chaque écran plutôt que de faire défiler la page entière.
 
@@ -987,6 +989,10 @@ Chantier issu d'un audit UX complet de l'application (lecture intégrale de `src
 ## 17.12 Depuis la v1.11 (→ v1.12)
 
 - **Notifications d'accueil filtrées par auteur** (§ 12.2) : jusqu'ici, le bloc "Depuis ta dernière connexion" faisait remonter à un membre y compris ses propres actions (par exemple, se voir notifier son propre veto ou sa propre proposition). Nouvelle colonne `notifications.actor_id` (§ 3.4, référence vers `members.id`, nullable), renseignée par `pushNotification` avec l'auteur de l'action au moment de l'écriture. Le bloc d'accueil exclut désormais les notifications dont `actor_id` correspond au membre connecté ; le Journal d'activité complet (§ 10) reste inchangé, sans filtre par auteur. Les notifications créées avant ce changement n'ont pas d'`actor_id` et continuent donc d'apparaître à tout le monde, y compris à leur auteur.
+
+## 17.13 Depuis la v1.12 (→ v1.13)
+
+- **Année masquée sur la pastille de date quand elle est superflue** (§ 14.3) : la pastille (jour, mois abrégé, année sur trois lignes) affichée devant chaque concert et rendez-vous — écrans Accueil, Concerts et Rendez-vous — n'affiche plus sa troisième ligne (l'année) lorsque celle-ci correspond à l'année en cours. Nouvelle fonction `isOtherYear` (à côté de `formatConcertDate`, `src/App.jsx`), comparant l'année de la date de l'événement à celle du jour de consultation.
 
 # 18. Références
 
