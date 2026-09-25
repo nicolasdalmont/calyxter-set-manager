@@ -6,7 +6,7 @@ import {
   MessageCircle, Flag, AlertTriangle, Crown, Loader2,
   Calendar, MapPin, Clock, Trash2, ArrowLeft, Mic2, Repeat, Copy, Lightbulb,
   Home, ClipboardList, Drum, Guitar, Piano, Hourglass, CalendarPlus, Megaphone, MessageSquarePlus, Printer,
-  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen, MoreHorizontal, LogOut, Bell,
+  Disc3, FileText, Music4, TrendingUp, Link2, Paperclip, FolderOpen, MoreHorizontal, LogOut, Bell, Speaker,
   Shield, KeyRound, UserPlus, UserX, RotateCcw
 } from 'lucide-react';
 
@@ -3693,7 +3693,7 @@ function CompoRow({ compo, members, onEdit }) {
   const authors = names(compo.author_ids);
   const composers = names(compo.composer_ids);
   const docs = Array.isArray(compo.documents) ? compo.documents.filter((d) => d && d.url) : [];
-  const quickLinks = docs.slice(0, 4).map((d) => ({ href: d.url, icon: isRecordingDocument(d.name) ? Music2 : FileText, title: d.name || 'Document' }));
+  const quickLinks = docs.slice(0, 4).map((d) => ({ href: d.url, icon: isRecordingDocument(d.name) ? Speaker : FileText, title: d.name || 'Document' }));
 
   return (
     <div className="clx-card clx-row" style={{ display: 'flex', alignItems: 'stretch' }}>
@@ -3853,7 +3853,7 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
           {documents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
               {documents.map((d) => {
-                const DocIcon = isRecordingDocument(d.name) ? Music2 : FileText;
+                const DocIcon = isRecordingDocument(d.name) ? Speaker : FileText;
                 return (
                 <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <DocIcon size={13} color="#9A958C" style={{ flexShrink: 0 }} />
