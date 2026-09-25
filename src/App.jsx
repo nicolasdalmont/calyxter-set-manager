@@ -28,6 +28,10 @@ const COMPO_STATUS = {
 };
 const COMPO_STATUS_ORDER = ['wip', 'done'];
 
+// Un document lié dont le nom évoque un enregistrement audio (maquette, démo…)
+// est affiché avec une icône dédiée (note de musique) plutôt que l'icône générique.
+const isRecordingDocument = (name) => /maquette|enregistrement|d[ée]mo/i.test(name || '');
+
 const LANGUAGES = {
   FR: 'Francophone',
   EN: 'Anglophone',
@@ -3584,8 +3588,9 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
     .filter((c) => {
       const q = search.trim().toLowerCase();
       if (!q) return true;
-      return c.title.toLowerCase().includes(q) || (c.album || '').toLowerCase().includes(q);
-    });
+      return c.title.toLowerCase().includes(q);
+    })
+    .sort((a, b) => a.title.localeCompare(b.title, 'fr', { sensitivity: 'base' }));
 
   const doneCount = compos.filter((c) => c.status === 'done').length;
   const wipCount = compos.filter((c) => c.status === 'wip').length;
@@ -3645,7 +3650,7 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
         <input
           className="clx-input"
           style={{ paddingLeft: 32 }}
-          placeholder="Rechercher un titre ou un album…"
+          placeholder="Rechercher un titre…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -3688,7 +3693,7 @@ function CompoRow({ compo, members, onEdit }) {
   const authors = names(compo.author_ids);
   const composers = names(compo.composer_ids);
   const docs = Array.isArray(compo.documents) ? compo.documents.filter((d) => d && d.url) : [];
-  const quickLinks = docs.slice(0, 4).map((d) => ({ href: d.url, icon: FileText, title: d.name || 'Document' }));
+  const quickLinks = docs.slice(0, 4).map((d) => ({ href: d.url, icon: isRecordingDocument(d.name) ? Music2 : FileText, title: d.name || 'Document' }));
 
   return (
     <div className="clx-card clx-row" style={{ display: 'flex', alignItems: 'stretch' }}>
@@ -3705,10 +3710,11 @@ function CompoRow({ compo, members, onEdit }) {
         </div>
         <div className="clx-row-info" style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{compo.title}</div>
-          <div style={{ fontSize: 12, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
-            {compo.duration_seconds ? <span className="clx-mono">{formatSongDuration(compo.duration_seconds)}</span> : null}
-            {compo.album && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Disc3 size={11} /> {compo.album}</span>}
-          </div>
+          {compo.duration_seconds ? (
+            <div style={{ fontSize: 12, color: '#9A958C', marginTop: 3 }}>
+              <span className="clx-mono">{formatSongDuration(compo.duration_seconds)}</span>
+            </div>
+          ) : null}
           {(authors.length > 0 || composers.length > 0) && (
             <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 4 }}>
               {authors.length > 0 && `Paroles : ${authors.join(', ')}`}
@@ -3746,7 +3752,6 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
   const [title, setTitle] = useState(compo?.title || '');
   const [status, setStatus] = useState(compo?.status || 'wip');
   const [duration, setDuration] = useState(compo?.duration_seconds ? formatSongDuration(compo.duration_seconds) : '');
-  const [album, setAlbum] = useState(compo?.album || '');
   const [authorIds, setAuthorIds] = useState(compo?.author_ids || []);
   const [composerIds, setComposerIds] = useState(compo?.composer_ids || []);
   const [chords, setChords] = useState(compo?.chords || '');
@@ -3783,7 +3788,7 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
       title: title.trim(),
       status,
       duration_seconds: seconds || null,
-      album: album.trim() || null,
+      album: compo?.album ?? null,
       author_ids: authorIds,
       composer_ids: composerIds,
       chords: chords.trim() || null,
@@ -3825,9 +3830,6 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
           <Field label="Durée (mm:ss)" style={{ flex: '1 1 110px' }}>
             <input className="clx-input" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="3:48" />
           </Field>
-          <Field label="Album" style={{ flex: '2 1 160px' }}>
-            <input className="clx-input" value={album} onChange={(e) => setAlbum(e.target.value)} placeholder="Optionnel — sinon vide" />
-          </Field>
         </div>
 
         <Field label="Auteur·rice·s des paroles">{memberChips(authorIds, toggleId(setAuthorIds))}</Field>
@@ -3850,9 +3852,11 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
 
           {documents.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
-              {documents.map((d) => (
+              {documents.map((d) => {
+                const DocIcon = isRecordingDocument(d.name) ? Music2 : FileText;
+                return (
                 <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <FileText size={13} color="#9A958C" style={{ flexShrink: 0 }} />
+                  <DocIcon size={13} color="#9A958C" style={{ flexShrink: 0 }} />
                   <input
                     className="clx-input"
                     value={d.name}
@@ -3880,7 +3884,8 @@ function CompoEditor({ compo, members, currentUser, bandDriveUrl, onClose, onSav
                     <X size={13} />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
