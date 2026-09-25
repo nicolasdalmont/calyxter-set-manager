@@ -6599,12 +6599,18 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
   const matchesSongSearch = (title, subtitle) => !songSearchQuery
     || title.toLowerCase().includes(songSearchQuery)
     || (subtitle || '').toLowerCase().includes(songSearchQuery);
-  const rehearsalSongCandidates = (songs || [])
-    .filter((s) => s.status === 'to_prepare' || s.status === 'ready')
+  // Liste de proposition regroupée dans cet ordre précis : morceaux à
+  // préparer, puis compos, puis morceaux prêts.
+  const rehearsalToPrepareCandidates = (songs || [])
+    .filter((s) => s.status === 'to_prepare')
     .filter((s) => songIds.includes(s.id) || matchesSongSearch(s.title, s.artist))
     .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
   const rehearsalCompoCandidates = (compos || [])
     .filter((c) => compoIds.includes(c.id) || matchesSongSearch(c.title))
+    .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+  const rehearsalReadyCandidates = (songs || [])
+    .filter((s) => s.status === 'ready')
+    .filter((s) => songIds.includes(s.id) || matchesSongSearch(s.title, s.artist))
     .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
 
   const submit = async () => {
@@ -6851,11 +6857,11 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
             />
           </div>
 
-          <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 6 }}>Répertoire (à préparer / prêt)</div>
+          <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 6 }}>À préparer</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-            {rehearsalSongCandidates.length === 0 ? (
-              <span className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>Aucun morceau à préparer ou prêt{songSearchQuery ? ' pour cette recherche' : ''}.</span>
-            ) : rehearsalSongCandidates.map((s) => (
+            {rehearsalToPrepareCandidates.length === 0 ? (
+              <span className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>Aucun morceau à préparer{songSearchQuery ? ' pour cette recherche' : ''}.</span>
+            ) : rehearsalToPrepareCandidates.map((s) => (
               <Chip key={s.id} active={songIds.includes(s.id)} onClick={() => toggleSong(s.id)}>
                 {s.title} · {s.artist}
               </Chip>
@@ -6863,12 +6869,23 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
           </div>
 
           <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 6 }}>Compos</div>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
             {rehearsalCompoCandidates.length === 0 ? (
               <span className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>Aucune compo{songSearchQuery ? ' pour cette recherche' : ''}.</span>
             ) : rehearsalCompoCandidates.map((c) => (
               <Chip key={c.id} active={compoIds.includes(c.id)} onClick={() => toggleCompo(c.id)}>
                 {c.title}
+              </Chip>
+            ))}
+          </div>
+
+          <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 6 }}>Prêt</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
+            {rehearsalReadyCandidates.length === 0 ? (
+              <span className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>Aucun morceau prêt{songSearchQuery ? ' pour cette recherche' : ''}.</span>
+            ) : rehearsalReadyCandidates.map((s) => (
+              <Chip key={s.id} active={songIds.includes(s.id)} onClick={() => toggleSong(s.id)}>
+                {s.title} · {s.artist}
               </Chip>
             ))}
           </div>
