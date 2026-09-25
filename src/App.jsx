@@ -1394,7 +1394,7 @@ export default function App() {
             const statusChanged = updatedSong.status !== previousStatus;
             await updateSongs((prev) => prev.map((s) => (s.id === updatedSong.id ? updatedSong : s)), { successMessage: `« ${updatedSong.title} » enregistré.` });
             if (statusChanged) {
-              await pushNotification(`🔧 ${currentUser.name} a changé manuellement le statut de « ${updatedSong.title} » : ${STATUS[previousStatus].label} → ${STATUS[updatedSong.status].label}.`, 'info');
+              await pushNotification(`🔧 ${currentUser.name} a changé manuellement le statut de « ${updatedSong.title} » : ${STATUS[previousStatus].label} → ${STATUS[updatedSong.status].label}.`, 'status');
             } else {
               await pushNotification(`✏️ « ${updatedSong.title} » a été mis à jour par ${currentUser.name}.`, 'info');
             }
@@ -1403,7 +1403,7 @@ export default function App() {
           onDelete={async (songId) => {
             const title = editingSong.title;
             await deleteSong(songId);
-            await pushNotification(`🗑️ « ${title} » a été supprimé du répertoire par ${currentUser.name}.`, 'info');
+            await pushNotification(`🗑️ « ${title} » a été supprimé du répertoire par ${currentUser.name}.`, 'delete');
             setEditingSong(null);
           }}
         />
@@ -2422,6 +2422,11 @@ const HOME_NOTIF_KIND_INFO = {
   veto: { Icon: Ban, color: '#C1454B' },
   launch: { Icon: Sparkles, color: '#F2A93B' },
   compo: { Icon: Disc3, color: '#6FA287' },
+  result: { Icon: Flag, color: '#E8B04B' },
+  step: { Icon: ChevronRight, color: '#7C8BA8' },
+  status: { Icon: RotateCcw, color: '#2E9FB8' },
+  cancel: { Icon: X, color: '#C1454B' },
+  delete: { Icon: Trash2, color: '#C1454B' },
 };
 const HOME_NOTIF_KINDS = Object.keys(HOME_NOTIF_KIND_INFO);
 
@@ -3608,7 +3613,7 @@ function ComposTab({ compos, members, currentUser, saveCompo, deleteCompo, pushN
 
   const handleDelete = async (compo) => {
     await deleteCompo(compo.id);
-    await pushNotification(`🗑️ ${currentUser.name} a supprimé la compo « ${compo.title} ».`, 'info');
+    await pushNotification(`🗑️ ${currentUser.name} a supprimé la compo « ${compo.title} ».`, 'delete');
     setEditing(null);
   };
 
@@ -4120,7 +4125,7 @@ function PhaseWorkflow({ phase, phaseHistory, songs, members, currentUser, updat
     ].join('\n');
     if (!window.confirm(warning)) return;
     await cancelPhase(phase);
-    await pushNotification(`❌ ${currentUser.name} a annulé la phase de choix en cours.`, 'info');
+    await pushNotification(`❌ ${currentUser.name} a annulé la phase de choix en cours.`, 'cancel');
   };
 
   return (
@@ -4386,7 +4391,7 @@ function ProposalStep({ songs, members, currentUser, phase, phaseHistory, update
             const statusChanged = updatedSong.status !== previousStatus;
             await updateSongs((prev) => prev.map((s) => (s.id === updatedSong.id ? updatedSong : s)), { successMessage: `« ${updatedSong.title} » enregistré.` });
             if (statusChanged) {
-              await pushNotification(`🔧 ${currentUser.name} a changé manuellement le statut de « ${updatedSong.title} » : ${STATUS[previousStatus].label} → ${STATUS[updatedSong.status].label}.`, 'info');
+              await pushNotification(`🔧 ${currentUser.name} a changé manuellement le statut de « ${updatedSong.title} » : ${STATUS[previousStatus].label} → ${STATUS[updatedSong.status].label}.`, 'status');
             } else {
               await pushNotification(`✏️ « ${updatedSong.title} » a été mis à jour par ${currentUser.name}.`, 'info');
             }
@@ -4395,7 +4400,7 @@ function ProposalStep({ songs, members, currentUser, phase, phaseHistory, update
           onDelete={async (songId) => {
             const title = editingSong.title;
             await deleteSong(songId);
-            await pushNotification(`🗑️ « ${title} » a été supprimé du répertoire par ${currentUser.name}.`, 'info');
+            await pushNotification(`🗑️ « ${title} » a été supprimé du répertoire par ${currentUser.name}.`, 'delete');
             setEditingSong(null);
           }}
         />
@@ -5472,7 +5477,7 @@ function ConcertsTab({ concerts, songs, members, currentUser, saveConcert, delet
         }}
         onDelete={async (concertId, name) => {
           await deleteConcert(concertId);
-          await pushNotification(`🗑️ ${currentUser.name} a supprimé le concert « ${name} ».`, 'info');
+          await pushNotification(`🗑️ ${currentUser.name} a supprimé le concert « ${name} ».`, 'delete');
           setEditingConcert(undefined);
         }}
       />
@@ -6303,14 +6308,14 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
         }}
         onDelete={async (eventId, subject) => {
           await deleteEvent(eventId);
-          await pushNotification(`🗑️ ${currentUser.name} a supprimé le rendez-vous « ${subject} ».`, 'info');
+          await pushNotification(`🗑️ ${currentUser.name} a supprimé le rendez-vous « ${subject} ».`, 'delete');
           setEditingEvent(undefined);
           setEditingOccurrenceDate(null);
         }}
         onDeleteOccurrence={async (rawEvent, occurrenceDate) => {
           const updated = { ...rawEvent, excluded_dates: [...new Set([...(rawEvent.excluded_dates || []), occurrenceDate])] };
           await saveEvent(updated);
-          await pushNotification(`🗑️ ${currentUser.name} a supprimé une occurrence du rendez-vous récurrent « ${rawEvent.subject} » (${formatConcertDate(occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })}).`, 'info');
+          await pushNotification(`🗑️ ${currentUser.name} a supprimé une occurrence du rendez-vous récurrent « ${rawEvent.subject} » (${formatConcertDate(occurrenceDate, { day: 'numeric', month: 'long', year: 'numeric' })}).`, 'delete');
           setEditingEvent(undefined);
           setEditingOccurrenceDate(null);
         }}
