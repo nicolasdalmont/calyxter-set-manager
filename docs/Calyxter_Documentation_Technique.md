@@ -4,17 +4,17 @@ SET MANAGER
 
 Documentation technique et fonctionnelle
 
-Version 1.13 — 23 septembre 2026
+Version 1.14 — 25 septembre 2026
 
 Statut : application déployée, en phase de test avec les 6 membres du groupe.
+
+Depuis la v1.13 : le bloc "Depuis ta dernière connexion" (§ 12.2) fait désormais aussi remonter la clôture d'une phase (résultats), l'avancement d'une étape de phase, le changement manuel de statut d'un morceau, l'annulation d'une phase et les suppressions (morceau, compo, concert, rendez-vous). Trois nouvelles valeurs de `kind` dédiées (`status`, `cancel`, `delete`) remplacent le générique `info` pour ces événements précis, afin de ne pas aussi faire remonter les commentaires et éditions mineures qui partagent ce même `info`. Détail au § 17.14.
 
 Depuis la v1.12 : la **pastille de date** (§ 14.3) n'affiche plus l'année que si elle diffère de l'année en cours — la date d'un concert ou d'un rendez-vous de cette année tient désormais sur deux lignes (jour, mois) plutôt que trois. Détail au § 17.13.
 
 Depuis la v1.11 : les notifications du bloc "Depuis ta dernière connexion" (§ 12.2) n'affichent plus à un membre ses propres actions — seules celles des autres membres du groupe lui sont désormais signalées. Nouvelle colonne `notifications.actor_id` (§ 3.4). Détail au § 17.12.
 
 Depuis la v1.10 : **export imprimable du set sur 2 pages** (§ 7.4) — au-delà de 15 lignes, une modale propose de répartir le set sur 2 pages pleines (police ajustée indépendamment pour chacune) plutôt que de tout tasser sur une seule ; la 1re page reçoit toujours au moins 15 lignes. Détail au § 17.11.
-
-Depuis la v1.9 : issu d'un audit UX complet de l'application (§ 17.10 pour le détail), un chantier en plusieurs volets. **Fiabilité perçue** : notifications de succès/échec sur tout enregistrement, écran de connexion réparable (bouton "Réessayer"). **Cohérence multi-appareil** : barre de navigation en pied d'écran sur mobile, menu "Plus" regroupant les onglets secondaires, classement (vote, set de concert) utilisable au doigt en plus de la souris (§ 6.3, § 7.2), bouton retour Android qui referme l'écran actif plutôt que l'application. **Lisibilité** : contraste du gris de texte secondaire relevé au-dessus du seuil WCAG AA. **Nouveau rôle admin** (§ 11) : onglet Administration réservé aux membres `is_admin`, gestion des membres (ajout, désactivation/réactivation) et réinitialisation de mot de passe par mot de passe temporaire à usage unique. **Notifications récentes sur l'écran d'accueil** (§ 12.2) : concerts, rendez-vous, propositions, vetos, phases, compos. Deux confirmations critiques (clôture de phase, suppression d'un concert) passent par une modale maison plutôt que le navigateur. Logo cliquable vers l'accueil. Au passage, correction d'un bug préexistant : le bouton "descendre" du classement (vote et set de concert) ne faisait strictement rien, pour n'importe quel morceau (§ 17.10).
 
 # 1. Présentation du projet
 
@@ -198,7 +198,7 @@ Une phase menée à son terme (résultat validé) voit sa ligne conservée avec 
 | --- | --- | --- |
 | id | uuid | Identifiant unique |
 | text | text | Contenu du message |
-| kind | text | Catégorie (`info`, `veto`, `launch`, `step`, `result`, `concert`, `rendezvous`, `assignment`, `proposal`, `compo`…) — les sept dernières valeurs sont celles reprises par le bloc "Notifications récentes" de l'écran d'accueil (§ 12.2), un sous-ensemble volontairement restreint |
+| kind | text | Catégorie (`info`, `veto`, `launch`, `step`, `result`, `concert`, `rendezvous`, `assignment`, `proposal`, `compo`, `status`, `cancel`, `delete`) — toutes sauf `info` sont reprises par le bloc "Notifications récentes" de l'écran d'accueil (§ 12.2) ; `info` reste réservé aux événements mineurs (commentaires, éditions sans changement de statut) visibles seulement dans le Journal d'activité complet (§ 10) |
 | actor_id | uuid | Référence vers `members.id`, membre auteur de l'action à l'origine de la notification. Nullable (colonne ajoutée en v1.12 : les notifications antérieures n'en portent pas) et non renseigné pour les événements sans auteur individuel. Sert uniquement à filtrer le bloc "Notifications récentes" de l'écran d'accueil (§ 12.2) ; le Journal d'activité complet (§ 10) l'ignore et continue d'afficher tout à tout le monde |
 | created_at | timestamptz | Horodatage |
 
@@ -635,12 +635,12 @@ Message de bienvenue nominatif ("Bonjour, [prénom]"), précédé de l'icône du
 
 ## 12.2 Notifications récentes
 
-Bloc "Depuis ta dernière connexion", affiché juste au-dessus de la carte "Prochain rendez-vous" (§ 12.3) et seulement s'il y a quelque chose à montrer — absent sinon. Fait remonter directement sur l'écran d'accueil un sous-ensemble volontairement restreint des événements du Journal d'activité (§ 10), plutôt que d'obliger à aller le consulter : nouveau concert ou mise à jour d'un concert existant, nouveau rendez-vous ou mise à jour d'un rendez-vous existant, changement de participants à un rendez-vous, nouvelle proposition de morceau (répertoire), veto, lancement d'une phase de choix, nouvelle compo.
+Bloc "Depuis ta dernière connexion", affiché juste au-dessus de la carte "Prochain rendez-vous" (§ 12.3) et seulement s'il y a quelque chose à montrer — absent sinon. Fait remonter directement sur l'écran d'accueil un sous-ensemble volontairement restreint des événements du Journal d'activité (§ 10), plutôt que d'obliger à aller le consulter : nouveau concert ou mise à jour d'un concert existant, nouveau rendez-vous ou mise à jour d'un rendez-vous existant, changement de participants à un rendez-vous, nouvelle proposition de morceau (répertoire), veto, lancement d'une phase de choix, avancement d'une étape de phase, clôture d'une phase (résultats), annulation d'une phase, nouvelle compo, changement manuel de statut d'un morceau, et suppression d'un morceau, d'une compo, d'un concert ou d'un rendez-vous.
 
 - Le repère "depuis ta dernière connexion" est la dernière activité connue du membre (`members.last_activity_at`, § 3.1) telle qu'elle était **avant** l'ouverture de la session en cours — capturée avant que le signal d'activité de cette même ouverture ne l'écrase (§ 4.1).
 - Chaque notification peut être marquée lue individuellement (elle disparaît aussitôt de la liste) ou toutes en bloc ("Tout marquer lu").
 - L'état lu/non-lu est mémorisé **localement, par membre, sur l'appareil** (comme l'identité de connexion mémorisée, § 4.1) — pas en base de données : une notification déjà marquée lue sur un appareil peut donc réapparaître comme non lue sur un autre appareil du même membre. Choix délibéré pour ne pas faire évoluer le schéma de la table `notifications` (§ 3.4) pour une simple préférence d'affichage.
-- Les notifications affichées ici sont un sous-ensemble des valeurs de `notifications.kind` (§ 3.4) : `concert`, `rendezvous`, `assignment`, `proposal`, `veto`, `launch`, `compo`. Les autres (générique `info`, changements mineurs) restent visibles uniquement dans le Journal d'activité complet (§ 10).
+- Les notifications affichées ici sont toutes les valeurs de `notifications.kind` (§ 3.4) sauf `info` : `veto`, `launch`, `step`, `result`, `concert`, `rendezvous`, `assignment`, `proposal`, `compo`, `status`, `cancel`, `delete`. Les modifications mineures (édition d'un morceau/compo/concert/rendez-vous sans changement de statut, commentaires ajoutés ou supprimés) restent en `info` et donc visibles uniquement dans le Journal d'activité complet (§ 10), pour ne pas surcharger l'accueil.
 - Un membre ne voit jamais ici ses propres actions (`notifications.actor_id` égal à son propre id, § 3.4) : seules celles des autres membres du groupe lui sont signalées — évite de se voir notifier ce qu'on vient soi-même de faire. Le Journal d'activité complet (§ 10), lui, n'applique aucun filtre par auteur.
 
 ## 12.3 Prochain rendez-vous et prochain concert
@@ -993,6 +993,10 @@ Chantier issu d'un audit UX complet de l'application (lecture intégrale de `src
 ## 17.13 Depuis la v1.12 (→ v1.13)
 
 - **Année masquée sur la pastille de date quand elle est superflue** (§ 14.3) : la pastille (jour, mois abrégé, année sur trois lignes) affichée devant chaque concert et rendez-vous — écrans Accueil, Concerts et Rendez-vous — n'affiche plus sa troisième ligne (l'année) lorsque celle-ci correspond à l'année en cours. Nouvelle fonction `isOtherYear` (à côté de `formatConcertDate`, `src/App.jsx`), comparant l'année de la date de l'événement à celle du jour de consultation.
+
+## 17.14 Depuis la v1.13 (→ v1.14)
+
+- **Cinq nouvelles catégories d'événements sur le bloc "Depuis ta dernière connexion"** (§ 12.2) : clôture d'une phase avec résultats (`kind: result`), avancement d'une étape de phase (`kind: step`) — ces deux valeurs existaient déjà dans `notifications.kind` pour le Journal d'activité (§ 10) mais n'étaient pas reprises sur l'accueil, il suffisait donc de les ajouter à `HOME_NOTIF_KIND_INFO` (`src/App.jsx`). Le changement manuel de statut d'un morceau, l'annulation d'une phase et les suppressions (morceau, compo, concert, rendez-vous, occurrence de rendez-vous récurrent) utilisaient jusqu'ici le `kind` générique `info`, partagé avec des événements mineurs (commentaires, éditions sans changement de statut) volontairement tenus à l'écart de l'accueil — les faire remonter aurait donc aussi fait remonter ces événements mineurs. Trois nouvelles valeurs de `kind` dédiées ont donc été introduites aux points d'écriture concernés (`status`, `cancel`, `delete`), chacune avec sa propre icône sur l'accueil (respectivement `RotateCcw`, `X`, `Trash2`, dans `HOME_NOTIF_KIND_INFO`). Le Journal d'activité complet (§ 10) n'est pas affecté : il affiche `notifications.text` sans distinction de `kind`.
 
 # 18. Références
 
