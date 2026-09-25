@@ -4,17 +4,17 @@ SET MANAGER
 
 Documentation technique et fonctionnelle
 
-Version 1.14 — 25 septembre 2026
+Version 1.15 — 25 septembre 2026
 
 Statut : application déployée, en phase de test avec les 6 membres du groupe.
+
+Depuis la v1.14 : **sélection des morceaux à travailler en répétition** (§ 8.6) — sur un rendez-vous de type Répétition uniquement, l'éditeur affiche une nouvelle section "Morceaux à travailler" permettant de choisir, par puces à bascule filtrables par une recherche, des morceaux du répertoire (statuts "À préparer" ou "Prêt") et des compos. Nouvelles colonnes `events.song_ids` et `events.compo_ids` (jsonb, § 3.6). Détail au § 17.15.
 
 Depuis la v1.13 : le bloc "Depuis ta dernière connexion" (§ 12.2) fait désormais aussi remonter la clôture d'une phase (résultats), l'avancement d'une étape de phase, le changement manuel de statut d'un morceau, l'annulation d'une phase et les suppressions (morceau, compo, concert, rendez-vous). Trois nouvelles valeurs de `kind` dédiées (`status`, `cancel`, `delete`) remplacent le générique `info` pour ces événements précis, afin de ne pas aussi faire remonter les commentaires et éditions mineures qui partagent ce même `info`. Détail au § 17.14.
 
 Depuis la v1.12 : la **pastille de date** (§ 14.3) n'affiche plus l'année que si elle diffère de l'année en cours — la date d'un concert ou d'un rendez-vous de cette année tient désormais sur deux lignes (jour, mois) plutôt que trois. Détail au § 17.13.
 
 Depuis la v1.11 : les notifications du bloc "Depuis ta dernière connexion" (§ 12.2) n'affichent plus à un membre ses propres actions — seules celles des autres membres du groupe lui sont désormais signalées. Nouvelle colonne `notifications.actor_id` (§ 3.4). Détail au § 17.12.
-
-Depuis la v1.10 : **export imprimable du set sur 2 pages** (§ 7.4) — au-delà de 15 lignes, une modale propose de répartir le set sur 2 pages pleines (police ajustée indépendamment pour chacune) plutôt que de tout tasser sur une seule ; la 1re page reçoit toujours au moins 15 lignes. Détail au § 17.11.
 
 # 1. Présentation du projet
 
@@ -234,6 +234,8 @@ Une phase menée à son terme (résultat validé) voit sa ligne conservée avec 
 | recurrence_interval | integer | Fréquence ("tous les X …") |
 | recurrence_until | date | Date limite de la récurrence |
 | excluded_dates | jsonb | Occurrences individuellement supprimées de la série |
+| song_ids | jsonb | Répétitions uniquement (§ 8.6) : identifiants de morceaux du répertoire (statut "à préparer" ou "prêt" au moment de la sélection) à travailler pendant la séance. Vide pour les autres types de rendez-vous |
+| compo_ids | jsonb | Répétitions uniquement (§ 8.6) : identifiants de compos (table compos, § 3.9) à travailler pendant la séance. Vide pour les autres types de rendez-vous |
 | created_by_user_id | uuid | Référence vers members.id |
 | created_at / updated_at | timestamptz | Horodatage de création / dernière modification |
 
@@ -581,6 +583,18 @@ Tout membre peut laisser un commentaire libre sur un rendez-vous ou sur un conce
 - L'ajout et la suppression d'un commentaire sont journalisés dans le Journal d'activité (§ 10).
 
 - Stockés dans une table dédiée, partagée entre les deux modules (§ 3.8) : chaque commentaire référence soit un rendez-vous, soit un concert, jamais les deux à la fois.
+
+## 8.6 Morceaux à travailler (répétitions)
+
+Sur un rendez-vous de type Répétition **uniquement** (les autres types — Atelier de travail, Résidence, Autre — n'affichent pas cette section, une répétition étant le seul rendez-vous où préparer une liste de morceaux a du sens), l'écran d'édition affiche une section "Morceaux à travailler" permettant de choisir les morceaux sur lesquels le groupe compte travailler pendant la séance :
+
+- Deux ensembles de candidats, chacun sous forme de puces à bascule (même principe que la sélection des participants, § 8.1) : les morceaux du répertoire au statut "À préparer" ou "Prêt" (`events.song_ids`, § 3.6) d'une part, toutes les compos quel que soit leur statut (`events.compo_ids`, § 3.6, § 3.9) d'autre part — deux listes distinctes plutôt qu'une liste mêlée, le répertoire de reprises et les compos du groupe restant deux ensembles différents ailleurs dans l'application (§ 5, § 5.4).
+
+- Un champ de recherche unique (titre, et artiste pour le répertoire) filtre les deux listes de puces. Un morceau ou une compo déjà sélectionné reste affiché même s'il ne correspond plus à la recherche en cours, pour ne jamais paraître désélectionné sous les yeux du membre et rester désélectionnable en un clic.
+
+- Cette sélection n'a de sens que pour une répétition : si le type du rendez-vous est changé pour un autre type avant l'enregistrement, elle est vidée (`song_ids` et `compo_ids` enregistrés vides).
+
+- Le nombre total de morceaux et de compos sélectionnés (les deux additionnés) apparaît sur la carte de la liste (§ 8.3), sous la ligne des participants, avec une icône de liste de morceaux — uniquement lorsqu'au moins un élément est sélectionné.
 
 # 9. Fonctionnalités — Module Boîte à idées
 
@@ -997,6 +1011,10 @@ Chantier issu d'un audit UX complet de l'application (lecture intégrale de `src
 ## 17.14 Depuis la v1.13 (→ v1.14)
 
 - **Cinq nouvelles catégories d'événements sur le bloc "Depuis ta dernière connexion"** (§ 12.2) : clôture d'une phase avec résultats (`kind: result`), avancement d'une étape de phase (`kind: step`) — ces deux valeurs existaient déjà dans `notifications.kind` pour le Journal d'activité (§ 10) mais n'étaient pas reprises sur l'accueil, il suffisait donc de les ajouter à `HOME_NOTIF_KIND_INFO` (`src/App.jsx`). Le changement manuel de statut d'un morceau, l'annulation d'une phase et les suppressions (morceau, compo, concert, rendez-vous, occurrence de rendez-vous récurrent) utilisaient jusqu'ici le `kind` générique `info`, partagé avec des événements mineurs (commentaires, éditions sans changement de statut) volontairement tenus à l'écart de l'accueil — les faire remonter aurait donc aussi fait remonter ces événements mineurs. Trois nouvelles valeurs de `kind` dédiées ont donc été introduites aux points d'écriture concernés (`status`, `cancel`, `delete`), chacune avec sa propre icône sur l'accueil (respectivement `RotateCcw`, `X`, `Trash2`, dans `HOME_NOTIF_KIND_INFO`). Le Journal d'activité complet (§ 10) n'est pas affecté : il affiche `notifications.text` sans distinction de `kind`.
+
+## 17.15 Depuis la v1.14 (→ v1.15)
+
+- **Sélection des morceaux à travailler en répétition** (§ 8.6) : nouvelle section "Morceaux à travailler" dans l'écran d'édition d'un rendez-vous, affichée uniquement lorsque son type est Répétition (`RendezVousEditor`, `src/App.jsx`) — les autres types de rendez-vous et les concerts n'ont pas cette section, une répétition étant le seul cas où préparer une liste de morceaux a du sens. Deux ensembles de puces à bascule, filtrables par un champ de recherche commun (titre / artiste) : les morceaux du répertoire au statut "À préparer" ou "Prêt" et les compos, quel que soit leur statut. Un élément déjà sélectionné reste affiché même s'il ne correspond plus à la recherche en cours, pour rester désélectionnable en un clic sans jamais paraître désélectionné à tort. Nouvelles colonnes `events.song_ids` et `events.compo_ids` (jsonb, § 3.6), vidées à l'enregistrement si le type du rendez-vous est changé pour autre chose que Répétition. La carte de la liste des rendez-vous (§ 8.3) affiche le nombre total d'éléments sélectionnés lorsqu'il y en a au moins un.
 
 # 18. Références
 

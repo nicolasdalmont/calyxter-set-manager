@@ -1318,6 +1318,8 @@ export default function App() {
             events={events}
             concerts={concerts}
             members={members}
+            songs={songs}
+            compos={compos}
             currentUser={currentUser}
             saveEvent={saveEvent}
             deleteEvent={deleteEvent}
@@ -6211,7 +6213,7 @@ function mergeEventsAndConcerts(events, concerts) {
 const RENDEZVOUS_KIND_INFO = { ...EVENT_KIND, concert: CONCERT_EVENT_KIND };
 const RENDEZVOUS_KIND_ORDER = ['repetition', 'atelier', 'residence', 'autre', 'concert'];
 
-function RendezVousTab({ events, concerts, members, currentUser, saveEvent, deleteEvent, pushNotification, onViewConcert, comments, saveComment, deleteComment }) {
+function RendezVousTab({ events, concerts, members, songs, compos, currentUser, saveEvent, deleteEvent, pushNotification, onViewConcert, comments, saveComment, deleteComment }) {
   const [editingEvent, setEditingEvent] = useState(undefined); // undefined = liste, null = nouveau, objet = édition
   const [editingOccurrenceDate, setEditingOccurrenceDate] = useState(null); // occurrence précise cliquée dans la liste (pour une série récurrente)
   const [kindFilter, setKindFilter] = useState('all'); // 'all' ou une valeur de RENDEZVOUS_KIND_ORDER — choix unique, comme le Répertoire
@@ -6275,6 +6277,8 @@ function RendezVousTab({ events, concerts, members, currentUser, saveEvent, dele
         event={editingEvent}
         occurrenceDate={editingOccurrenceDate}
         members={members}
+        songs={songs}
+        compos={compos}
         currentUser={currentUser}
         onCancel={() => { setEditingEvent(undefined); setEditingOccurrenceDate(null); }}
         onSave={async (event, isNew) => {
@@ -6408,6 +6412,12 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
       ? 'Aucun participant renseigné'
       : item.participant_ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', '));
 
+  // Aperçu du nombre de morceaux à travailler — uniquement pour les
+  // répétitions, seul type de rendez-vous où cette sélection a du sens.
+  const rehearsalItemCount = item.kind === 'repetition'
+    ? (item.raw?.song_ids?.length || 0) + (item.raw?.compo_ids?.length || 0)
+    : 0;
+
   return (
     <div
       className="clx-card clx-row"
@@ -6458,6 +6468,11 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
           <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 4, marginTop: 5 }}>
             <Users size={11} /> {participantNames}
           </div>
+          {rehearsalItemCount > 0 && (
+            <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 }}>
+              <ListMusic size={11} /> {rehearsalItemCount} morceau{rehearsalItemCount > 1 ? 'x' : ''} à travailler
+            </div>
+          )}
           {recurrenceLabel && (
             <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: 3 }}>{recurrenceLabel}</div>
           )}
@@ -6500,7 +6515,7 @@ function RendezVousCard({ item, members, onOpen, isNext, commentCount, onOpenCom
   );
 }
 
-function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCancel, onSave, onDelete, onDeleteOccurrence }) {
+function RendezVousEditor({ event, occurrenceDate, members, songs, compos, currentUser, onCancel, onSave, onDelete, onDeleteOccurrence }) {
   useBackableOverlay(onCancel);
   const isEdit = !!event;
   const [kind, setKind] = useState(event?.kind || 'repetition');
@@ -6522,6 +6537,12 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
   const [recurrenceInterval, setRecurrenceInterval] = useState(event?.recurrence_interval || 1);
   const [recurrenceUnit, setRecurrenceUnit] = useState(event?.recurrence_unit || 'week');
   const [recurrenceUntil, setRecurrenceUntil] = useState(event?.recurrence_until || '');
+  // Morceaux à travailler — uniquement pertinent pour une répétition (voir
+  // section "Morceaux à travailler" plus bas) : sélection parmi le répertoire
+  // (statuts "à préparer" / "prêt") et les compos.
+  const [songIds, setSongIds] = useState(event?.song_ids || []);
+  const [compoIds, setCompoIds] = useState(event?.compo_ids || []);
+  const [songSearch, setSongSearch] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -6564,6 +6585,28 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
   const allSelected = members.length > 0 && members.every((m) => participantIds.includes(m.id));
   const toggleAll = () => setParticipantIds(allSelected ? [] : members.map((m) => m.id));
 
+  const toggleSong = (songId) => {
+    setSongIds((prev) => (prev.includes(songId) ? prev.filter((id) => id !== songId) : [...prev, songId]));
+  };
+  const toggleCompo = (compoId) => {
+    setCompoIds((prev) => (prev.includes(compoId) ? prev.filter((id) => id !== compoId) : [...prev, compoId]));
+  };
+
+  // Un morceau ou une compo déjà sélectionné reste visible même s'il ne
+  // correspond plus à la recherche en cours, pour ne jamais le faire
+  // disparaître (et donc paraître désélectionné) sous les yeux du membre.
+  const songSearchQuery = songSearch.trim().toLowerCase();
+  const matchesSongSearch = (title, subtitle) => !songSearchQuery
+    || title.toLowerCase().includes(songSearchQuery)
+    || (subtitle || '').toLowerCase().includes(songSearchQuery);
+  const rehearsalSongCandidates = (songs || [])
+    .filter((s) => s.status === 'to_prepare' || s.status === 'ready')
+    .filter((s) => songIds.includes(s.id) || matchesSongSearch(s.title, s.artist))
+    .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+  const rehearsalCompoCandidates = (compos || [])
+    .filter((c) => compoIds.includes(c.id) || matchesSongSearch(c.title))
+    .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+
   const submit = async () => {
     if (!subject.trim()) { setError("L'objet du rendez-vous est obligatoire."); return; }
     if (!eventDate) { setError('La date est obligatoire.'); return; }
@@ -6585,6 +6628,10 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
       end_time: allDay ? null : (isMultiDay ? (endTime || null) : endTimeFrom(startTime, durationMin)),
       venue: venue.trim() || null,
       participant_ids: participantIds,
+      // Réservé aux répétitions : si le type est modifié vers autre chose,
+      // la sélection ne s'applique plus et n'est pas conservée en base.
+      song_ids: kind === 'repetition' ? songIds : [],
+      compo_ids: kind === 'repetition' ? compoIds : [],
       recurrence_unit: isRecurring ? recurrenceUnit : null,
       recurrence_interval: isRecurring ? Math.max(1, parseInt(recurrenceInterval, 10) || 1) : null,
       recurrence_until: isRecurring ? recurrenceUntil : null,
@@ -6786,6 +6833,47 @@ function RendezVousEditor({ event, occurrenceDate, members, currentUser, onCance
           </Chip>
         ))}
       </div>
+
+      {kind === 'repetition' && (
+        <>
+          <div className="clx-display" style={{ fontSize: 18, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <ListMusic size={16} color="#F2A93B" /> Morceaux à travailler
+          </div>
+
+          <div style={{ position: 'relative', marginBottom: 12 }}>
+            <Search size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#9A958C' }} />
+            <input
+              className="clx-input"
+              style={{ paddingLeft: 32 }}
+              placeholder="Rechercher un titre ou un artiste…"
+              value={songSearch}
+              onChange={(e) => setSongSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 6 }}>Répertoire (à préparer / prêt)</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+            {rehearsalSongCandidates.length === 0 ? (
+              <span className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>Aucun morceau à préparer ou prêt{songSearchQuery ? ' pour cette recherche' : ''}.</span>
+            ) : rehearsalSongCandidates.map((s) => (
+              <Chip key={s.id} active={songIds.includes(s.id)} onClick={() => toggleSong(s.id)}>
+                {s.title} · {s.artist}
+              </Chip>
+            ))}
+          </div>
+
+          <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 6 }}>Compos</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
+            {rehearsalCompoCandidates.length === 0 ? (
+              <span className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>Aucune compo{songSearchQuery ? ' pour cette recherche' : ''}.</span>
+            ) : rehearsalCompoCandidates.map((c) => (
+              <Chip key={c.id} active={compoIds.includes(c.id)} onClick={() => toggleCompo(c.id)}>
+                {c.title}
+              </Chip>
+            ))}
+          </div>
+        </>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {isEdit ? (

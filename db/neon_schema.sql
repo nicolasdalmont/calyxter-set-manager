@@ -144,6 +144,8 @@ create table events (
   recurrence_interval integer check (recurrence_interval is null or recurrence_interval >= 1),
   recurrence_until date,
   excluded_dates jsonb not null default '[]'::jsonb,
+  song_ids jsonb not null default '[]'::jsonb,   -- répétitions uniquement : morceaux du répertoire à travailler
+  compo_ids jsonb not null default '[]'::jsonb,  -- répétitions uniquement : compos à travailler
   constraint events_pkey primary key (id),
   constraint events_created_by_user_id_fkey foreign key (created_by_user_id) references members(id)
 );
