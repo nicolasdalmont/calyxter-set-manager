@@ -2567,29 +2567,31 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
           <div className="clx-card" style={{ padding: '6px 16px' }}>
             <div className="clx-tape" />
             {toPrepareSongsSorted.map((song, i) => (
-              <div key={song.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.title}</div>
-                  <div style={{ fontSize: 12, color: '#9A958C', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{song.artist}</div>
+              <div key={song.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderTop: i === 0 ? 'none' : '1px solid #201F22', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{song.title}</div>
+                  <div style={{ fontSize: 12, color: '#9A958C' }}>{song.artist}</div>
                 </div>
-                {song.language && (
-                  <span className="clx-badge" style={{ background: `${LANGUAGE_TAG[song.language].color}22`, color: LANGUAGE_TAG[song.language].color, border: `1px solid ${LANGUAGE_TAG[song.language].color}55`, flexShrink: 0 }}>
-                    {LANGUAGE_TAG[song.language].short}
-                  </span>
-                )}
-                <div className="clx-mono" style={{ fontSize: 12, color: song.duration_seconds ? '#9A958C' : '#C1454B', width: 42, textAlign: 'right', flexShrink: 0 }}>
-                  {formatSongDuration(song.duration_seconds)}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 'auto', flexShrink: 0 }}>
+                  {song.language && (
+                    <span className="clx-badge" style={{ background: `${LANGUAGE_TAG[song.language].color}22`, color: LANGUAGE_TAG[song.language].color, border: `1px solid ${LANGUAGE_TAG[song.language].color}55`, flexShrink: 0 }}>
+                      {LANGUAGE_TAG[song.language].short}
+                    </span>
+                  )}
+                  <div className="clx-mono" style={{ fontSize: 12, color: song.duration_seconds ? '#9A958C' : '#C1454B', width: 42, textAlign: 'right', flexShrink: 0 }}>
+                    {formatSongDuration(song.duration_seconds)}
+                  </div>
+                  <a
+                    href={listenUrl(song)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="clx-row-action-mini"
+                    style={{ flexShrink: 0 }}
+                    title={song.links?.custom_url ? 'Ouvrir le lien' : 'Chercher sur Deezer'}
+                  >
+                    <Radio size={14} />
+                  </a>
                 </div>
-                <a
-                  href={listenUrl(song)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="clx-row-action-mini"
-                  style={{ flexShrink: 0 }}
-                  title={song.links?.custom_url ? 'Ouvrir le lien' : 'Chercher sur Deezer'}
-                >
-                  <Radio size={14} />
-                </a>
               </div>
             ))}
           </div>
