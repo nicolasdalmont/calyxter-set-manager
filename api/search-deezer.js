@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
   try {
     const dz = await fetch(
-      `https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=10`,
+      `https://api.deezer.com/search?q=${encodeURIComponent(q)}&limit=25`,
     );
     if (!dz.ok) {
       return res.status(502).json({ error: "Le service Deezer n'a pas répondu correctement." });

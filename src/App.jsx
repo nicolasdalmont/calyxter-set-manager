@@ -3212,7 +3212,7 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
         {searchError && <div style={{ color: '#C1454B', fontSize: 12 }}>{searchError}</div>}
 
         {results.length > 0 && (
-          <div className="clx-card clx-scrollbar" style={{ maxHeight: 220, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div className="clx-card clx-scrollbar" style={{ maxHeight: 340, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {results.map((r, i) => (
               <button
                 key={i}
