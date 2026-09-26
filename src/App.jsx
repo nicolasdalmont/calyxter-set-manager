@@ -490,6 +490,48 @@ async function searchDeezer(query) {
   return data.results || [];
 }
 
+// Normalisation pour comparer titres/artistes malgré accents, casse et
+// ponctuation (ex. "Don't" vs "Dont") — utilisé pour trier les résultats
+// Deezer par pertinence par rapport aux champs Titre/Artiste saisis.
+function normalizeForMatch(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Score de pertinence d'un résultat Deezer par rapport aux champs Titre et
+// Artiste saisis séparément (l'un des deux peut être vide). Fait remonter
+// les correspondances exactes au-dessus des lives/covers/karaokés.
+function scoreDeezerResult(r, titleQuery, artistQuery) {
+  let score = 0;
+  const rTitle = normalizeForMatch(r.title);
+  const rArtist = normalizeForMatch(r.artist);
+  const nTitle = normalizeForMatch(titleQuery);
+  const nArtist = normalizeForMatch(artistQuery);
+  if (nTitle) {
+    if (rTitle === nTitle) score += 100;
+    else if (rTitle.startsWith(nTitle)) score += 50;
+    else if (rTitle.includes(nTitle)) score += 20;
+  }
+  if (nArtist) {
+    if (rArtist === nArtist) score += 100;
+    else if (rArtist.startsWith(nArtist)) score += 50;
+    else if (rArtist.includes(nArtist)) score += 20;
+  }
+  return score;
+}
+
+// Formalisme de la recherche Deezer à champ unique : « Titre - Artiste »
+// (séparateur " - "). Sans séparateur, le texte sert de requête libre pour
+// les deux (le tri par pertinence le comparera au titre et à l'artiste).
+function parseSearchQuery(query) {
+  const parts = query.split(' - ');
+  if (parts.length >= 2) {
+    return { title: parts[0].trim(), artist: parts.slice(1).join(' - ').trim() };
+  }
+  return { title: query.trim(), artist: query.trim() };
+}
+
 // Détail d'une piste Deezer (pochette + rank) pour lier une compo. Neon
 // uniquement : pas d'équivalent parmi les Edge Functions Supabase.
 async function fetchDeezerTrack(trackId) {
@@ -3118,8 +3160,10 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
+        const { title: t, artist: a } = parseSearchQuery(query);
         const found = await searchDeezer(query.trim());
-        setResults(found);
+        const sorted = [...found].sort((x, y) => scoreDeezerResult(y, t, a) - scoreDeezerResult(x, t, a));
+        setResults(sorted);
         setSearchError('');
       } catch (err) {
         setSearchError(err.message || 'Recherche indisponible.');
@@ -3203,11 +3247,14 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
               style={{ paddingLeft: 32 }}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Titre, artiste…"
+              placeholder="Titre, artiste… ou « Titre - Artiste » pour préciser"
             />
             {searching && <Loader2 size={14} className="clx-spin" style={{ position: 'absolute', right: 11, top: 11, color: '#9A958C' }} />}
           </div>
         </Field>
+        <div className="clx-mono" style={{ fontSize: 10, color: '#9A958C', marginTop: -4 }}>
+          Astuce : « Don't Stop Me Now - Queen » fait remonter le bon titre au-dessus des lives/covers.
+        </div>
 
         {searchError && <div style={{ color: '#C1454B', fontSize: 12 }}>{searchError}</div>}
 
