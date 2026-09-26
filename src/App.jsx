@@ -2460,6 +2460,7 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
 
   const readySongs = songs.filter((s) => s.status === 'ready');
   const toPrepareSongs = songs.filter((s) => s.status === 'to_prepare');
+  const toPrepareSongsSorted = [...toPrepareSongs].sort((a, b) => a.title.localeCompare(b.title, 'fr'));
   const readyCount = readySongs.length;
   const toPrepareCount = toPrepareSongs.length;
   const readySeconds = readySongs.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
@@ -2556,6 +2557,21 @@ function AccueilTab({ currentUser, members, songs, phase, phaseHistory, events, 
             <EmptyState text="Aucun concert à venir." />
           )}
         </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div className="section-label">
+          <Hourglass size={12} /> Morceaux en préparation
+        </div>
+        {toPrepareSongsSorted.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {toPrepareSongsSorted.map((song) => (
+              <SongRow key={song.id} song={song} members={members} onEdit={() => setTab('repertoire')} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState text="Aucun morceau en préparation." />
+        )}
       </div>
 
       <div style={{ marginBottom: 20 }}>
