@@ -362,7 +362,7 @@ La table comments (§ 3.8) suit le régime commun : tout membre peut y ajouter o
 
 - Ligne de la liste entièrement cliquable pour ouvrir l'édition du morceau, comme sur les listes Concerts et Rendez-vous (§ 14.3) ; le bouton d'écoute rapide reste une action distincte, isolée en bout de ligne.
 
-- Bouton d'écoute rapide : ouvre le lien Deezer direct si disponible, sinon une recherche sur Deezer (seule plateforme d'écoute intégrée — choix assumé du groupe, sans notion de service préféré par membre).
+- Bouton d'écoute rapide : ouvre le lien Deezer direct si disponible, sinon une recherche sur Deezer (seule plateforme d'écoute intégrée — choix assumé du groupe, sans notion de service préféré par membre). Si le morceau a en plus un lien externe (`links.custom_url`), une seconde icône (lien) apparaît à côté, distincte de l'icône Deezer : les deux liens cohabitent et s'ouvrent indépendamment, le lien externe ne masque plus l'icône Deezer comme auparavant.
 
 - Liste contenue dans un conteneur à hauteur limitée avec défilement interne, comme les listes Concerts et Rendez-vous (§ 14.3).
 
@@ -1044,6 +1044,8 @@ Chantier issu d'un audit UX complet de l'application (lecture intégrale de `src
 - **Copie d'un rendez-vous dans le presse-papier** (§ 8.8) : nouveau bouton "Copier le rendez-vous" (à côté de "Ajouter à mon agenda", visible en modification uniquement), reprenant le principe déjà en place pour les concerts (§ 7.3, `buildConcertShareText`) via une nouvelle fonction `buildRendezVousShareText` (`src/App.jsx`). Le texte copié reprend l'objet, le type, la date, l'horaire, le lieu et les participants ; sur une répétition, il ajoute un bloc "Morceaux à travailler :" listant la sélection du § 8.6 (répertoire et compos, résolus depuis leurs identifiants) ; et, si renseigné, le contenu du champ Notes.
 
 - **Notes dans la copie presse-papier des concerts** (§ 7.3) : le texte copié via "Copier le concert" se termine désormais, si le champ Notes n'est pas vide, par un bloc "Notes :" reprenant son contenu.
+
+- **Cohabitation du lien Deezer et du lien externe dans le Répertoire** (§ 5.2) : jusqu'ici, un lien externe (`links.custom_url`) renseigné sur un morceau remplaçait purement et simplement l'icône Deezer du bouton d'écoute rapide (priorité de `listenUrl`, `src/App.jsx`). Les deux liens s'affichent désormais côte à côte, chacun avec sa propre icône (son pour Deezer, lien pour l'externe), et s'ouvrent indépendamment — nouvelle fonction `deezerListenUrl` dédiée au lien Deezer seul, sans repli sur `custom_url`.
 
 # 18. Références
 
