@@ -4997,7 +4997,52 @@ function buildConcertShareText(concert, setItems, songs, totalSeconds) {
     .filter(Boolean);
   const setBlock = lines.length > 0 ? lines.join('\n') : '(set vide)';
   const durationLine = `Durée totale du set : ${formatTotalDuration(totalSeconds)}`;
-  return [header, '', setBlock, '', durationLine].join('\n');
+  const parts = [header, '', setBlock, '', durationLine];
+  if (concert.notes && concert.notes.trim()) {
+    parts.push('', 'Notes :', concert.notes.trim());
+  }
+  return parts.join('\n');
+}
+
+// Texte de copie d'un rendez-vous — même principe que buildConcertShareText
+// ci-dessus, avec les participants et, pour une répétition, la liste des
+// morceaux à travailler (répertoire + compos, résolus depuis leurs id).
+function buildRendezVousShareText(event, members, songs, compos) {
+  const kindLabel = EVENT_KIND[event.kind]?.label || 'Rendez-vous';
+  const isMultiDay = event.end_date && event.end_date !== event.event_date;
+  const dateLabel = isMultiDay
+    ? `Du ${formatConcertDate(event.event_date, { day: 'numeric', month: 'long', year: 'numeric' })} au ${formatConcertDate(event.end_date, { day: 'numeric', month: 'long', year: 'numeric' })}`
+    : formatConcertDate(event.event_date, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const time = event.all_day ? 'Toute la journée' : formatConcertTime(event.start_time);
+  const durationLabel = event.all_day ? null : formatScheduleDuration(scheduleDurationMinutes(event.start_time, event.end_time));
+  const timePart = time ? ` ${time}${durationLabel ? ` (${durationLabel})` : ''}` : '';
+  const header = `${event.subject} - ${kindLabel} - ${dateLabel}${timePart} - ${event.venue || 'Lieu à confirmer'}`;
+
+  const participantsLabel = Array.isArray(event.participant_ids) && event.participant_ids.length > 0
+    ? event.participant_ids.map((id) => members.find((m) => m.id === id)?.name).filter(Boolean).join(', ')
+    : 'Aucun participant renseigné';
+
+  const parts = [header, '', `Participants : ${participantsLabel}`];
+
+  if (event.kind === 'repetition') {
+    const songLines = (event.song_ids || [])
+      .map((id) => (songs || []).find((s) => s.id === id))
+      .filter(Boolean)
+      .map((s) => `- ${s.title} — ${s.artist}`);
+    const compoLines = (event.compo_ids || [])
+      .map((id) => (compos || []).find((c) => c.id === id))
+      .filter(Boolean)
+      .map((c) => `- ${c.title} (compo)`);
+    if (songLines.length > 0 || compoLines.length > 0) {
+      parts.push('', 'Morceaux à travailler :', ...songLines, ...compoLines);
+    }
+  }
+
+  if (event.notes && event.notes.trim()) {
+    parts.push('', 'Notes :', event.notes.trim());
+  }
+
+  return parts.join('\n');
 }
 
 // Copie dans le presse-papier avec repli si l'API Clipboard n'est pas
@@ -5658,6 +5703,9 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
     scheduleDurationMinutes(formatConcertTime(concert?.event_time), formatConcertTime(concert?.end_time)) ?? DEFAULT_DURATION_MIN
   );
   const [venue, setVenue] = useState(concert?.venue || '');
+  // Informations complémentaires libres — distinctes des notes de transition
+  // du set (insérées entre deux morceaux, voir `items` plus bas).
+  const [notes, setNotes] = useState(concert?.notes || '');
   // Set détaillé : liste ordonnée de morceaux et de notes de transition.
   // Reconstruit depuis `song_ids` pour les concerts d'avant cette fonctionnalité.
   const [items, setItems] = useState(() => {
@@ -5694,7 +5742,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
 
   const handleCopy = async () => {
     const text = buildConcertShareText(
-      { name: name.trim() || 'Concert', event_date: eventDate, event_time: eventTime || null, end_time: endTimeFrom(eventTime, durationMin), venue: venue.trim() },
+      { name: name.trim() || 'Concert', event_date: eventDate, event_time: eventTime || null, end_time: endTimeFrom(eventTime, durationMin), venue: venue.trim(), notes },
       items,
       songs,
       totalSeconds
@@ -5823,8 +5871,9 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
     if (!eventDate) { setError('La date du concert est obligatoire.'); return; }
     setError('');
     setSaving(true);
-    // On jette les notes laissées vides ; song_ids reste le reflet des morceaux
-    // du set (compteur, durée, agenda… continuent d'en dépendre).
+    // On jette les notes de transition laissées vides ; song_ids reste le
+    // reflet des morceaux du set (compteur, durée, agenda… continuent d'en
+    // dépendre).
     const cleanItems = items
       .filter((it) => it.type === 'song' || it.text.trim())
       .map((it) => (it.type === 'note'
@@ -5839,6 +5888,7 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
       venue: venue.trim() || null,
       song_ids: cleanItems.filter((it) => it.type === 'song').map((it) => it.song_id),
       set_items: cleanItems,
+      notes: notes.trim() || null,
       created_by_user_id: concert?.created_by_user_id || currentUser.id,
       created_at: concert?.created_at || new Date().toISOString(),
     };
@@ -5927,6 +5977,15 @@ function ConcertEditor({ concert, songs, members, currentUser, onCancel, onSave,
         </div>
         <Field label="Lieu">
           <input className="clx-input" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Ex. Salle Vasse, Nantes" />
+        </Field>
+        <Field label="Notes" style={{ marginTop: 10 }}>
+          <textarea
+            className="clx-input"
+            style={{ minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Informations complémentaires — accès, backline, horaires de balance…"
+          />
         </Field>
         {error && <div style={{ color: '#C1454B', fontSize: 12, marginTop: 10 }}>{error}</div>}
       </div>
@@ -6567,8 +6626,10 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
   const [songIds, setSongIds] = useState(event?.song_ids || []);
   const [compoIds, setCompoIds] = useState(event?.compo_ids || []);
   const [songSearch, setSongSearch] = useState('');
+  const [notes, setNotes] = useState(event?.notes || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Règles de saisie assistée :
   // - la date de fin recopie la date de début à chaque saisie de celle-ci
@@ -6662,6 +6723,7 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
       start_time: allDay ? null : (startTime || null),
       end_time: allDay ? null : (isMultiDay ? (endTime || null) : endTimeFrom(startTime, durationMin)),
       venue: venue.trim() || null,
+      notes: notes.trim() || null,
       participant_ids: participantIds,
       // Réservé aux répétitions : si le type est modifié vers autre chose,
       // la sélection ne s'applique plus et n'est pas conservée en base.
@@ -6725,6 +6787,36 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
     downloadICS(`rdv-${slugForFilename(subject.trim() || eventDate)}.ics`, ics);
   };
 
+  const handleCopy = async () => {
+    const text = buildRendezVousShareText(
+      {
+        kind,
+        subject: subject.trim() || 'Rendez-vous',
+        event_date: eventDate,
+        end_date: endDate || eventDate,
+        all_day: allDay,
+        start_time: allDay ? null : (startTime || null),
+        end_time: allDay ? null : (isMultiDay ? (endTime || null) : endTimeFrom(startTime, durationMin)),
+        venue: venue.trim(),
+        participant_ids: participantIds,
+        song_ids: kind === 'repetition' ? songIds : [],
+        compo_ids: kind === 'repetition' ? compoIds : [],
+        notes,
+      },
+      members,
+      songs,
+      compos,
+    );
+    try {
+      await copyTextToClipboard(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Erreur lors de la copie dans le presse-papier', e);
+      window.alert("La copie dans le presse-papier a échoué. Ton navigateur bloque peut-être l'accès au presse-papier.");
+    }
+  };
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -6736,16 +6828,28 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
           <ArrowLeft size={14} /> Retour aux rendez-vous
         </button>
 
-        {subject.trim() && eventDate && (
-          <button
-            onClick={handleAddToCalendar}
-            className="clx-btn clx-btn-ghost"
-            style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
-            title="Ouvrir ce rendez-vous dans l'application de calendrier de l'appareil"
-          >
-            <CalendarPlus size={14} /> Ajouter à mon agenda
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {subject.trim() && eventDate && (
+            <button
+              onClick={handleAddToCalendar}
+              className="clx-btn clx-btn-ghost"
+              style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+              title="Ouvrir ce rendez-vous dans l'application de calendrier de l'appareil"
+            >
+              <CalendarPlus size={14} /> Ajouter à mon agenda
+            </button>
+          )}
+          {isEdit && (
+            <button
+              onClick={handleCopy}
+              className="clx-btn clx-btn-ghost"
+              style={{ padding: '7px 12px', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: copied ? '#6FA287' : undefined }}
+              title="Copier l'objet, la date, le lieu, les participants, les notes et (en répétition) les morceaux à travailler dans le presse-papier"
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copié !' : 'Copier le rendez-vous'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="clx-display" style={{ fontSize: 24, marginBottom: 18 }}>
@@ -6847,6 +6951,16 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
 
         <Field label="Lieu">
           <input className="clx-input" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Ex. Local de répétition" />
+        </Field>
+
+        <Field label="Notes" style={{ marginTop: 10 }}>
+          <textarea
+            className="clx-input"
+            style={{ minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Informations complémentaires…"
+          />
         </Field>
 
         {error && <div style={{ color: '#C1454B', fontSize: 12, marginTop: 10 }}>{error}</div>}

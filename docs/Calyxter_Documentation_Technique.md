@@ -4,17 +4,17 @@ SET MANAGER
 
 Documentation technique et fonctionnelle
 
-Version 1.16 — 27 septembre 2026
+Version 1.17 — 27 septembre 2026
 
 Statut : application déployée, en phase de test avec les 6 membres du groupe.
+
+Depuis la v1.16 : **notes libres et copie presse-papier des rendez-vous** (§ 7.5, § 8.7, § 8.8) — un champ "Notes" (texte libre) est désormais disponible sur les rendez-vous comme sur les concerts, pour des informations complémentaires. Un bouton "Copier le rendez-vous" reprend pour les rendez-vous le principe déjà en place sur les concerts (§ 7.3), en y ajoutant les participants et, sur une répétition, la liste des morceaux à travailler (§ 8.6). La copie des concerts inclut désormais aussi les notes. Nouvelle colonne `notes` sur `events` et `concerts` (§ 3.5, § 3.6). Détail au § 17.17.
 
 Depuis la v1.15 : **nettoyage post-migration Neon** (Phase 6, § 2.5, § 16) — la migration Supabase → Neon étant validée après plusieurs semaines sans incident, le point de commutation `const BACKEND` et tout le code d'accès Supabase (`src/App.jsx`), le dossier `supabase/` et les scripts de migration ponctuels (`db/migrate.mjs`, `db/migrate_supabase_to_neon.sh`, `db/rollback_neon_to_supabase.sh`, `db/phase0_dataapi_test.sh`) ont été retirés du dépôt, ainsi que la dépendance `pg`. Aucun changement fonctionnel. Détail au § 17.16.
 
 Depuis la v1.14 : **sélection des morceaux à travailler en répétition** (§ 8.6) — sur un rendez-vous de type Répétition uniquement, l'éditeur affiche une nouvelle section "Morceaux à travailler" permettant de choisir, par puces à bascule filtrables par une recherche, des morceaux du répertoire à préparer, des compos et des morceaux du répertoire prêts, dans cet ordre. Un élément sélectionné remonte dans une liste "Sélectionnés" juste sous la recherche, et y retourne dès qu'il est désélectionné. Nouvelles colonnes `events.song_ids` et `events.compo_ids` (jsonb, § 3.6). Détail au § 17.15.
 
 Depuis la v1.13 : le bloc "Depuis ta dernière connexion" (§ 12.2) fait désormais aussi remonter la clôture d'une phase (résultats), l'avancement d'une étape de phase, le changement manuel de statut d'un morceau, l'annulation d'une phase et les suppressions (morceau, compo, concert, rendez-vous). Trois nouvelles valeurs de `kind` dédiées (`status`, `cancel`, `delete`) remplacent le générique `info` pour ces événements précis, afin de ne pas aussi faire remonter les commentaires et éditions mineures qui partagent ce même `info`. Détail au § 17.14.
-
-Depuis la v1.12 : la **pastille de date** (§ 14.3) n'affiche plus l'année que si elle diffère de l'année en cours — la date d'un concert ou d'un rendez-vous de cette année tient désormais sur deux lignes (jour, mois) plutôt que trois. Détail au § 17.13.
 
 # 1. Présentation du projet
 
@@ -209,6 +209,7 @@ Une phase menée à son terme (résultat validé) voit sa ligne conservée avec 
 | venue | text | Lieu (optionnel) |
 | song_ids | jsonb | Set du concert : tableau ordonné d'identifiants de morceaux. Reste le reflet des morceaux du set (compteur, durée, agenda en dépendent) |
 | set_items | jsonb | Set détaillé : tableau ordonné mêlant morceaux et **notes de transition** (§ 7.2). Éléments `{ type:'song', song_id }` ou `{ type:'note', id, text }`. Vide `[]` pour les concerts créés avant cette fonctionnalité — l'éditeur le reconstruit alors depuis song_ids |
+| notes | text | Informations complémentaires libres (§ 7.5) — distinct des notes de transition ci-dessus, qui rythment le set plutôt que le concert dans son ensemble |
 | created_by_user_id | uuid | Référence vers members.id |
 | created_at / updated_at | timestamptz | Horodatage de création / dernière modification |
 
@@ -231,6 +232,7 @@ Une phase menée à son terme (résultat validé) voit sa ligne conservée avec 
 | excluded_dates | jsonb | Occurrences individuellement supprimées de la série |
 | song_ids | jsonb | Répétitions uniquement (§ 8.6) : identifiants de morceaux du répertoire (statut "à préparer" ou "prêt" au moment de la sélection) à travailler pendant la séance. Vide pour les autres types de rendez-vous |
 | compo_ids | jsonb | Répétitions uniquement (§ 8.6) : identifiants de compos (table compos, § 3.9) à travailler pendant la séance. Vide pour les autres types de rendez-vous |
+| notes | text | Informations complémentaires libres (§ 8.7) |
 | created_by_user_id | uuid | Référence vers members.id |
 | created_at / updated_at | timestamptz | Horodatage de création / dernière modification |
 
@@ -497,13 +499,15 @@ Nouveau module permettant de composer et gérer les sets de concert à partir du
 
 - Durée théorique totale du set recalculée et affichée en continu, dans le même format que le compteur du répertoire.
 
+- **Notes** (§ 7.5) : champ de texte libre pour des informations complémentaires sur le concert (accès, backline, horaires de balance…), distinct des notes de transition ci-dessus.
+
 - Bouton "Ajouter à mon agenda" (dès que nom et date sont renseignés) : génère un fichier iCalendar (.ics) que l'appareil ouvre dans son application de calendrier par défaut (Agenda iOS, Google Agenda, etc.), pré-rempli avec le nom, la date, l'horaire (heure de début → heure de fin), le lieu et un résumé du set. Horaires en "heure locale flottante" (le groupe est sur un seul fuseau). Limite connue : en application installée sur l'écran d'accueil d'un iPhone, le téléchargement direct du .ics peut être ignoré par iOS — il faut alors ouvrir l'application depuis Safari.
 
 - Suppression du concert possible depuis l'écran d'édition, avec confirmation explicite.
 
 ## 7.3 Copie dans le presse-papier
 
-Un bouton "Copier le concert" génère et copie un texte prêt à coller dans une conversation (nom du concert, date, heure de début suivie de la durée entre parenthèses, lieu ; le set complet, un morceau par ligne avec sa durée, les **notes de transition** intercalées à leur place sur une ligne préfixée `→` et sans numéro ; puis la durée théorique totale du set). Une confirmation visuelle ("Copié !") s'affiche brièvement après la copie ; un message d'erreur explicite apparaît si le navigateur bloque l'accès au presse-papier.
+Un bouton "Copier le concert" génère et copie un texte prêt à coller dans une conversation (nom du concert, date, heure de début suivie de la durée entre parenthèses, lieu ; le set complet, un morceau par ligne avec sa durée, les **notes de transition** intercalées à leur place sur une ligne préfixée `→` et sans numéro ; puis la durée théorique totale du set ; et, si le champ Notes — § 7.5 — n'est pas vide, un dernier bloc "Notes :" avec son contenu). Une confirmation visuelle ("Copié !") s'affiche brièvement après la copie ; un message d'erreur explicite apparaît si le navigateur bloque l'accès au presse-papier.
 
 ## 7.4 Export imprimable du set
 
@@ -514,6 +518,10 @@ Un bouton "Imprimer le set" (dès que le nom est renseigné) ouvre, dans un nouv
 - **Sur ordinateur** : le document ouvre directement la boîte d'impression du système (où l'on imprime ou choisit "Enregistrer en PDF").
 - **Sur mobile** (détecté via `pointer: coarse`) : **pas d'impression automatique**. Barre d'actions fixe en bas — bouton principal "Enregistrer en PDF / Imprimer" (ouvre la fenêtre de partage / d'impression du téléphone, d'où l'on enregistre le PDF dans les fichiers), et "Retour au concert" qui referme l'onglet. Après la fenêtre d'enregistrement (qu'on ait enregistré ou annulé), l'onglet se referme de lui-même quand le navigateur le permet (`onafterprint`). L'aperçu à l'écran étroit d'un téléphone peut renvoyer certains titres à la ligne, mais le PDF produit (rendu à la largeur d'une page) ne les coupe pas.
 - Aucun serveur ni bibliothèque tierce : le document est fabriqué côté navigateur (`buildConcertSetHTML`) et ouvert via `window.open`. Limite connue, comme pour le .ics : en application installée sur l'écran d'accueil d'un iPhone, l'ouverture de la fenêtre peut être bloquée — un message invite alors à autoriser les fenêtres surgissantes (ou ouvrir l'application depuis Safari).
+
+## 7.5 Notes
+
+Un champ "Notes" (zone de texte libre, multi-lignes) permet d'ajouter des informations complémentaires sur le concert — accès, backline, horaires de balance, etc. — distinctes des **notes de transition** du set (§ 7.2), qui rythment l'enchaînement des morceaux plutôt que le concert dans son ensemble. Stocké dans `concerts.notes` (§ 3.5), vide (`NULL`) par défaut. Repris dans la copie presse-papier du concert (§ 7.3) quand il n'est pas vide.
 
 # 8. Fonctionnalités — Module Rendez-vous
 
@@ -590,6 +598,21 @@ Sur un rendez-vous de type Répétition **uniquement** (les autres types — Ate
 - Cette sélection n'a de sens que pour une répétition : si le type du rendez-vous est changé pour un autre type avant l'enregistrement, elle est vidée (`song_ids` et `compo_ids` enregistrés vides).
 
 - Le nombre total de morceaux et de compos sélectionnés (les deux additionnés) apparaît sur la carte de la liste (§ 8.3), sous la ligne des participants, avec une icône de liste de morceaux — uniquement lorsqu'au moins un élément est sélectionné.
+
+## 8.7 Notes
+
+Un champ "Notes" (zone de texte libre, multi-lignes) permet d'ajouter des informations complémentaires sur le rendez-vous. Stocké dans `events.notes` (§ 3.6), vide (`NULL`) par défaut, quel que soit le type de rendez-vous. Repris dans la copie presse-papier (§ 8.8) quand il n'est pas vide.
+
+## 8.8 Copie dans le presse-papier
+
+Un bouton "Copier le rendez-vous", à côté de "Ajouter à mon agenda" dans l'écran d'édition (visible uniquement en modification, pas à la création), génère et copie un texte prêt à coller dans une conversation — même principe que "Copier le concert" (§ 7.3) :
+
+- Objet, type de rendez-vous, date (ou plage de dates sur plusieurs jours), horaire et durée (ou "Toute la journée"), lieu.
+- Liste des participants (ou "Aucun participant renseigné").
+- Sur une répétition uniquement, et seulement si au moins un élément est sélectionné : un bloc "Morceaux à travailler :" reprenant la sélection du § 8.6 (répertoire et compos, ces dernières suffixées "(compo)").
+- Le contenu du champ Notes (§ 8.7), s'il n'est pas vide.
+
+Une confirmation visuelle ("Copié !") s'affiche brièvement après la copie ; un message d'erreur explicite apparaît si le navigateur bloque l'accès au presse-papier.
 
 # 9. Fonctionnalités — Module Boîte à idées
 
@@ -1013,6 +1036,14 @@ Chantier issu d'un audit UX complet de l'application (lecture intégrale de `src
 ## 17.16 Depuis la v1.15 (→ v1.16)
 
 - **Nettoyage post-migration Neon** (Phase 6 du plan de migration, § 2.5, § 16, `docs/Migration_Neon.md`) : la migration Supabase → Neon (v1.7 → v1.8) étant validée après plusieurs semaines d'exploitation sans incident, tout ce qui subsistait de l'ancien backend comme filet de retour arrière a été retiré. Dans `src/App.jsx` : suppression du point de commutation `const BACKEND`, de `supabaseTable`, `supabaseWhereFragment`, `SUPABASE_URL`/`SUPABASE_ANON_KEY` et de toutes les branches conditionnelles associées dans les fonctions d'accès aux données, `callMemberAuth` et `searchDeezer` — ces fonctions ne parlent plus qu'à `/api/*`. Suppression du dossier `supabase/` (Edge Functions et schéma d'origine, déjà portés sous `api/` et `db/neon_schema.sql`) et des scripts de migration ponctuels devenus inutiles (`db/migrate.mjs`, `db/migrate_supabase_to_neon.sh`, `db/rollback_neon_to_supabase.sh`, `db/phase0_dataapi_test.sh`), ainsi que de la dépendance `pg` qui ne servait qu'à ce dernier. Documentation mise à jour en conséquence (README, § 2.5, § 15, § 16, § 18, § 19, `docs/Migration_Neon.md`). Aucun changement de comportement pour les utilisateurs·rices. Le projet Supabase lui-même a été supprimé le même jour (hors dépôt) : la migration est intégralement close.
+
+## 17.17 Depuis la v1.16 (→ v1.17)
+
+- **Champ "Notes" sur les rendez-vous et les concerts** (§ 7.5, § 8.7) : zone de texte libre multi-lignes pour des informations complémentaires, ajoutée dans les deux écrans d'édition juste après le champ "Lieu". Nouvelle colonne `notes` (text, nullable) sur `events` et `concerts` (§ 3.5, § 3.6). Distincte des **notes de transition** du set d'un concert (§ 7.2), qui rythment l'enchaînement des morceaux plutôt que le concert dans son ensemble.
+
+- **Copie d'un rendez-vous dans le presse-papier** (§ 8.8) : nouveau bouton "Copier le rendez-vous" (à côté de "Ajouter à mon agenda", visible en modification uniquement), reprenant le principe déjà en place pour les concerts (§ 7.3, `buildConcertShareText`) via une nouvelle fonction `buildRendezVousShareText` (`src/App.jsx`). Le texte copié reprend l'objet, le type, la date, l'horaire, le lieu et les participants ; sur une répétition, il ajoute un bloc "Morceaux à travailler :" listant la sélection du § 8.6 (répertoire et compos, résolus depuis leurs identifiants) ; et, si renseigné, le contenu du champ Notes.
+
+- **Notes dans la copie presse-papier des concerts** (§ 7.3) : le texte copié via "Copier le concert" se termine désormais, si le champ Notes n'est pas vide, par un bloc "Notes :" reprenant son contenu.
 
 # 18. Références
 

@@ -117,6 +117,7 @@ create table concerts (
   venue text,
   song_ids jsonb not null default '[]'::jsonb,
   set_items jsonb not null default '[]'::jsonb,   -- set détaillé : [{type:'song',song_id} | {type:'note',id,text}] ; song_ids en reste le reflet
+  notes text,                                     -- informations complémentaires libres, distinctes des notes de transition du set
   created_by_user_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -146,6 +147,7 @@ create table events (
   excluded_dates jsonb not null default '[]'::jsonb,
   song_ids jsonb not null default '[]'::jsonb,   -- répétitions uniquement : morceaux du répertoire à travailler
   compo_ids jsonb not null default '[]'::jsonb,  -- répétitions uniquement : compos à travailler
+  notes text,                                    -- informations complémentaires libres
   constraint events_pkey primary key (id),
   constraint events_created_by_user_id_fkey foreign key (created_by_user_id) references members(id)
 );
