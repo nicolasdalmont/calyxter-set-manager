@@ -135,7 +135,7 @@ La copie des 8 tables de Supabase vers Neon (identifiants, empreintes de mots de
 
 ### Filet de sécurité (période de transition, close)
 
-Pendant les trois semaines qui ont suivi la bascule, plusieurs niveaux de retour arrière ont été tenus prêts : étiquette Git `pre-neon-migration` (dernier état du code sur Supabase), Instant Rollback Vercel, un point de commutation `const BACKEND` dans `src/App.jsx` permettant de rebrancher l'ancien backend, un script de copie Neon → Supabase, et le projet Supabase lui-même laissé strictement intact. Aucun n'a été nécessaire. Le nettoyage de repli (Phase 6, § 16) a retiré du dépôt le point de commutation, le code d'accès Supabase et les scripts de migration ponctuels le 27 septembre 2026 ; seule la suppression du projet Supabase lui-même reste à faire (hors dépôt, tableau de bord Supabase).
+Pendant les trois semaines qui ont suivi la bascule, plusieurs niveaux de retour arrière ont été tenus prêts : étiquette Git `pre-neon-migration` (dernier état du code sur Supabase), Instant Rollback Vercel, un point de commutation `const BACKEND` dans `src/App.jsx` permettant de rebrancher l'ancien backend, un script de copie Neon → Supabase, et le projet Supabase lui-même laissé strictement intact. Aucun n'a été nécessaire. Le nettoyage de repli (Phase 6, § 16) a retiré du dépôt le point de commutation, le code d'accès Supabase et les scripts de migration ponctuels le 27 septembre 2026 ; le projet Supabase lui-même a été supprimé le même jour — la migration est intégralement close.
 
 Plan détaillé et journal d'exécution : `docs/Migration_Neon.md` dans le dépôt.
 
@@ -789,7 +789,7 @@ Les trois écrans présentant une liste de cartes (Répertoire, Concerts, Rendez
 
 - Fonctions serveur `api/*` (§ 2.2) déployées automatiquement par Vercel avec le frontend, depuis le dossier `api/` du dépôt (runtime Node). Elles lisent la variable d'environnement **`DATABASE_URL`** (chaîne de connexion Neon, en pool), à définir dans Vercel → Settings → Environment Variables pour les portées *Production* et *Preview*. C'est le seul secret du projet ; il n'apparaît nulle part dans le code.
 
-- Base de données hébergée sur **Neon** (PostgreSQL, offre gratuite, sans carte bancaire). Le projet Supabase historique (`hhtjuwmlllgglnxtnjtx.supabase.co`) a servi de filet de retour arrière pendant la période de transition (§ 2.5) ; reste à supprimer côté Supabase.
+- Base de données hébergée sur **Neon** (PostgreSQL, offre gratuite, sans carte bancaire). Le projet Supabase historique (`hhtjuwmlllgglnxtnjtx.supabase.co`), qui avait servi de filet de retour arrière pendant la période de transition (§ 2.5), a été supprimé le 27 septembre 2026.
 
 - Aucun serveur à maintenir : les plateformes gèrent l'hébergement, la mise à l'échelle et la sécurité de l'infrastructure.
 
@@ -813,7 +813,6 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 | Dernière activité | Tamponnée à l'ouverture de l'application uniquement, pas à chaque action | Granularité plus fine possible (ex. tamponnage sur des actions clés) si le besoin s'en fait sentir |
 | Multi-comptes simultanés | Un profil à la fois par appareil | Non prioritaire pour un usage à 6 personnes |
 | Rafraîchissement automatique | Une instance déjà installée sur un téléphone avant la mise en place de ce mécanisme (§ 14.2) doit encore être mise à jour une dernière fois manuellement pour en bénéficier | Aucune (limite ponctuelle, sans impact au-delà de cette transition unique) |
-| Nettoyage post-migration Neon | Dépôt nettoyé le 27 sept. 2026 (§ 2.5, § 17.16) ; le projet Supabase historique existe encore côté Supabase | Supprimer/mettre en pause le projet Supabase dans son tableau de bord (libère 1 des 2 slots gratuits) |
 
 # 17. Journal des évolutions
 
@@ -1013,7 +1012,7 @@ Chantier issu d'un audit UX complet de l'application (lecture intégrale de `src
 
 ## 17.16 Depuis la v1.15 (→ v1.16)
 
-- **Nettoyage post-migration Neon** (Phase 6 du plan de migration, § 2.5, § 16, `docs/Migration_Neon.md`) : la migration Supabase → Neon (v1.7 → v1.8) étant validée après plusieurs semaines d'exploitation sans incident, tout ce qui subsistait de l'ancien backend comme filet de retour arrière a été retiré. Dans `src/App.jsx` : suppression du point de commutation `const BACKEND`, de `supabaseTable`, `supabaseWhereFragment`, `SUPABASE_URL`/`SUPABASE_ANON_KEY` et de toutes les branches conditionnelles associées dans les fonctions d'accès aux données, `callMemberAuth` et `searchDeezer` — ces fonctions ne parlent plus qu'à `/api/*`. Suppression du dossier `supabase/` (Edge Functions et schéma d'origine, déjà portés sous `api/` et `db/neon_schema.sql`) et des scripts de migration ponctuels devenus inutiles (`db/migrate.mjs`, `db/migrate_supabase_to_neon.sh`, `db/rollback_neon_to_supabase.sh`, `db/phase0_dataapi_test.sh`), ainsi que de la dépendance `pg` qui ne servait qu'à ce dernier. Documentation mise à jour en conséquence (README, § 2.5, § 15, § 16, § 18, § 19, `docs/Migration_Neon.md`). Aucun changement de comportement pour les utilisateurs·rices ; seule reste à faire, hors dépôt, la suppression du projet Supabase lui-même dans son tableau de bord.
+- **Nettoyage post-migration Neon** (Phase 6 du plan de migration, § 2.5, § 16, `docs/Migration_Neon.md`) : la migration Supabase → Neon (v1.7 → v1.8) étant validée après plusieurs semaines d'exploitation sans incident, tout ce qui subsistait de l'ancien backend comme filet de retour arrière a été retiré. Dans `src/App.jsx` : suppression du point de commutation `const BACKEND`, de `supabaseTable`, `supabaseWhereFragment`, `SUPABASE_URL`/`SUPABASE_ANON_KEY` et de toutes les branches conditionnelles associées dans les fonctions d'accès aux données, `callMemberAuth` et `searchDeezer` — ces fonctions ne parlent plus qu'à `/api/*`. Suppression du dossier `supabase/` (Edge Functions et schéma d'origine, déjà portés sous `api/` et `db/neon_schema.sql`) et des scripts de migration ponctuels devenus inutiles (`db/migrate.mjs`, `db/migrate_supabase_to_neon.sh`, `db/rollback_neon_to_supabase.sh`, `db/phase0_dataapi_test.sh`), ainsi que de la dépendance `pg` qui ne servait qu'à ce dernier. Documentation mise à jour en conséquence (README, § 2.5, § 15, § 16, § 18, § 19, `docs/Migration_Neon.md`). Aucun changement de comportement pour les utilisateurs·rices. Le projet Supabase lui-même a été supprimé le même jour (hors dépôt) : la migration est intégralement close.
 
 # 18. Références
 
@@ -1022,8 +1021,6 @@ Application déployée : https://calyxter-set-manager-8xe2nnee2-ndalmont.vercel.
 Dépôt de code : GitHub, dépôt "calyxter-set-manager" du compte utilisé pour le déploiement Vercel. Points d'entrée : `src/App.jsx` (frontend complet), `api/` (fonctions serveur : `db.js`, `member-auth.js`, `search-deezer.js`) et `lib/neon.js` (connexion Neon partagée), `db/neon_schema.sql` (schéma de la base), cette documentation dans `docs/` et le plan de migration `docs/Migration_Neon.md`.
 
 Base de données : projet **Neon** (tableau de bord Neon → branche `main` → SQL Editor et Connection Details). La variable `DATABASE_URL` des fonctions Vercel pointe vers ce projet.
-
-Ancien projet Supabase (historique, § 2.5) : https://hhtjuwmlllgglnxtnjtx.supabase.co — à supprimer/mettre en pause dans son propre tableau de bord, seule étape de la Phase 6 (nettoyage) restant à faire.
 
 # 19. Première installation (repartir de zéro)
 

@@ -1,6 +1,6 @@
 # Migration Supabase → Neon — plan détaillé
 
-Statut : **Migration terminée**. Bascule en production faite le 6 septembre 2026 (Phases 0→5) ; recette Preview puis smoke test prod concluants (login, lecture, écriture, aucune requête vers `supabase.co`). Migration des données faite avec `db/migrate.mjs` (volumes + `password_hash` + JSON vérifiés). **Phase 6 (nettoyage) faite le 27 septembre 2026** après trois semaines sans incident : dossier `supabase/`, branches Supabase de `src/App.jsx`/point de commutation `const BACKEND`, scripts de migration (`db/migrate.mjs`, `db/migrate_supabase_to_neon.sh`, `db/rollback_neon_to_supabase.sh`, `db/phase0_dataapi_test.sh`) et dépendance `pg` retirés du dépôt ; doc technique passée en v1.16 (§ 2.5, § 16, § 18, § 19). Reste seulement, côté Supabase, à supprimer/mettre en pause le projet historique (`hhtjuwmlllgglnxtnjtx.supabase.co`) dans son propre tableau de bord — hors dépôt, action manuelle.
+Statut : **Migration terminée, nettoyage clos**. Bascule en production faite le 6 septembre 2026 (Phases 0→5) ; recette Preview puis smoke test prod concluants (login, lecture, écriture, aucune requête vers `supabase.co`). Migration des données faite avec `db/migrate.mjs` (volumes + `password_hash` + JSON vérifiés). **Phase 6 (nettoyage) faite le 27 septembre 2026** après trois semaines sans incident : dossier `supabase/`, branches Supabase de `src/App.jsx`/point de commutation `const BACKEND`, scripts de migration (`db/migrate.mjs`, `db/migrate_supabase_to_neon.sh`, `db/rollback_neon_to_supabase.sh`, `db/phase0_dataapi_test.sh`) et dépendance `pg` retirés du dépôt ; doc technique passée en v1.16 (§ 2.5, § 16, § 18, § 19). **Projet Supabase historique (`hhtjuwmlllgglnxtnjtx.supabase.co`) supprimé le 27 septembre 2026** — plus aucune dépendance à Supabase, ni dans le dépôt ni côté infrastructure.
 
 **Note (2026-09-10)** : contrairement à ce que prévoyait le plan (§ 5), aucun projet Neon « définitif » distinct n'a été créé — le projet initialement monté pour la Phase 0 (« pilote ») a été conservé et est devenu la production (mot de passe régénéré, schéma final appliqué). Base `neondb`, rôle `neondb_owner`, endpoint `ep-blue-glade-b2ugsmcp` (région `c-6.eu-central-1.aws`). Le **nom de projet** affiché dans le dashboard Neon peut être renommé sans impact (la chaîne de connexion ne le contient pas).
 
@@ -341,7 +341,7 @@ Fenêtre de maintenance courte (app utilisée occasionnellement par 6 personnes)
 ## 10. Phase 6 — Nettoyage (après période d'observation)
 
 - [x] Au moins **2 semaines** sans incident (§ 3.7) — trois semaines écoulées au 27 septembre 2026.
-- [ ] Supprimer / mettre en pause le projet Supabase (libère 1 des 2 slots gratuits) — action manuelle hors dépôt, à faire par Niko dans le tableau de bord Supabase.
+- [x] Supprimer / mettre en pause le projet Supabase (libère 1 des 2 slots gratuits) — fait le 27 septembre 2026.
 - [x] Retirer du dépôt : le point de commutation et le code d'accès Supabase, `supabase/functions/` (déplacé sous `api/`), les références Supabase dans la doc, `db/rollback_neon_to_supabase.sh`.
 - [x] Supprimer la dépendance / les scripts de migration ponctuels (`pg`, `db/migrate.mjs`, `db/migrate_supabase_to_neon.sh`, `db/rollback_neon_to_supabase.sh`, `db/phase0_dataapi_test.sh`).
 - [x] Mettre à jour la mémoire projet et le § 16 (changelog) de la doc technique.
