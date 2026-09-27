@@ -6616,25 +6616,30 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
     setCompoIds((prev) => (prev.includes(compoId) ? prev.filter((id) => id !== compoId) : [...prev, compoId]));
   };
 
-  // Un morceau ou une compo déjà sélectionné reste visible même s'il ne
-  // correspond plus à la recherche en cours, pour ne jamais le faire
-  // disparaître (et donc paraître désélectionné) sous les yeux du membre.
   const songSearchQuery = songSearch.trim().toLowerCase();
   const matchesSongSearch = (title, subtitle) => !songSearchQuery
     || title.toLowerCase().includes(songSearchQuery)
     || (subtitle || '').toLowerCase().includes(songSearchQuery);
+
+  // Un morceau ou une compo sélectionné quitte sa liste d'origine (à préparer,
+  // compos ou prêt) pour remonter dans une liste "Sélectionnés" juste sous la
+  // recherche ; il y retourne dès qu'il est désélectionné.
+  const selectedRehearsalSongs = songIds.map((id) => (songs || []).find((s) => s.id === id)).filter(Boolean);
+  const selectedRehearsalCompos = compoIds.map((id) => (compos || []).find((c) => c.id === id)).filter(Boolean);
+
   // Liste de proposition regroupée dans cet ordre précis : morceaux à
-  // préparer, puis compos, puis morceaux prêts.
+  // préparer, puis compos, puis morceaux prêts — hors morceaux déjà sélectionnés.
   const rehearsalToPrepareCandidates = (songs || [])
-    .filter((s) => s.status === 'to_prepare')
-    .filter((s) => songIds.includes(s.id) || matchesSongSearch(s.title, s.artist))
+    .filter((s) => s.status === 'to_prepare' && !songIds.includes(s.id))
+    .filter((s) => matchesSongSearch(s.title, s.artist))
     .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
   const rehearsalCompoCandidates = (compos || [])
-    .filter((c) => compoIds.includes(c.id) || matchesSongSearch(c.title))
+    .filter((c) => !compoIds.includes(c.id))
+    .filter((c) => matchesSongSearch(c.title))
     .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
   const rehearsalReadyCandidates = (songs || [])
-    .filter((s) => s.status === 'ready')
-    .filter((s) => songIds.includes(s.id) || matchesSongSearch(s.title, s.artist))
+    .filter((s) => s.status === 'ready' && !songIds.includes(s.id))
+    .filter((s) => matchesSongSearch(s.title, s.artist))
     .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
 
   const submit = async () => {
@@ -6881,12 +6886,30 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
             />
           </div>
 
+          {(selectedRehearsalSongs.length > 0 || selectedRehearsalCompos.length > 0) && (
+            <>
+              <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 6 }}>Sélectionnés</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                {selectedRehearsalSongs.map((s) => (
+                  <Chip key={s.id} active onClick={() => toggleSong(s.id)}>
+                    {s.title} · {s.artist}
+                  </Chip>
+                ))}
+                {selectedRehearsalCompos.map((c) => (
+                  <Chip key={c.id} active onClick={() => toggleCompo(c.id)}>
+                    {c.title}
+                  </Chip>
+                ))}
+              </div>
+            </>
+          )}
+
           <div className="clx-mono" style={{ fontSize: 11, color: '#9A958C', marginBottom: 6 }}>À préparer</div>
           <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
             {rehearsalToPrepareCandidates.length === 0 ? (
               <span className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>Aucun morceau à préparer{songSearchQuery ? ' pour cette recherche' : ''}.</span>
             ) : rehearsalToPrepareCandidates.map((s) => (
-              <Chip key={s.id} active={songIds.includes(s.id)} onClick={() => toggleSong(s.id)}>
+              <Chip key={s.id} onClick={() => toggleSong(s.id)}>
                 {s.title} · {s.artist}
               </Chip>
             ))}
@@ -6897,7 +6920,7 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
             {rehearsalCompoCandidates.length === 0 ? (
               <span className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>Aucune compo{songSearchQuery ? ' pour cette recherche' : ''}.</span>
             ) : rehearsalCompoCandidates.map((c) => (
-              <Chip key={c.id} active={compoIds.includes(c.id)} onClick={() => toggleCompo(c.id)}>
+              <Chip key={c.id} onClick={() => toggleCompo(c.id)}>
                 {c.title}
               </Chip>
             ))}
@@ -6908,7 +6931,7 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
             {rehearsalReadyCandidates.length === 0 ? (
               <span className="clx-mono" style={{ fontSize: 12, color: '#9A958C' }}>Aucun morceau prêt{songSearchQuery ? ' pour cette recherche' : ''}.</span>
             ) : rehearsalReadyCandidates.map((s) => (
-              <Chip key={s.id} active={songIds.includes(s.id)} onClick={() => toggleSong(s.id)}>
+              <Chip key={s.id} onClick={() => toggleSong(s.id)}>
                 {s.title} · {s.artist}
               </Chip>
             ))}
