@@ -193,6 +193,14 @@ function listenUrl(song) {
   return `https://www.deezer.com/search/${q}`;
 }
 
+// Lien Deezer seul (sans repli sur le lien externe) : les deux liens
+// cohabitent désormais dans la liste, chacun avec sa propre icône.
+function deezerListenUrl(song) {
+  if (song.links && song.links.deezer_url) return song.links.deezer_url;
+  const q = encodeURIComponent(`${song.title} ${song.artist}`);
+  return `https://www.deezer.com/search/${q}`;
+}
+
 // Identifiant de piste extrait d'une URL Deezer (…/track/123456…).
 function deezerTrackIdFromUrl(url) {
   const m = /deezer\.com\/(?:[a-z]{2}\/)?track\/(\d+)/i.exec(String(url || ''));
@@ -2996,15 +3004,27 @@ function SongRow({ song, members, onEdit }) {
       )}
 
       <a
-        href={listenUrl(song)}
+        href={deezerListenUrl(song)}
         target="_blank"
         rel="noopener noreferrer"
         className="clx-row-action"
-        title={song.links?.custom_url ? 'Ouvrir le lien' : 'Chercher sur Deezer'}
+        title={song.links?.deezer_url ? 'Écouter sur Deezer' : 'Chercher sur Deezer'}
       >
         <Radio size={16} />
         <ExternalLink size={11} />
       </a>
+      {song.links?.custom_url && (
+        <a
+          href={song.links.custom_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="clx-row-action"
+          title="Ouvrir le lien"
+        >
+          <Link2 size={16} />
+          <ExternalLink size={11} />
+        </a>
+      )}
     </div>
   );
 }
