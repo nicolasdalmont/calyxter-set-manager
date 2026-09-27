@@ -499,26 +499,24 @@ function normalizeForMatch(s) {
     .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+// Tiers de correspondance : 3 = exact, 2 = préfixe, 1 = sous-chaîne, 0 = rien.
+function matchTier(field, query) {
+  if (!query) return 0;
+  if (field === query) return 3;
+  if (field.startsWith(query)) return 2;
+  if (field.includes(query)) return 1;
+  return 0;
+}
+
 // Score de pertinence d'un résultat Deezer par rapport aux champs Titre et
-// Artiste saisis séparément (l'un des deux peut être vide). Fait remonter
-// les correspondances exactes au-dessus des lives/covers/karaokés.
+// Artiste saisis séparément (l'un des deux peut être vide). L'artiste est
+// prioritaire sur le titre : un artiste qui ne fait que "contenir" le nom
+// cherché (ex. "Killer Queen" pour "Queen") ne doit jamais passer devant un
+// artiste qui le matche exactement, même si son titre correspond mieux.
 function scoreDeezerResult(r, titleQuery, artistQuery) {
-  let score = 0;
-  const rTitle = normalizeForMatch(r.title);
-  const rArtist = normalizeForMatch(r.artist);
-  const nTitle = normalizeForMatch(titleQuery);
-  const nArtist = normalizeForMatch(artistQuery);
-  if (nTitle) {
-    if (rTitle === nTitle) score += 100;
-    else if (rTitle.startsWith(nTitle)) score += 50;
-    else if (rTitle.includes(nTitle)) score += 20;
-  }
-  if (nArtist) {
-    if (rArtist === nArtist) score += 100;
-    else if (rArtist.startsWith(nArtist)) score += 50;
-    else if (rArtist.includes(nArtist)) score += 20;
-  }
-  return score;
+  const artistTier = matchTier(normalizeForMatch(r.artist), normalizeForMatch(artistQuery));
+  const titleTier = matchTier(normalizeForMatch(r.title), normalizeForMatch(titleQuery));
+  return artistTier * 1000 + titleTier;
 }
 
 // Formalisme de la recherche Deezer à champ unique : « Titre - Artiste »
