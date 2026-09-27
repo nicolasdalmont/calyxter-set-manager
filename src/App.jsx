@@ -3184,6 +3184,48 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
     setQuery('');
   };
 
+  // Repli quand la recherche Deezer ne remonte pas la bonne édition (l'index
+  // de /search ne référence pas toutes les pochettes/pressages d'un même
+  // titre, contrairement au site deezer.com) : on colle le lien direct et on
+  // récupère la piste par son ID via /api/deezer-track.
+  const [linkInput, setLinkInput] = useState('');
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkError, setLinkError] = useState('');
+
+  useEffect(() => {
+    const raw = linkInput.trim();
+    if (!raw) { setLinkError(''); setLinkLoading(false); return; }
+    const trackId = deezerTrackIdFromUrl(raw) || (/^\d+$/.test(raw) ? raw : null);
+    if (!trackId) {
+      setLinkError('Colle un lien deezer.com/track/… ou un identifiant numérique.');
+      setLinkLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLinkLoading(true);
+    setLinkError('');
+    const t = setTimeout(async () => {
+      try {
+        const dz = await fetchDeezerTrack(trackId);
+        if (cancelled) return;
+        applyResult({
+          title: dz.title,
+          artist: dz.artist,
+          album: dz.album_title,
+          duration_seconds: dz.duration_seconds,
+          deezer_url: dz.deezer_url,
+          cover_url: dz.cover_url,
+        });
+        setLinkInput('');
+      } catch (err) {
+        if (!cancelled) setLinkError(err.message || 'Piste Deezer introuvable.');
+      } finally {
+        if (!cancelled) setLinkLoading(false);
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [linkInput]);
+
   const submit = () => {
     if (!title.trim() || !artist.trim()) { setError('Titre et artiste sont obligatoires.'); return; }
     const seconds = parseDurationInput(duration);
@@ -3255,6 +3297,21 @@ function AddSongModal({ currentUser, onClose, onAdd, onDelete, initialSong, exis
         </div>
 
         {searchError && <div style={{ color: '#C1454B', fontSize: 12 }}>{searchError}</div>}
+
+        <Field label="La recherche ne trouve pas la bonne édition ? Colle son lien Deezer">
+          <div style={{ position: 'relative' }}>
+            <Link2 size={14} style={{ position: 'absolute', left: 11, top: 11, color: '#9A958C' }} />
+            <input
+              className="clx-input"
+              style={{ paddingLeft: 32 }}
+              value={linkInput}
+              onChange={(e) => setLinkInput(e.target.value)}
+              placeholder="https://www.deezer.com/track/…"
+            />
+            {linkLoading && <Loader2 size={14} className="clx-spin" style={{ position: 'absolute', right: 11, top: 11, color: '#9A958C' }} />}
+          </div>
+          {linkError && <div style={{ color: '#C1454B', fontSize: 12, marginTop: 4 }}>{linkError}</div>}
+        </Field>
 
         {results.length > 0 && (
           <div className="clx-card clx-scrollbar" style={{ maxHeight: 340, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
