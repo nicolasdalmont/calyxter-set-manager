@@ -4,17 +4,17 @@ SET MANAGER
 
 Documentation technique et fonctionnelle
 
-Version 1.15 — 25 septembre 2026
+Version 1.16 — 27 septembre 2026
 
 Statut : application déployée, en phase de test avec les 6 membres du groupe.
+
+Depuis la v1.15 : **nettoyage post-migration Neon** (Phase 6, § 2.5, § 16) — la migration Supabase → Neon étant validée après plusieurs semaines sans incident, le point de commutation `const BACKEND` et tout le code d'accès Supabase (`src/App.jsx`), le dossier `supabase/` et les scripts de migration ponctuels (`db/migrate.mjs`, `db/migrate_supabase_to_neon.sh`, `db/rollback_neon_to_supabase.sh`, `db/phase0_dataapi_test.sh`) ont été retirés du dépôt, ainsi que la dépendance `pg`. Aucun changement fonctionnel. Détail au § 17.16.
 
 Depuis la v1.14 : **sélection des morceaux à travailler en répétition** (§ 8.6) — sur un rendez-vous de type Répétition uniquement, l'éditeur affiche une nouvelle section "Morceaux à travailler" permettant de choisir, par puces à bascule filtrables par une recherche, des morceaux du répertoire à préparer, des compos et des morceaux du répertoire prêts, dans cet ordre. Nouvelles colonnes `events.song_ids` et `events.compo_ids` (jsonb, § 3.6). Détail au § 17.15.
 
 Depuis la v1.13 : le bloc "Depuis ta dernière connexion" (§ 12.2) fait désormais aussi remonter la clôture d'une phase (résultats), l'avancement d'une étape de phase, le changement manuel de statut d'un morceau, l'annulation d'une phase et les suppressions (morceau, compo, concert, rendez-vous). Trois nouvelles valeurs de `kind` dédiées (`status`, `cancel`, `delete`) remplacent le générique `info` pour ces événements précis, afin de ne pas aussi faire remonter les commentaires et éditions mineures qui partagent ce même `info`. Détail au § 17.14.
 
 Depuis la v1.12 : la **pastille de date** (§ 14.3) n'affiche plus l'année que si elle diffère de l'année en cours — la date d'un concert ou d'un rendez-vous de cette année tient désormais sur deux lignes (jour, mois) plutôt que trois. Détail au § 17.13.
-
-Depuis la v1.11 : les notifications du bloc "Depuis ta dernière connexion" (§ 12.2) n'affichent plus à un membre ses propres actions — seules celles des autres membres du groupe lui sont désormais signalées. Nouvelle colonne `notifications.actor_id` (§ 3.4). Détail au § 17.12.
 
 # 1. Présentation du projet
 
@@ -128,19 +128,14 @@ Le choix final : **une couche de fonctions serveur maison** (`api/db`, `api/memb
 
 - Le frontend ne contient plus **aucun identifiant** d'accès aux données (avant : URL Supabase + clé publishable en dur). La chaîne `DATABASE_URL` vit uniquement dans les variables d'environnement Vercel.
 - Plus de RLS ni de politiques Postgres : la base n'est jamais jointe depuis l'extérieur. La protection de `members.password_hash` / `last_activity_at` est faite dans le code de `api/db` (§ 2.2, § 4.2).
-- `src/App.jsx` conserve un point de commutation `const BACKEND` (`'neon'` en production) : les branches d'appel à Supabase sont restées dans le code le temps de la période de sécurité, un simple retour de la constante à `'supabase'` rebranche l'ancien backend.
 
 ### Migration des données
 
-Script `db/migrate.mjs` (Node + pilote `pg`), lancé une fois à la bascule : copie les 8 tables de Supabase vers Neon dans l'ordre des dépendances de clés étrangères, en préservant les identifiants, les empreintes de mots de passe et les colonnes JSON. La source (Supabase) n'est jamais modifiée. Un mode `--rollback` copie en sens inverse (Neon → Supabase). Schéma cible : `db/neon_schema.sql` (identique au schéma Supabase, sans la partie RLS/rôles).
+La copie des 8 tables de Supabase vers Neon (identifiants, empreintes de mots de passe et colonnes JSON préservés, source jamais modifiée) a été faite une fois à la bascule avec un script Node dédié, retiré du dépôt en Phase 6 (nettoyage, § 16) une fois la migration validée. Schéma cible : `db/neon_schema.sql` (identique au schéma Supabase, sans la partie RLS/rôles).
 
-### Filet de sécurité
+### Filet de sécurité (période de transition, close)
 
-- Étiquette Git `pre-neon-migration` = dernier état du code sur Supabase.
-- Retour arrière niveau 1 : **Instant Rollback** de Vercel (réactive le déploiement Supabase précédent en ~30 s).
-- Retour arrière niveau 2 : repasser `const BACKEND` à `'supabase'` dans `src/App.jsx` et redéployer.
-- Retour arrière niveau 3 : `node db/migrate.mjs --rollback` (si des données ont été écrites côté Neon entre-temps).
-- Le projet Supabase (base + Edge Functions) est **laissé strictement intact au moins deux semaines** après la bascule. Son nettoyage (suppression du dossier `supabase/`, des branches Supabase de `src/App.jsx`, puis du projet lui-même) fera l'objet d'une évolution ultérieure.
+Pendant les trois semaines qui ont suivi la bascule, plusieurs niveaux de retour arrière ont été tenus prêts : étiquette Git `pre-neon-migration` (dernier état du code sur Supabase), Instant Rollback Vercel, un point de commutation `const BACKEND` dans `src/App.jsx` permettant de rebrancher l'ancien backend, un script de copie Neon → Supabase, et le projet Supabase lui-même laissé strictement intact. Aucun n'a été nécessaire. Le nettoyage de repli (Phase 6, § 16) a retiré du dépôt le point de commutation, le code d'accès Supabase et les scripts de migration ponctuels le 27 septembre 2026 ; seule la suppression du projet Supabase lui-même reste à faire (hors dépôt, tableau de bord Supabase).
 
 Plan détaillé et journal d'exécution : `docs/Migration_Neon.md` dans le dépôt.
 
@@ -794,7 +789,7 @@ Les trois écrans présentant une liste de cartes (Répertoire, Concerts, Rendez
 
 - Fonctions serveur `api/*` (§ 2.2) déployées automatiquement par Vercel avec le frontend, depuis le dossier `api/` du dépôt (runtime Node). Elles lisent la variable d'environnement **`DATABASE_URL`** (chaîne de connexion Neon, en pool), à définir dans Vercel → Settings → Environment Variables pour les portées *Production* et *Preview*. C'est le seul secret du projet ; il n'apparaît nulle part dans le code.
 
-- Base de données hébergée sur **Neon** (PostgreSQL, offre gratuite, sans carte bancaire). Le projet Supabase historique (`hhtjuwmlllgglnxtnjtx.supabase.co`) est conservé intact quelques semaines comme filet de retour arrière (§ 2.5) puis sera supprimé.
+- Base de données hébergée sur **Neon** (PostgreSQL, offre gratuite, sans carte bancaire). Le projet Supabase historique (`hhtjuwmlllgglnxtnjtx.supabase.co`) a servi de filet de retour arrière pendant la période de transition (§ 2.5) ; reste à supprimer côté Supabase.
 
 - Aucun serveur à maintenir : les plateformes gèrent l'hébergement, la mise à l'échelle et la sécurité de l'infrastructure.
 
@@ -818,7 +813,7 @@ Coût actuel : 0 € par mois, les volumes d'usage (6 membres, quelques centaine
 | Dernière activité | Tamponnée à l'ouverture de l'application uniquement, pas à chaque action | Granularité plus fine possible (ex. tamponnage sur des actions clés) si le besoin s'en fait sentir |
 | Multi-comptes simultanés | Un profil à la fois par appareil | Non prioritaire pour un usage à 6 personnes |
 | Rafraîchissement automatique | Une instance déjà installée sur un téléphone avant la mise en place de ce mécanisme (§ 14.2) doit encore être mise à jour une dernière fois manuellement pour en bénéficier | Aucune (limite ponctuelle, sans impact au-delà de cette transition unique) |
-| Nettoyage post-migration Neon | Le dépôt contient encore le dossier `supabase/` et les branches Supabase de `src/App.jsx` (point de commutation `const BACKEND`), conservés comme filet de retour arrière (§ 2.5) | À supprimer après quelques semaines d'exploitation stable sur Neon, avec suppression du projet Supabase et mise à jour du § 19 |
+| Nettoyage post-migration Neon | Dépôt nettoyé le 27 sept. 2026 (§ 2.5, § 17.16) ; le projet Supabase historique existe encore côté Supabase | Supprimer/mettre en pause le projet Supabase dans son tableau de bord (libère 1 des 2 slots gratuits) |
 
 # 17. Journal des évolutions
 
@@ -1016,15 +1011,19 @@ Chantier issu d'un audit UX complet de l'application (lecture intégrale de `src
 
 - **Sélection des morceaux à travailler en répétition** (§ 8.6) : nouvelle section "Morceaux à travailler" dans l'écran d'édition d'un rendez-vous, affichée uniquement lorsque son type est Répétition (`RendezVousEditor`, `src/App.jsx`) — les autres types de rendez-vous et les concerts n'ont pas cette section, une répétition étant le seul cas où préparer une liste de morceaux a du sens. Trois ensembles de puces à bascule, filtrables par un champ de recherche commun (titre / artiste) et affichés dans cet ordre : les morceaux du répertoire au statut "À préparer", les compos (quel que soit leur statut), puis les morceaux du répertoire au statut "Prêt" — les morceaux les moins avancés en tête, pour prioriser le travail de répétition sur ce qui en a le plus besoin. Un élément déjà sélectionné reste affiché même s'il ne correspond plus à la recherche en cours, pour rester désélectionnable en un clic sans jamais paraître désélectionné à tort. Nouvelles colonnes `events.song_ids` et `events.compo_ids` (jsonb, § 3.6), vidées à l'enregistrement si le type du rendez-vous est changé pour autre chose que Répétition. La carte de la liste des rendez-vous (§ 8.3) affiche le nombre total d'éléments sélectionnés lorsqu'il y en a au moins un.
 
+## 17.16 Depuis la v1.15 (→ v1.16)
+
+- **Nettoyage post-migration Neon** (Phase 6 du plan de migration, § 2.5, § 16, `docs/Migration_Neon.md`) : la migration Supabase → Neon (v1.7 → v1.8) étant validée après plusieurs semaines d'exploitation sans incident, tout ce qui subsistait de l'ancien backend comme filet de retour arrière a été retiré. Dans `src/App.jsx` : suppression du point de commutation `const BACKEND`, de `supabaseTable`, `supabaseWhereFragment`, `SUPABASE_URL`/`SUPABASE_ANON_KEY` et de toutes les branches conditionnelles associées dans les fonctions d'accès aux données, `callMemberAuth` et `searchDeezer` — ces fonctions ne parlent plus qu'à `/api/*`. Suppression du dossier `supabase/` (Edge Functions et schéma d'origine, déjà portés sous `api/` et `db/neon_schema.sql`) et des scripts de migration ponctuels devenus inutiles (`db/migrate.mjs`, `db/migrate_supabase_to_neon.sh`, `db/rollback_neon_to_supabase.sh`, `db/phase0_dataapi_test.sh`), ainsi que de la dépendance `pg` qui ne servait qu'à ce dernier. Documentation mise à jour en conséquence (README, § 2.5, § 15, § 16, § 18, § 19, `docs/Migration_Neon.md`). Aucun changement de comportement pour les utilisateurs·rices ; seule reste à faire, hors dépôt, la suppression du projet Supabase lui-même dans son tableau de bord.
+
 # 18. Références
 
 Application déployée : https://calyxter-set-manager-8xe2nnee2-ndalmont.vercel.app (URL de déploiement la plus récente testée — vérifier l'URL de production stable dans le tableau de bord Vercel).
 
-Dépôt de code : GitHub, dépôt "calyxter-set-manager" du compte utilisé pour le déploiement Vercel. Points d'entrée : `src/App.jsx` (frontend complet), `api/` (fonctions serveur : `db.js`, `member-auth.js`, `search-deezer.js`) et `lib/neon.js` (connexion Neon partagée), `db/neon_schema.sql` (schéma de la base) et `db/migrate.mjs` (migration/rollback des données), cette documentation dans `docs/` et le plan de migration `docs/Migration_Neon.md`.
+Dépôt de code : GitHub, dépôt "calyxter-set-manager" du compte utilisé pour le déploiement Vercel. Points d'entrée : `src/App.jsx` (frontend complet), `api/` (fonctions serveur : `db.js`, `member-auth.js`, `search-deezer.js`) et `lib/neon.js` (connexion Neon partagée), `db/neon_schema.sql` (schéma de la base), cette documentation dans `docs/` et le plan de migration `docs/Migration_Neon.md`.
 
 Base de données : projet **Neon** (tableau de bord Neon → branche `main` → SQL Editor et Connection Details). La variable `DATABASE_URL` des fonctions Vercel pointe vers ce projet.
 
-Filet de retour arrière — projet Supabase historique : https://hhtjuwmlllgglnxtnjtx.supabase.co, conservé intact quelques semaines (§ 2.5). Code des anciennes Edge Functions et schéma d'origine encore dans `supabase/` (`functions/`, `recreate_full_schema.sql`) jusqu'au nettoyage post-migration.
+Ancien projet Supabase (historique, § 2.5) : https://hhtjuwmlllgglnxtnjtx.supabase.co — à supprimer/mettre en pause dans son propre tableau de bord, seule étape de la Phase 6 (nettoyage) restant à faire.
 
 # 19. Première installation (repartir de zéro)
 
@@ -1034,7 +1033,6 @@ Procédure pour reconstruire l'application sur des comptes neufs (nouveau projet
 
 - Node.js ≥ 18 (testé avec la 24) et npm, pour le développement local et le build.
 - Un compte GitHub (dépôt de code), un compte Neon (base de données), un compte Vercel (frontend + fonctions serveur). Les trois suffisent en offre gratuite aux volumes d'usage du groupe.
-- Aucun outil `psql` / `pg_dump` requis : le script de migration des données (§ 19.6) est en Node pur.
 
 ## 19.2 Récupérer le code
 
@@ -1059,26 +1057,18 @@ Rien à déployer séparément : les trois fichiers de `api/` (`db.js`, `member-
 Précisions :
 
 - **Unique variable d'environnement** : `DATABASE_URL` (chaîne Neon en pool). À définir sur Vercel (§ 19.7) et, pour le développement local avec `vercel dev`, dans `.env.local` (gitignoré ; un modèle est fourni dans `.env.example`).
-- **Dépendance runtime** : `@neondatabase/serverless` doit rester dans `dependencies` (pas `devDependencies`) — les fonctions en ont besoin à l'exécution. `pg` est en `devDependencies` (utilisé seulement par le script de migration `db/migrate.mjs`).
+- **Dépendance runtime** : `@neondatabase/serverless` doit rester dans `dependencies` (pas `devDependencies`) — les fonctions en ont besoin à l'exécution.
 - **Schéma de hachage** : `api/member-auth.js` utilise PBKDF2 100 000 itérations / sel 16 octets / SHA-256, format `saltHex:hashHex`. Sur une base neuve, les mots de passe sont vides et chaque membre crée le sien (§ 19.6, § 4.1). Sur une base contenant des empreintes migrées, **ne jamais modifier ce schéma** : les mots de passe deviendraient invérifiables (§ 2.2).
 
 ## 19.5 Configurer le frontend
 
-Le frontend ne contient **aucun identifiant**. Vérifier seulement, dans `src/App.jsx`, que la constante `BACKEND` (vers le début du fichier) vaut `'neon'`. La valeur `'supabase'` réactive l'ancien backend (branches de code conservées le temps de la période de sécurité, § 2.5) et suppose un projet Supabase configuré.
+Le frontend ne contient **aucun identifiant** : aucune configuration à faire, l'accès aux données passe entièrement par les fonctions serveur `api/*` (§ 19.4).
 
 ## 19.6 Créer les membres et le répertoire
 
 Deux cas.
 
-**Reprise de données existantes** (migration depuis un backend Supabase encore en place) : lancer le script de copie, avec les chaînes de connexion **directes** des deux bases passées en variables d'environnement (jamais en clair dans un fichier versionné) :
-
-```
-export SUPABASE_DIRECT_URL='postgresql://postgres.<ref>:<mdp>@aws-<...>.pooler.supabase.com:5432/postgres'
-export NEON_DIRECT_URL='postgresql://<user>:<mdp>@<hôte-sans-pooler>/<db>?sslmode=require'
-node db/migrate.mjs
-```
-
-Le script copie les 8 tables dans l'ordre des clés étrangères, vide la cible au préalable, préserve identifiants / empreintes de mots de passe / colonnes JSON, vérifie les volumes, et **ne modifie jamais la source**. `node db/migrate.mjs --rollback` copie en sens inverse (Neon → Supabase).
+**Reprise de données existantes** (ex. restauration après une perte d'accès, depuis un autre projet Neon) : utiliser `pg_dump`/`pg_restore` (ou `pg_dump --data-only` suivi d'un `psql` de restauration) entre les deux chaînes de connexion **directes** (sans `-pooler`), dans l'ordre des dépendances de clés étrangères des 10 tables (§ 3).
 
 **Base vierge** :
 

@@ -90,10 +90,10 @@ const IDEA_STATUS_ORDER = ['created', 'processed', 'done'];
 
 // Les listes DEFAULT_MEMBERS et DEFAULT_SONGS (catalogue de démonstration et
 // membres par défaut) ont été retirées : elles n'ont plus d'utilité une fois
-// les vraies données alimentées dans Supabase (table "members" pour les
+// les vraies données alimentées en base (table "members" pour les
 // membres, table "songs" pour le répertoire). On ne réensemence donc plus
 // jamais ces tables et on ne propose plus de contenu de secours si elles
-// sont vides — voir fetchMembersFromSupabase() et loadSongs() ci-dessous.
+// sont vides — voir fetchMembers() et loadSongs() ci-dessous.
 
 /* ------------------------------------------------------------------ */
 /*  HELPERS                                                             */
@@ -227,52 +227,11 @@ function withTimeout(promise, ms, fallback) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  ACCÈS AUX DONNÉES                                                  */
-/*                                                                    */
-/*  Point de commutation unique (docs/Migration_Neon.md § 3.1) :       */
-/*  BACKEND = 'supabase' → PostgREST direct, clé publishable.          */
-/*  BACKEND = 'neon'     → couche /api/* sur Vercel Functions,         */
-/*                         aucun identifiant côté frontend.            */
-/*  Revenir en arrière = repasser cette constante à 'supabase'.        */
+/*  ACCÈS AUX DONNÉES — couche /api/* sur Vercel Functions,            */
+/*  aucun identifiant côté frontend (docs/Calyxter_Documentation_      */
+/*  Technique.md § 2.5).                                               */
 /* ------------------------------------------------------------------ */
 
-const BACKEND = 'neon'; // 'supabase' | 'neon'
-
-const SUPABASE_URL = 'https://hhtjuwmlllgglnxtnjtx.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_78oxJJanE3jzXYs8xbrMxg_sjgwBaB2';
-
-// --- Backend Supabase : appel PostgREST brut ------------------------
-async function supabaseTable(path, options = {}) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...options,
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Erreur Supabase (${res.status}) : ${errText}`);
-  }
-  // Ne pas se fier uniquement au code 204 : un POST avec
-  // "Prefer: return=minimal" répond en 201 avec un corps vide, et appeler
-  // res.json() sur une chaîne vide lève une SyntaxError (sur Safari :
-  // "The string did not match the expected pattern."). On lit donc le texte
-  // brut d'abord, et on ne tente le parsing JSON que s'il y a effectivement
-  // un contenu.
-  const text = await res.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    console.error('Réponse Supabase inattendue (non-JSON)', text);
-    return null;
-  }
-}
-
-// --- Backend Neon : endpoint générique /api/db ---------------------
 async function neonDb(body) {
   const res = await fetch('/api/db', {
     method: 'POST',
@@ -284,62 +243,23 @@ async function neonDb(body) {
   return text ? JSON.parse(text) : null;
 }
 
-// Traduit une clause where générique ([[col, op, val]]) en fragment
-// PostgREST (col=eq.val / col=is.null / col=not.is.null).
-function supabaseWhereFragment(where) {
-  return (where || [])
-    .map(([col, op, val]) => {
-      if (op === 'eq') return `${col}=eq.${val}`;
-      if (op === 'isNull') return `${col}=is.null`;
-      if (op === 'notNull') return `${col}=not.is.null`;
-      return '';
-    })
-    .filter(Boolean)
-    .join('&');
-}
-
-// --- Opérations, agnostiques du backend ---------------------------
 async function dbSelect(table, { columns, where, order, limit } = {}) {
-  if (BACKEND === 'neon') {
-    return (await neonDb({ op: 'select', table, columns, where, order, limit })) || [];
-  }
-  let path = `${table}?select=${columns ? columns.join(',') : '*'}`;
-  const w = supabaseWhereFragment(where);
-  if (w) path += `&${w}`;
-  if (order) {
-    path += `&order=${order.map(([c, d, nl]) => `${c}.${d}${nl ? '.nullslast' : ''}`).join(',')}`;
-  }
-  if (limit) path += `&limit=${limit}`;
-  return (await supabaseTable(path)) || [];
+  return (await neonDb({ op: 'select', table, columns, where, order, limit })) || [];
 }
 
 async function dbInsert(table, rows) {
-  if (BACKEND === 'neon') return neonDb({ op: 'insert', table, rows });
-  return supabaseTable(table, {
-    method: 'POST',
-    headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify(rows),
-  });
+  return neonDb({ op: 'insert', table, rows });
 }
 
 async function dbUpdateById(table, id, set) {
-  if (BACKEND === 'neon') return neonDb({ op: 'update', table, where: [['id', 'eq', id]], set });
-  return supabaseTable(`${table}?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify(set),
-  });
+  return neonDb({ op: 'update', table, where: [['id', 'eq', id]], set });
 }
 
 async function dbDelete(table, where) {
-  if (BACKEND === 'neon') return neonDb({ op: 'delete', table, where });
-  return supabaseTable(`${table}?${supabaseWhereFragment(where)}`, {
-    method: 'DELETE',
-    headers: { Prefer: 'return=minimal' },
-  });
+  return neonDb({ op: 'delete', table, where });
 }
 
-async function fetchMembersFromSupabase() {
+async function fetchMembers() {
   return dbSelect('members', {
     columns: ['id', 'name', 'instrument', 'created_at', 'last_activity_at', 'is_admin', 'must_reset_password', 'active'],
     order: [['name', 'asc']],
@@ -360,33 +280,9 @@ async function touchMemberActivity(memberId) {
 
 async function upsertRows(table, rows) {
   if (!rows || rows.length === 0) return null;
-  if (BACKEND === 'neon') {
-    // /api/db construit un INSERT ... ON CONFLICT (id) DO UPDATE par ligne,
-    // à partir des seules clés présentes : pas de contrainte d'homogénéité.
-    return neonDb({ op: 'upsert', table, rows });
-  }
-  // PostgREST (POST en lot) exige que tous les objets du tableau aient exactement
-  // les mêmes clés ("All object keys must match" / PGRST102). Un objet construit
-  // côté client (ex. un nouveau morceau) peut ne pas porter toutes les colonnes
-  // présentes sur les lignes déjà chargées depuis Supabase (ex. updated_at) :
-  // on complète donc chaque objet avec l'union des clés du lot. Les colonnes
-  // horodatées (suffixe _at, ex. updated_at) sont NOT NULL en base : on leur
-  // donne l'heure courante plutôt que null pour ne pas violer la contrainte.
-  const nowIso = new Date().toISOString();
-  const allKeys = [...new Set(rows.flatMap((r) => Object.keys(r)))];
-  const normalized = rows.map((r) => {
-    const filled = {};
-    for (const k of allKeys) {
-      if (k in r) filled[k] = r[k];
-      else filled[k] = k.endsWith('_at') ? nowIso : null;
-    }
-    return filled;
-  });
-  return supabaseTable(`${table}?on_conflict=id`, {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(normalized),
-  });
+  // /api/db construit un INSERT ... ON CONFLICT (id) DO UPDATE par ligne,
+  // à partir des seules clés présentes : pas de contrainte d'homogénéité.
+  return neonDb({ op: 'upsert', table, rows });
 }
 
 // On charge les morceaux existants sans jamais réensemencer la table ni
@@ -462,17 +358,9 @@ function commentsForTarget(comments, targetType, targetId) {
 
 async function callMemberAuth(action, memberId, password, extra) {
   const body = JSON.stringify({ action, member_id: memberId, password, ...(extra || {}) });
-  if (BACKEND === 'neon') {
-    const res = await fetch('/api/member-auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    });
-    return res.json();
-  }
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/member-auth`, {
+  const res = await fetch('/api/member-auth', {
     method: 'POST',
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body,
   });
   return res.json();
@@ -480,11 +368,7 @@ async function callMemberAuth(action, memberId, password, extra) {
 
 async function searchDeezer(query) {
   const q = encodeURIComponent(query);
-  const res = BACKEND === 'neon'
-    ? await fetch(`/api/search-deezer?q=${q}`)
-    : await fetch(`${SUPABASE_URL}/functions/v1/search-deezer?q=${q}`, {
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-      });
+  const res = await fetch(`/api/search-deezer?q=${q}`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'La recherche Deezer a échoué.');
   return data.results || [];
@@ -530,8 +414,7 @@ function parseSearchQuery(query) {
   return { title: query.trim(), artist: query.trim() };
 }
 
-// Détail d'une piste Deezer (pochette + rank) pour lier une compo. Neon
-// uniquement : pas d'équivalent parmi les Edge Functions Supabase.
+// Détail d'une piste Deezer (pochette + rank) pour lier une compo.
 async function fetchDeezerTrack(trackId) {
   const res = await fetch(`/api/deezer-track?id=${encodeURIComponent(trackId)}`);
   const data = await res.json();
@@ -649,7 +532,7 @@ function applyFrQuota(top3, scored) {
 
 export default function App() {
   const [loading, setLoading] = useState(true);
-  const [members, setMembers] = useState([]); // vraie table "members" Supabase
+  const [members, setMembers] = useState([]); // vraie table "members"
   const [songs, setSongs] = useState([]);
   const [phase, setPhase] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -718,8 +601,8 @@ export default function App() {
     setLoading(true);
     setMembersError('');
     try {
-      const [supaMembers, s, p, n, c, ev, ph, id, cp, st, cm] = await Promise.all([
-        withTimeout(fetchMembersFromSupabase(), 8000, null),
+      const [loadedMembers, s, p, n, c, ev, ph, id, cp, st, cm] = await Promise.all([
+        withTimeout(fetchMembers(), 8000, null),
         withTimeout(loadSongs(), 8000, []),
         withTimeout(fetchActivePhase(), 8000, null),
         withTimeout(fetchNotifications(), 8000, []),
@@ -732,8 +615,8 @@ export default function App() {
         withTimeout(fetchComments(), 8000, []),
       ]);
       if (cancelledRef && cancelledRef.current) return;
-      if (supaMembers) {
-        setMembers(supaMembers);
+      if (loadedMembers) {
+        setMembers(loadedMembers);
       } else {
         setMembersError('Impossible de charger les données — vérifie ta connexion.');
       }
@@ -898,11 +781,8 @@ export default function App() {
       return next;
     });
     try {
-      // On n'envoie à Supabase que les lignes réellement ajoutées ou modifiées.
-      // Envoyer tout le tableau ferait cohabiter, dans un même upsert groupé,
-      // des objets aux clés différentes (ex. un morceau tout juste créé côté
-      // client, sans `updated_at`, à côté de morceaux venus de la base avec
-      // toutes leurs colonnes) — ce que PostgREST refuse (PGRST102).
+      // On n'envoie que les lignes réellement ajoutées ou modifiées, pour
+      // éviter de réécrire tout le répertoire à chaque sauvegarde.
       const prevById = new Map(prevSongs.map((s) => [s.id, s]));
       const changed = next.filter((s) => prevById.get(s.id) !== s);
       if (changed.length > 0) {

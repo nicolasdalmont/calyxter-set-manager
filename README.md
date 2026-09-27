@@ -3,8 +3,8 @@
 Application de gestion du répertoire et des phases de choix du groupe Calyxter.
 
 Documentation technique et fonctionnelle complète : [`docs/Calyxter_Documentation_Technique.md`](docs/Calyxter_Documentation_Technique.md).
-Schéma de base de données : [`supabase/recreate_full_schema.sql`](supabase/recreate_full_schema.sql).
-Plan de migration Supabase → Neon (à venir) : [`docs/Migration_Neon.md`](docs/Migration_Neon.md).
+Schéma de base de données : [`db/neon_schema.sql`](db/neon_schema.sql).
+Historique de la migration Supabase → Neon (septembre 2026) : [`docs/Migration_Neon.md`](docs/Migration_Neon.md).
 
 ## Développement local (optionnel)
 
@@ -19,4 +19,4 @@ Ce projet est prêt à être déployé sur Vercel ou Netlify (build command: `np
 
 ## Installation complète
 
-Reconstruction sur des comptes neufs (Supabase + Vercel) : voir la section « Première installation » (§ 18) de la documentation technique.
+Reconstruction sur des comptes neufs (Neon + Vercel) : voir la section « Première installation » (§ 19) de la documentation technique.
