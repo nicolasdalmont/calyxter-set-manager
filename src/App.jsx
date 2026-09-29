@@ -7117,7 +7117,7 @@ function RendezVousEditor({ event, occurrenceDate, members, songs, compos, curre
 function IdeasTab({ ideas, members, currentUser, saveIdea, deleteIdea, pushNotification }) {
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('created');
 
   const filtered = statusFilter === 'all' ? ideas : ideas.filter((i) => i.status === statusFilter);
 
